@@ -213,7 +213,7 @@ public abstract class IntervalTestBase extends LuceneTestCase {
       hitCount++;
       intervals.scorerAdvanced(doc);
       while ((current = intervals.next()) != null) {
-        //System.out.println(doc + ":" + current);
+        //System.out.println("**Collecting " + doc + ":" + current);
         intervals.collect(this);
       }
     }

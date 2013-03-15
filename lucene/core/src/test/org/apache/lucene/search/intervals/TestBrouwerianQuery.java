@@ -39,7 +39,7 @@ public class TestBrouwerianQuery extends IntervalTestBase {
       Document doc = new Document();
       doc.add(newField(
           "field",
-          "The quick brown duck jumps over the lazy dog with the quick brown fox jumps",
+          "The quick brown duck jumps over the lazy dog with the quick brown fox jumps and then it jumps again",
               TextField.TYPE_STORED));
       writer.addDocument(doc);
     }
@@ -49,11 +49,12 @@ public class TestBrouwerianQuery extends IntervalTestBase {
 
     Query query = new OrderedNearQuery(2, false, makeTermQuery("the"),
                                         makeTermQuery("quick"), makeTermQuery("jumps"));
-    Query sub = makeTermQuery("fox");
+    Query sub = makeTermQuery("duck");
     NonOverlappingQuery q = new NonOverlappingQuery(query, sub);
 
     checkIntervals(q, searcher, new int[][]{
-        { 1, 0, 4 }
+        { 0, 0, 4 },
+        { 1, 10, 14 }
     });
   }
 
@@ -71,13 +72,14 @@ public class TestBrouwerianQuery extends IntervalTestBase {
   }
 
   public void testBrouwerianOverlapQuery() throws IOException {
-    // We want to find 'jumps NOT WITHIN 2 positions of fox'
-    Query sub = new UnorderedNearQuery(2, false, makeTermQuery("jumps"), makeTermQuery("fox"));
+    // We want to find 'jumps NOT WITHIN 2 positions of duck'
+    Query sub = new UnorderedNearQuery(2, false, makeTermQuery("jumps"), makeTermQuery("duck"));
     Query query = makeTermQuery("jumps");
     NonOverlappingQuery q = new NonOverlappingQuery(query, sub);
 
     checkIntervals(q, searcher, new int[][]{
-        { 1, 4, 4 }
+        { 0, 4, 4 },
+        { 1, 14, 14, 18, 18 }
     });
   }
 

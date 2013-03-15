@@ -55,6 +55,8 @@ public class BrouwerianIntervalIterator extends IntervalIterator {
 
   @Override
   public int scorerAdvanced(int docId) throws IOException {
+    //System.out.println("Advancing to doc " + docId);
+    //Thread.dumpStack();
     minuend.scorerAdvanced(docId);
     if (subtracted.docID() <= docId)
       subtracted.scorerAdvanced(docId);
@@ -64,16 +66,30 @@ public class BrouwerianIntervalIterator extends IntervalIterator {
   
   @Override
   public Interval next() throws IOException {
-    if (subtracted.docID() != minuend.docID()) {
-      return currentInterval = minuend.next();
+    //System.out.println("next()");
+    //System.out.println("Subtractend: " + subtracted.toString());
+    //System.out.println("Minuend: " + minuend.toString());
+    if (subtracted.docID() != minuend.docID() || subtractedInterval == null) {
+      //System.out.println("No subtrahend on doc " + minuend.docID());
+      currentInterval = minuend.next();
+      //System.out.println("----Returning " + currentInterval);
+      return currentInterval;
     }
     while ((currentInterval = minuend.next()) != null) {
+      //System.out.println("next() : advancing through minuend");
+      //System.out.println("Subtractend: " + subtracted.toString());
+      //System.out.println("Current interval: " + currentInterval.toString());
       while(subtractedInterval.lessThanExclusive(currentInterval) && (subtractedInterval = subtracted.next()) != null) {
+        //System.out.println("next{} : advancing through subtrahend");
+        //System.out.println("Subtractend: " + subtracted.toString());
+        //System.out.println("Minuend: " + minuend.toString());
       }
       if (subtractedInterval == null || !currentInterval.overlaps(subtractedInterval)) {
+        //System.out.println("----Returning " + currentInterval);
         return currentInterval;
       }
     }
+    //System.out.println("----Returning " + currentInterval);
     return currentInterval;
   }
   

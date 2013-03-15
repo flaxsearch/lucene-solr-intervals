@@ -212,8 +212,11 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
 
           @Override
           public int scorerAdvanced(int docId) throws IOException {
+            //if (docId == this.docID())
+            //  return docId;
             int mId = minuted.advance(docId);
-            subtracted.advance(docId);
+            if (subtracted.docID() < docId)
+              subtracted.advance(docId);
             if (mId <= docId)
               return brouwerianIntervalIterator.scorerAdvanced(docId);
             return mId;
@@ -292,7 +295,8 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
     public int nextDoc() throws IOException {
       int docId = -1;
       while ((docId = minuend.nextDoc()) != Scorer.NO_MORE_DOCS) {
-        subtracted.advance(docId);
+        if (subtracted.docID() < docId)
+          subtracted.advance(docId);
         filter.scorerAdvanced(docId);
         if ((current = filter.next()) != null) { // just check if there is a position that matches!
           return minuend.docID();
