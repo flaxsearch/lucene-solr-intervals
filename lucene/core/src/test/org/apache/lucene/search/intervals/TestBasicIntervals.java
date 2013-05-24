@@ -64,6 +64,16 @@ public class TestBasicIntervals extends IntervalTestBase {
     });
   }
 
+  public void testSameStartPositionWithinDisjunctions() throws Exception {
+    Query q = makeOrQuery(
+        new UnorderedNearQuery(6, false, makeTermQuery("a"), makeTermQuery("b")),
+        new UnorderedNearQuery(6, false, makeTermQuery("a"), makeTermQuery("c"))
+    );
+    checkIntervals(q, searcher, new int[][]{
+        { 12, 0, 4, 0, 1 }
+    });
+  }
+
   public void testNearOrdered01() throws Exception {
     Query q = new OrderedNearQuery(0, false, makeTermQuery("w1"), makeTermQuery("w2"), makeTermQuery("w3"));
     checkIntervals(q, searcher, new int[][]{
