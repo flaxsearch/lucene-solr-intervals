@@ -45,16 +45,16 @@ final class FreqProxTermsWriter extends TermsHashConsumer {
     List<FreqProxTermsWriterPerField> allFields = new ArrayList<FreqProxTermsWriterPerField>();
 
     for (TermsHashConsumerPerField f : fieldsToFlush.values()) {
-        final FreqProxTermsWriterPerField perField = (FreqProxTermsWriterPerField) f;
-        if (perField.termsHashPerField.bytesHash.size() > 0) {
-          allFields.add(perField);
-        }
+      final FreqProxTermsWriterPerField perField = (FreqProxTermsWriterPerField) f;
+      if (perField.termsHashPerField.bytesHash.size() > 0) {
+        allFields.add(perField);
+      }
     }
 
     final int numAllFields = allFields.size();
 
     // Sort by field name
-    CollectionUtil.quickSort(allFields);
+    CollectionUtil.introSort(allFields);
 
     final FieldsConsumer consumer = state.segmentInfo.getCodec().postingsFormat().fieldsConsumer(state);
 

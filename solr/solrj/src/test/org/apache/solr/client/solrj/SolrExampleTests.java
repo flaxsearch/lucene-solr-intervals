@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+
 import junit.framework.Assert;
 
 import org.apache.lucene.util._TestUtil;
@@ -61,6 +62,8 @@ import org.apache.solr.common.params.AnalysisParams;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.FacetParams;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This should include tests against the example solr config
@@ -72,6 +75,8 @@ import org.junit.Test;
  */
 abstract public class SolrExampleTests extends SolrJettyTestBase
 {
+  private static Logger log = LoggerFactory.getLogger(SolrExampleTests.class);
+
   static {
     ignoreException("uniqueKey");
   }
@@ -205,6 +210,17 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     Assert.assertEquals("price:[* TO 2]", values.get(0));
     Assert.assertEquals("price:[2 TO 4]", values.get(1));
     
+    
+    if (jetty != null) {
+      // check system wide system handler + "/admin/info/system"
+      String url = jetty.getBaseUrl().toString();
+      HttpSolrServer client = new HttpSolrServer(url);
+      SolrQuery q = new SolrQuery();
+      q.set("qt", "/admin/info/system");
+      QueryResponse rsp = client.query(q);
+      assertNotNull(rsp.getResponse().get("mode"));
+      assertNotNull(rsp.getResponse().get("lucene"));
+    }
   }
 
 
@@ -1433,6 +1449,29 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     QueryResponse response = solrServer.query(new SolrQuery("id:testSetNullUpdates"));
     assertNotNull("Entire doc was replaced because null update was not written", response.getResults().get(0).getFieldValue("single_s"));
     assertNull("Null update failed. Value still exists in document", response.getResults().get(0).getFieldValue("multi_ss"));
+  }
+
+  public void testSetNullUpdateOrder() throws Exception {
+    SolrServer solrServer = getSolrServer();
+    SolrInputDocument doc = new SolrInputDocument();
+    doc.addField("id", "testSetNullUpdateOrder");
+    doc.addField("single_s", "test-value");
+    doc.addField("multi_ss", Arrays.asList("first", "second"));
+    solrServer.add(doc);
+    solrServer.commit(true, true);
+
+    Map<String, Object> map = Maps.newHashMap();
+    map.put("set", null);
+    doc = new SolrInputDocument();
+    doc.addField("multi_ss", map);
+    doc.addField("id", "testSetNullUpdateOrder");
+    doc.addField("single_s", "test-value2");
+    solrServer.add(doc);
+    solrServer.commit();
+
+    QueryResponse response = solrServer.query(new SolrQuery("id:testSetNullUpdateOrder"));
+    assertEquals("Field included after set null=true not updated via atomic update", "test-value2",
+        response.getResults().get(0).getFieldValue("single_s"));
   }
   
   @Test

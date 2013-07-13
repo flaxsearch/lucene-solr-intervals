@@ -322,6 +322,11 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
     }
 
     @Override
+    public long cost() {
+      return minuend.cost();
+    }
+
+    @Override
     public int freq() throws IOException {
       return minuend.freq();
     }

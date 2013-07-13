@@ -17,36 +17,15 @@
 
 package org.apache.solr.update.processor;
 
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.TreeSet;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Arrays;
-import java.io.IOException;
-
-import org.apache.solr.SolrTestCaseJ4;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
-import org.apache.solr.common.params.ModifiableSolrParams;
-import org.apache.solr.common.params.SolrParams;
-
-import org.apache.solr.core.SolrCore;
 import org.apache.solr.schema.IndexSchema;
-
-import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.request.LocalSolrQueryRequest;
-import org.apache.solr.response.SolrQueryResponse;
-
-import org.apache.solr.update.AddUpdateCommand;
-import org.apache.solr.update.processor.UpdateRequestProcessor;
-import org.apache.solr.update.processor.UpdateRequestProcessorChain;
-
-import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Test;
 
 /**
  * Tests the basics of configuring FieldMutatingUpdateProcessors  
@@ -570,9 +549,11 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
 
   public void testIgnore() throws Exception {
 
-    IndexSchema schema = h.getCore().getSchema();
+    IndexSchema schema = h.getCore().getLatestSchema();
     assertNull("test expects 'foo_giberish' to not be a valid field, looks like schema was changed out from under us",
                schema.getFieldTypeNoEx("foo_giberish"));
+    assertNull("test expects 'bar_giberish' to not be a valid field, looks like schema was changed out from under us",
+               schema.getFieldTypeNoEx("bar_giberish"));
     assertNotNull("test expects 't_raw' to be a valid field, looks like schema was changed out from under us",
                   schema.getFieldTypeNoEx("t_raw"));
     assertNotNull("test expects 'foo_s' to be a valid field, looks like schema was changed out from under us",
@@ -582,11 +563,13 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
     
     d = processAdd("ignore-not-in-schema",       
                    doc(f("id", "1111"),
+                       f("bar_giberish", "123456789", "", 42, "abcd"),
                        f("foo_giberish", "123456789", "", 42, "abcd"),
                        f("t_raw", "123456789", "", 42, "abcd"),
                        f("foo_s", "hoss")));
     
     assertNotNull(d);
+    assertFalse(d.containsKey("bar_giberish"));
     assertFalse(d.containsKey("foo_giberish"));
     assertEquals(Arrays.asList("123456789", "", 42, "abcd"), 
                  d.getFieldValues("t_raw"));
@@ -595,15 +578,98 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
     d = processAdd("ignore-some",
                    doc(f("id", "1111"),
                        f("foo_giberish", "123456789", "", 42, "abcd"),
+                       f("bar_giberish", "123456789", "", 42, "abcd"),
                        f("t_raw", "123456789", "", 42, "abcd"),
                        f("foo_s", "hoss")));
 
     assertNotNull(d);
     assertEquals(Arrays.asList("123456789", "", 42, "abcd"), 
                  d.getFieldValues("foo_giberish"));
+    assertEquals(Arrays.asList("123456789", "", 42, "abcd"), 
+                 d.getFieldValues("bar_giberish"));
     assertFalse(d.containsKey("t_raw"));
     assertEquals("hoss", d.getFieldValue("foo_s"));
-    
+
+    d = processAdd("ignore-not-in-schema-explicit-selector",
+                   doc(f("id", "1111"),
+                       f("foo_giberish", "123456789", "", 42, "abcd"),
+                       f("bar_giberish", "123456789", "", 42, "abcd"),
+                       f("t_raw", "123456789", "", 42, "abcd"),
+                       f("foo_s", "hoss")));
+    assertNotNull(d);
+    assertFalse(d.containsKey("foo_giberish"));
+    assertFalse(d.containsKey("bar_giberish"));
+    assertEquals(Arrays.asList("123456789", "", 42, "abcd"),
+                 d.getFieldValues("t_raw"));
+    assertEquals("hoss", d.getFieldValue("foo_s"));
+
+    d = processAdd("ignore-not-in-schema-and-foo-name-prefix",
+                   doc(f("id", "1111"),
+                       f("foo_giberish", "123456789", "", 42, "abcd"),
+                       f("bar_giberish", "123456789", "", 42, "abcd"),
+                       f("t_raw", "123456789", "", 42, "abcd"),
+                       f("foo_s", "hoss")));
+    assertNotNull(d);
+    assertFalse(d.containsKey("foo_giberish"));
+    assertEquals(Arrays.asList("123456789", "", 42, "abcd"),
+                 d.getFieldValues("bar_giberish"));
+    assertEquals(Arrays.asList("123456789", "", 42, "abcd"),
+                 d.getFieldValues("t_raw"));
+    assertEquals("hoss", d.getFieldValue("foo_s"));
+
+    d = processAdd("ignore-foo-name-prefix-except-not-schema",
+                   doc(f("id", "1111"),
+                       f("foo_giberish", "123456789", "", 42, "abcd"),
+                       f("bar_giberish", "123456789", "", 42, "abcd"),
+                       f("t_raw", "123456789", "", 42, "abcd"),
+                       f("foo_s", "hoss")));
+    assertNotNull(d);
+    assertEquals(Arrays.asList("123456789", "", 42, "abcd"),
+                 d.getFieldValues("foo_giberish"));
+    assertEquals(Arrays.asList("123456789", "", 42, "abcd"),
+                 d.getFieldValues("bar_giberish"));
+    assertEquals(Arrays.asList("123456789", "", 42, "abcd"),
+                 d.getFieldValues("t_raw"));
+    assertFalse(d.containsKey("foo_s"));
+
+    d = processAdd("ignore-in-schema",
+                   doc(f("id", "1111"),
+                       f("foo_giberish", "123456789", "", 42, "abcd"),
+                       f("bar_giberish", "123456789", "", 42, "abcd"),
+                       f("t_raw", "123456789", "", 42, "abcd"),
+                       f("foo_s", "hoss")));
+    assertNotNull(d);
+    assertTrue(d.containsKey("foo_giberish"));
+    assertTrue(d.containsKey("bar_giberish"));
+    assertFalse(d.containsKey("id"));
+    assertFalse(d.containsKey("t_raw"));
+    assertFalse(d.containsKey("foo_s"));
+
+    d = processAdd("ignore-not-in-schema-explicit-str-selector",
+                   doc(f("id", "1111"),
+                       f("foo_giberish", "123456789", "", 42, "abcd"),
+                       f("bar_giberish", "123456789", "", 42, "abcd"),
+                       f("t_raw", "123456789", "", 42, "abcd"),
+                       f("foo_s", "hoss")));
+    assertNotNull(d);
+    assertFalse(d.containsKey("foo_giberish"));
+    assertFalse(d.containsKey("bar_giberish"));
+    assertEquals(Arrays.asList("123456789", "", 42, "abcd"),
+                 d.getFieldValues("t_raw"));
+    assertEquals("hoss", d.getFieldValue("foo_s"));
+
+    d = processAdd("ignore-in-schema-str-selector",
+                   doc(f("id", "1111"),
+                       f("foo_giberish", "123456789", "", 42, "abcd"),
+                       f("bar_giberish", "123456789", "", 42, "abcd"),
+                       f("t_raw", "123456789", "", 42, "abcd"),
+                       f("foo_s", "hoss")));
+    assertNotNull(d);
+    assertTrue(d.containsKey("foo_giberish"));
+    assertTrue(d.containsKey("bar_giberish"));
+    assertFalse(d.containsKey("id"));
+    assertFalse(d.containsKey("t_raw"));
+    assertFalse(d.containsKey("foo_s"));
 
   }
 

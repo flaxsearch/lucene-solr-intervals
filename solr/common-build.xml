@@ -24,14 +24,10 @@
   <dirname file="${ant.file.common-solr}" property="common-solr.dir"/>
   
   <property name="Name" value="Solr" />
-  <property name="version" value="5.0-SNAPSHOT"/>
-  <property name="fullname" value="${ant.project.name}"/>
-  <property name="fullnamever" value="${fullname}-${version}"/>
-  <property name="final.name" value="${fullnamever}"/>
   
-  <!-- solr uses 1.6 -->
-  <property name="javac.source" value="1.6"/>
-  <property name="javac.target" value="1.6"/>
+  <!-- solr uses 1.7 -->
+  <property name="javac.source" value="1.7"/>
+  <property name="javac.target" value="1.7"/>
   <property name="javac.args" value=""/>
   
   <property name="dest" location="${common-solr.dir}/build" />
@@ -43,13 +39,15 @@
   <property name="tests.userdir" location="src/test-files"/>
   <property name="example" location="${common-solr.dir}/example" />
   <property name="javadoc.dir" location="${dest}/docs"/>
-  <property name="tests.loggingfile" location="${common-solr.dir}/testlogging.properties"/>
   <property name="tests.cleanthreads.sysprop" value="perClass"/>
 
   <property name="changes.target.dir" location="${dest}/docs/changes"/>
   <property name="license.dir" location="${common-solr.dir}/licenses"/>
 
   <import file="${common-solr.dir}/../lucene/module-build.xml"/>
+
+  <!-- backwards compatibility with existing targets/tasks; TODO: remove this! -->
+  <property name="fullnamever" value="${final.name}"/>
 
   <path id="additional.dependencies">
   	<fileset dir="${common-solr.dir}/core/lib" excludes="${common.classpath.excludes}"/>
@@ -59,15 +57,9 @@
   	<fileset dir="lib" excludes="${common.classpath.excludes}" erroronmissingdir="false"/>
   </path>
 
-  <!-- Solr Specification Version
-
-       This will be used in the Manifest file, and therefore must
-       match the pattern "digit+{.digit+}*"
-
-       By default, this should be set to "X.Y.M.${dateversion}"
-       where X.Y.M is the last version released (on this branch).
-    -->
-  <property name="solr.spec.version" value="5.0.0.${dateversion}" />
+  <!-- defined here to be able to make the forbidden-api checker correctly
+   reference it. 'ivy.xml' is also referencing this property. -->
+  <property name="commons-io.version" value="2.1" />
 
   <path id="solr.lucene.libs">
     <!-- List of jars that will be used as the foundation for both
@@ -81,6 +73,7 @@
     <pathelement location="${analyzers-common.jar}"/>
     <pathelement location="${analyzers-kuromoji.jar}"/>
     <pathelement location="${analyzers-phonetic.jar}"/>
+    <pathelement location="${codecs.jar}"/>
     <pathelement location="${highlighter.jar}"/>
     <pathelement location="${memory.jar}"/>
     <pathelement location="${misc.jar}"/>
@@ -103,6 +96,12 @@
 
   <path id="solr.test.base.classpath">
     <pathelement path="${common-solr.dir}/build/solr-test-framework/classes/java"/>
+    <fileset dir="${common-solr.dir}/test-framework/lib">
+      <include name="*.jar"/>
+      <exclude name="junit-*.jar" />
+      <exclude name="randomizedtesting-runner-*.jar" />
+      <exclude name="ant*.jar" />
+    </fileset>
   	<pathelement path="${build.dir}/test-files"/>
   	<path refid="test.base.classpath"/>
   </path>
@@ -124,6 +123,12 @@
     </sequential>
   </macrodef>
 
+  <!-- we don't want to run HDFS tests on Windows, because they require Cygwin.
+    If you have Cygwin, you can override this property on command line: -->
+  <condition property="tests.disableHdfs" value="true">
+    <os family="windows"/>
+  </condition>
+
   <target name="validate" depends="compile-tools">
   </target>
 
@@ -135,7 +140,7 @@
   </target>
 
   <target name="prep-lucene-jars" 
-  	      depends="jar-lucene-core, jar-analyzers-phonetic, jar-analyzers-kuromoji, jar-suggest, jar-highlighter, jar-memory,
+  	      depends="jar-lucene-core, jar-analyzers-phonetic, jar-analyzers-kuromoji, jar-codecs, jar-suggest, jar-highlighter, jar-memory,
   	               jar-misc, jar-spatial, jar-grouping, jar-queries, jar-queryparser">
   	  <property name="solr.deps.compiled" value="true"/>
   </target>
@@ -165,7 +170,7 @@
     <attribute name="excludes" default="**/pom.xml,**/*.iml"/>
     <attribute name="metainf.source.dir" default="${common-solr.dir}"/>
     <attribute name="implementation.title" default="org.apache.solr"/>
-    <attribute name="spec.version" default="${solr.spec.version}"/>
+    <attribute name="spec.version" default="${spec.version}"/>
     <attribute name="manifest.file" default="${manifest.file}"/>
     <element name="nested" optional="true" implicit="true"/>
     <sequential>
@@ -179,7 +184,7 @@
       </jarify>
     </sequential>
   </macrodef>
-  
+
   <target name="jar-core" depends="compile-core">
     <solr-jarify/>
   </target>
@@ -194,7 +199,7 @@
   <property name="lucenedocs" location="${common.dir}/build/docs"/>
 
   <!-- dependency to ensure all lucene javadocs are present -->
-  <target name="lucene-javadocs" depends="javadocs-lucene-core,javadocs-analyzers-common,javadocs-analyzers-icu,javadocs-analyzers-kuromoji,javadocs-analyzers-phonetic,javadocs-analyzers-smartcn,javadocs-analyzers-morfologik,javadocs-analyzers-stempel,javadocs-analyzers-uima,javadocs-suggest,javadocs-grouping,javadocs-queries,javadocs-queryparser,javadocs-highlighter,javadocs-memory,javadocs-misc,javadocs-spatial,javadocs-test-framework"/>
+  <target name="lucene-javadocs" depends="javadocs-lucene-core,javadocs-analyzers-common,javadocs-analyzers-icu,javadocs-analyzers-kuromoji,javadocs-analyzers-phonetic,javadocs-analyzers-smartcn,javadocs-analyzers-morfologik,javadocs-analyzers-stempel,javadocs-analyzers-uima,javadocs-codecs,javadocs-suggest,javadocs-grouping,javadocs-queries,javadocs-queryparser,javadocs-highlighter,javadocs-memory,javadocs-misc,javadocs-spatial,javadocs-test-framework"/>
 
   <!-- create javadocs for the current module -->
   <target name="javadocs" depends="compile-core,define-lucene-javadoc-url,lucene-javadocs,javadocs-solr-core">
@@ -260,6 +265,7 @@
           <link offline="true" href="${lucene.javadoc.url}analyzers-smartcn" packagelistloc="${lucenedocs}/analyzers-smartcn"/>
           <link offline="true" href="${lucene.javadoc.url}analyzers-stempel" packagelistloc="${lucenedocs}/analyzers-stempel"/>
           <link offline="true" href="${lucene.javadoc.url}analyzers-uima" packagelistloc="${lucenedocs}/analyzers-uima"/>
+          <link offline="true" href="${lucene.javadoc.url}codecs" packagelistloc="${lucenedocs}/codecs"/>
           <link offline="true" href="${lucene.javadoc.url}suggest" packagelistloc="${lucenedocs}/suggest"/>
           <link offline="true" href="${lucene.javadoc.url}grouping" packagelistloc="${lucenedocs}/grouping"/>
           <link offline="true" href="${lucene.javadoc.url}queries" packagelistloc="${lucenedocs}/queries"/>
@@ -363,6 +369,11 @@
       <propertyset refid="uptodate.and.compiled.properties"/>
     </ant>
   </target>
+  <target name="jar-solrj" description="Jar Solr-J">
+    <ant dir="${common-solr.dir}/solrj" target="jar-core" inheritAll="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </ant>
+  </target>
 
   <!-- TODO: really a copy should work: but sync is currently safer
        since some buggy tests don't create their own tempdir but
@@ -380,6 +391,12 @@
     </ant>
   	<property name="solr.core.compiled" value="true"/>
     <property name="solr.test.framework.compiled" value="true"/>
+  </target>
+
+  <target name="jar-solr-test-framework" depends="compile-solr-test-framework">
+    <ant dir="${common-solr.dir}/test-framework" target="jar-core" inheritAll="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </ant>
   </target>
 
   <!-- resolve dependencies in the example (relied upon by compile/tests) -->
@@ -415,6 +432,10 @@
 
   <target name="javadocs-contrib" description="Compile contrib modules">
   	<contrib-crawl target="javadocs"/>
+  </target>
+
+  <target name="jar-contrib" description="Jar contrib modules">
+    <contrib-crawl target="jar-core"/>
   </target>
 
   <target name="contribs-add-to-war">

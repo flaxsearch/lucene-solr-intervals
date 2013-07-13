@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.core.KeywordAnalyzer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.document.Document;
@@ -130,7 +129,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    */
   private volatile boolean cacheIsComplete;
   private volatile boolean isClosed = false;
-  private volatile ParallelTaxonomyArrays taxoArrays;
+  private volatile TaxonomyIndexArrays taxoArrays;
   private volatile int nextID;
 
   /** Reads the commit data from a Directory. */
@@ -226,7 +225,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
       }
       // no commit data, or no epoch in it means an old taxonomy, so set its epoch to 1, for lack
       // of a better value.
-      indexEpoch = epochStr == null ? 1 : Long.parseLong(epochStr);
+      indexEpoch = epochStr == null ? 1 : Long.parseLong(epochStr, 16);
     }
     
     if (openMode == OpenMode.CREATE) {
@@ -303,8 +302,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
  
     // Make sure we use a MergePolicy which always merges adjacent segments and thus
     // keeps the doc IDs ordered as well (this is crucial for the taxonomy index).
-    return new IndexWriterConfig(Version.LUCENE_50,
-        new KeywordAnalyzer()).setOpenMode(openMode).setMergePolicy(
+    return new IndexWriterConfig(Version.LUCENE_50, null).setOpenMode(openMode).setMergePolicy(
         new LogByteSizeMergePolicy());
   }
   
@@ -356,8 +354,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
   @Override
   public synchronized void close() throws IOException {
     if (!isClosed) {
-      indexWriter.setCommitData(combinedCommitData(indexWriter.getCommitData()));
-      indexWriter.commit();
+      commit();
       doClose();
     }
   }
@@ -618,7 +615,11 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
   @Override
   public synchronized void commit() throws IOException {
     ensureOpen();
-    indexWriter.setCommitData(combinedCommitData(indexWriter.getCommitData()));
+    // LUCENE-4972: if we always call setCommitData, we create empty commits
+    String epochStr = indexWriter.getCommitData().get(INDEX_EPOCH);
+    if (epochStr == null || Long.parseLong(epochStr, 16) != indexEpoch) {
+      indexWriter.setCommitData(combinedCommitData(indexWriter.getCommitData()));
+    }
     indexWriter.commit();
   }
 
@@ -628,7 +629,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     if (commitData != null) {
       m.putAll(commitData);
     }
-    m.put(INDEX_EPOCH, Long.toString(indexEpoch));
+    m.put(INDEX_EPOCH, Long.toString(indexEpoch, 16));
     return m;
   }
   
@@ -649,7 +650,11 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
   @Override
   public synchronized void prepareCommit() throws IOException {
     ensureOpen();
-    indexWriter.setCommitData(combinedCommitData(indexWriter.getCommitData()));
+    // LUCENE-4972: if we always call setCommitData, we create empty commits
+    String epochStr = indexWriter.getCommitData().get(INDEX_EPOCH);
+    if (epochStr == null || Long.parseLong(epochStr, 16) != indexEpoch) {
+      indexWriter.setCommitData(combinedCommitData(indexWriter.getCommitData()));
+    }
     indexWriter.prepareCommit();
   }
   
@@ -746,7 +751,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     }
   }
 
-  private ParallelTaxonomyArrays getTaxoArrays() throws IOException {
+  private TaxonomyIndexArrays getTaxoArrays() throws IOException {
     if (taxoArrays == null) {
       synchronized (this) {
         if (taxoArrays == null) {
@@ -756,7 +761,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
             // according to Java Concurrency, this might perform better on some
             // JVMs, since the object initialization doesn't happen on the
             // volatile member.
-            ParallelTaxonomyArrays tmpArrays = new ParallelTaxonomyArrays(reader);
+            TaxonomyIndexArrays tmpArrays = new TaxonomyIndexArrays(reader);
             taxoArrays = tmpArrays;
           } finally {
             readerManager.release(reader);
@@ -804,7 +809,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
         te = terms.iterator(te);
         while (te.next() != null) {
           String value = te.term().utf8ToString();
-          CategoryPath cp = new CategoryPath(value, Consts.DEFAULT_DELIMITER);
+          CategoryPath cp = new CategoryPath(value, delimiter);
           final int ordinal = addCategory(cp);
           docs = te.docs(null, docs, DocsEnum.FLAG_NONE);
           ordinalMap.addMapping(docs.nextDoc() + base, ordinal);
@@ -993,9 +998,12 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     return indexWriter;
   }
   
-  /** Used by {@link DirectoryTaxonomyReader} to support NRT. */
-  final long getTaxonomyEpoch() {
+  /** Expert: returns current index epoch, if this is a
+   * near-real-time reader.  Used by {@link
+   * DirectoryTaxonomyReader} to support NRT. 
+   *
+   * @lucene.internal */
+  public final long getTaxonomyEpoch() {
     return indexEpoch;
   }
-  
 }

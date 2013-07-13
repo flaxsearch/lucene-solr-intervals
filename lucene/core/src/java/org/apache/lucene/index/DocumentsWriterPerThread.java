@@ -63,18 +63,21 @@ class DocumentsWriterPerThread {
       This is the current indexing chain:
 
       DocConsumer / DocConsumerPerThread
-        --> code: DocFieldProcessor / DocFieldProcessorPerThread
-          --> DocFieldConsumer / DocFieldConsumerPerThread / DocFieldConsumerPerField
-            --> code: DocFieldConsumers / DocFieldConsumersPerThread / DocFieldConsumersPerField
-              --> code: DocInverter / DocInverterPerThread / DocInverterPerField
-                --> InvertedDocConsumer / InvertedDocConsumerPerThread / InvertedDocConsumerPerField
-                  --> code: TermsHash / TermsHashPerThread / TermsHashPerField
-                    --> TermsHashConsumer / TermsHashConsumerPerThread / TermsHashConsumerPerField
-                      --> code: FreqProxTermsWriter / FreqProxTermsWriterPerThread / FreqProxTermsWriterPerField
-                      --> code: TermVectorsTermsWriter / TermVectorsTermsWriterPerThread / TermVectorsTermsWriterPerField
-                --> InvertedDocEndConsumer / InvertedDocConsumerPerThread / InvertedDocConsumerPerField
-                  --> code: NormsWriter / NormsWriterPerThread / NormsWriterPerField
-              --> code: StoredFieldsWriter / StoredFieldsWriterPerThread / StoredFieldsWriterPerField
+        --> code: DocFieldProcessor
+          --> DocFieldConsumer / DocFieldConsumerPerField
+            --> code: DocFieldConsumers / DocFieldConsumersPerField
+              --> code: DocInverter / DocInverterPerField
+                --> InvertedDocConsumer / InvertedDocConsumerPerField
+                  --> code: TermsHash / TermsHashPerField
+                    --> TermsHashConsumer / TermsHashConsumerPerField
+                      --> code: FreqProxTermsWriter / FreqProxTermsWriterPerField
+                      --> code: TermVectorsTermsWriter / TermVectorsTermsWriterPerField
+                --> InvertedDocEndConsumer / InvertedDocConsumerPerField
+                  --> code: NormsConsumer / NormsConsumerPerField
+          --> StoredFieldsConsumer
+            --> TwoStoredFieldConsumers
+              -> code: StoredFieldsProcessor
+              -> code: DocValuesProcessor
     */
 
     // Build up indexing chain:
@@ -82,11 +85,14 @@ class DocumentsWriterPerThread {
       final TermsHashConsumer termVectorsWriter = new TermVectorsConsumer(documentsWriterPerThread);
       final TermsHashConsumer freqProxWriter = new FreqProxTermsWriter();
 
-      final InvertedDocConsumer  termsHash = new TermsHash(documentsWriterPerThread, freqProxWriter, true,
-                                                           new TermsHash(documentsWriterPerThread, termVectorsWriter, false, null));
-      final NormsConsumer normsWriter = new NormsConsumer(documentsWriterPerThread);
+      final InvertedDocConsumer termsHash = new TermsHash(documentsWriterPerThread, freqProxWriter, true,
+                                                          new TermsHash(documentsWriterPerThread, termVectorsWriter, false, null));
+      final NormsConsumer normsWriter = new NormsConsumer();
       final DocInverter docInverter = new DocInverter(documentsWriterPerThread.docState, termsHash, normsWriter);
-      return new DocFieldProcessor(documentsWriterPerThread, docInverter);
+      final StoredFieldsConsumer storedFields = new TwoStoredFieldsConsumers(
+                                                      new StoredFieldsProcessor(documentsWriterPerThread),
+                                                      new DocValuesProcessor(documentsWriterPerThread.bytesUsed));
+      return new DocFieldProcessor(documentsWriterPerThread, docInverter, storedFields);
     }
   };
 
@@ -106,7 +112,7 @@ class DocumentsWriterPerThread {
 
     // Only called by asserts
     public boolean testPoint(String name) {
-      return docWriter.writer.testPoint(name);
+      return docWriter.testPoint(name);
     }
 
     public void clear() {
@@ -188,6 +194,7 @@ class DocumentsWriterPerThread {
   private final NumberFormat nf = NumberFormat.getInstance(Locale.ROOT);
   final Allocator byteBlockAllocator;
   final IntBlockPool.Allocator intBlockAllocator;
+  private final LiveIndexWriterConfig indexWriterConfig;
 
   
   public DocumentsWriterPerThread(Directory directory, DocumentsWriter parent,
@@ -197,6 +204,7 @@ class DocumentsWriterPerThread {
     this.parent = parent;
     this.fieldInfos = fieldInfos;
     this.writer = parent.indexWriter;
+    this.indexWriterConfig = parent.indexWriterConfig;
     this.infoStream = parent.infoStream;
     this.codec = parent.codec;
     this.docState = new DocState(this, infoStream);
@@ -226,6 +234,13 @@ class DocumentsWriterPerThread {
     aborting = true;
   }
   
+  final boolean testPoint(String message) {
+    if (infoStream.isEnabled("TP")) {
+      infoStream.message("TP", message);
+    }
+    return true;
+  }
+  
   boolean checkAndResetHasAborted() {
     final boolean retval = hasAborted;
     hasAborted = false;
@@ -233,7 +248,7 @@ class DocumentsWriterPerThread {
   }
 
   public void updateDocument(IndexDocument doc, Analyzer analyzer, Term delTerm) throws IOException {
-    assert writer.testPoint("DocumentsWriterPerThread addDocument start");
+    assert testPoint("DocumentsWriterPerThread addDocument start");
     assert deleteQueue != null;
     docState.doc = doc;
     docState.analyzer = analyzer;
@@ -286,7 +301,7 @@ class DocumentsWriterPerThread {
   }
   
   public int updateDocuments(Iterable<? extends IndexDocument> docs, Analyzer analyzer, Term delTerm) throws IOException {
-    assert writer.testPoint("DocumentsWriterPerThread addDocuments start");
+    assert testPoint("DocumentsWriterPerThread addDocuments start");
     assert deleteQueue != null;
     docState.analyzer = analyzer;
     if (segmentInfo == null) {
@@ -422,7 +437,6 @@ class DocumentsWriterPerThread {
   /** Reset after a flush */
   private void doAfterFlush() {
     segmentInfo = null;
-    consumer.doAfterFlush();
     directory.getCreatedFiles().clear();
     fieldInfos = new FieldInfos.Builder(fieldInfos.globalFieldNumbers);
     parent.subtractFlushedNumDocs(numDocsInRAM);
@@ -514,7 +528,7 @@ class DocumentsWriterPerThread {
       }
 
       if (infoStream.isEnabled("DWPT")) {
-        final double newSegmentSize = segmentInfo.sizeInBytes()/1024./1024.;
+        final double newSegmentSize = segmentInfoPerCommit.sizeInBytes()/1024./1024.;
         infoStream.message("DWPT", "flushed: segment=" + segmentInfo.name + 
                 " ramUsed=" + nf.format(startMBUsed) + " MB" +
                 " newFlushedSize(includes docstores)=" + nf.format(newSegmentSize) + " MB" +
@@ -549,13 +563,13 @@ class DocumentsWriterPerThread {
 
     SegmentInfoPerCommit newSegment = flushedSegment.segmentInfo;
 
-    IndexWriter.setDiagnostics(newSegment.info, "flush");
+    IndexWriter.setDiagnostics(newSegment.info, IndexWriter.SOURCE_FLUSH);
     
-    IOContext context = new IOContext(new FlushInfo(newSegment.info.getDocCount(), newSegment.info.sizeInBytes()));
+    IOContext context = new IOContext(new FlushInfo(newSegment.info.getDocCount(), newSegment.sizeInBytes()));
 
     boolean success = false;
     try {
-      if (writer.useCompoundFile(newSegment)) {
+      if (indexWriterConfig.getUseCompoundFile()) {
 
         // Now build compound file
         Collection<String> oldFiles = IndexWriter.createCompoundFile(infoStream, directory, MergeState.CheckAbort.NONE, newSegment.info, context);
@@ -650,10 +664,6 @@ class DocumentsWriterPerThread {
       bytesUsed.addAndGet(-(length * (IntBlockPool.INT_BLOCK_SIZE * RamUsageEstimator.NUM_BYTES_INT)));
     }
     
-  }
-  PerDocWriteState newPerDocWriteState(String segmentSuffix) {
-    assert segmentInfo != null;
-    return new PerDocWriteState(infoStream, directory, segmentInfo, bytesUsed, segmentSuffix, IOContext.DEFAULT);
   }
   
   @Override

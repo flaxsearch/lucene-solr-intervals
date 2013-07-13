@@ -17,11 +17,11 @@ package org.apache.lucene.search.highlight.positions;
  * limitations under the License.
  */
 
-import java.util.Comparator;
-
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.intervals.Interval;
 import org.apache.lucene.util.ArrayUtil;
+
+import java.util.Comparator;
 
 /** Used to accumulate position intervals while scoring 
  * @lucene.experimental
@@ -50,7 +50,7 @@ public final class DocAndPositions extends ScoreDoc {
   }
   
   public Interval[] sortedPositions() {
-    ArrayUtil.mergeSort(positions, 0, posCount, new Comparator<Interval>() {
+    ArrayUtil.timSort(positions, 0, posCount, new Comparator<Interval>() {
       public int compare(Interval o1, Interval o2) {
         return 
           o1.begin < o2.begin ? -1 : 

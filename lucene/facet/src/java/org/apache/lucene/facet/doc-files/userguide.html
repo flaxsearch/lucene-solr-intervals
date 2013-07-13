@@ -261,7 +261,7 @@ Following is a code snippet for indexing categories. The complete example can be
 found in package <code>org.apache.lucene.facet.example.simple.SimpleIndexer</code>.
 <pre class="prettyprint lang-java linenums">
 IndexWriter writer = ...
-TaxonomyWriter taxo = new DirectoryTaxonomyWriter(taxoDir, OpenMode.CREATE);
+TaxonomyWriter taxo = new DirectoryTaxonomyWriter(taxoDir);
 ...
 Document doc = new Document();
 doc.add(new Field("title", titleText, Store.YES, Index.ANALYZED));
@@ -612,7 +612,8 @@ data set into a portion of it by specifying a certain category, is what we call 
 We now show the required code lines for implementing such a drill-down.
 <pre class="prettyprint lang-java linenums">
 Query baseQuery = queryParser.parse("tennis racquet");
-Query q2 = DrillDown.query(baseQuery, new CategoryPath("make", "head"), 10));
+DrillDownQuery q2 = new DrillDownQuery(indexingParams, baseQuery);
+q2.add(new CategoryPath("make", "head"), 10));
 </pre>
 <p>
 In line 1 the original user query is created and then used to obtain information on

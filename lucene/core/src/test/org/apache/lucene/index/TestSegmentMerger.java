@@ -18,6 +18,7 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
@@ -29,8 +30,6 @@ import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
-import org.apache.lucene.util.packed.PackedInts;
-
 
 public class TestSegmentMerger extends LuceneTestCase {
   //The variables for the new merged segment
@@ -81,10 +80,9 @@ public class TestSegmentMerger extends LuceneTestCase {
     final Codec codec = Codec.getDefault();
     final SegmentInfo si = new SegmentInfo(mergedDir, Constants.LUCENE_MAIN_VERSION, mergedSegment, -1, false, codec, null, null);
 
-    SegmentMerger merger = new SegmentMerger(si, InfoStream.getDefault(), mergedDir, IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL,
-                                             MergeState.CheckAbort.NONE, new FieldInfos.FieldNumbers(), newIOContext(random()));
-    merger.add(reader1);
-    merger.add(reader2);
+    SegmentMerger merger = new SegmentMerger(Arrays.<AtomicReader>asList(reader1, reader2),
+        si, InfoStream.getDefault(), mergedDir, IndexWriterConfig.DEFAULT_TERM_INDEX_INTERVAL,
+        MergeState.CheckAbort.NONE, new FieldInfos.FieldNumbers(), newIOContext(random()));
     MergeState mergeState = merger.merge();
     int docsMerged = mergeState.segmentInfo.getDocCount();
     assertTrue(docsMerged == 2);
@@ -155,27 +153,33 @@ public class TestSegmentMerger extends LuceneTestCase {
   }
 
   public void testBuildDocMap() {
-    final int maxDoc = 128;
+    final int maxDoc = _TestUtil.nextInt(random(), 1, 128);
+    final int numDocs = _TestUtil.nextInt(random(), 0, maxDoc);
+    final int numDeletedDocs = maxDoc - numDocs;
     final FixedBitSet liveDocs = new FixedBitSet(maxDoc);
-
-    MergeState.DocMap docMap1 = MergeState.DocMap.buildDelCountDocmap(maxDoc, maxDoc, liveDocs, PackedInts.COMPACT);
-    MergeState.DocMap docMap2 = MergeState.DocMap.buildDirectDocMap(maxDoc, 0, liveDocs, PackedInts.COMPACT);
-    assertTrue(equals(docMap1, docMap2));
-    
-    liveDocs.set(1);
-    for (int i = 7; i < 79; ++i) {
-      liveDocs.set(i);
+    for (int i = 0; i < numDocs; ++i) {
+      while (true) {
+        final int docID = random().nextInt(maxDoc);
+        if (!liveDocs.get(docID)) {
+          liveDocs.set(docID);
+          break;
+        }
+      }
     }
-    liveDocs.set(80);
-    liveDocs.set(88);
-    int numDocs = liveDocs.cardinality();
-    docMap1 = MergeState.DocMap.buildDelCountDocmap(maxDoc, maxDoc - numDocs, liveDocs, PackedInts.COMPACT);
-    docMap2 = MergeState.DocMap.buildDirectDocMap(maxDoc, numDocs, liveDocs, PackedInts.COMPACT);
-    assertTrue(equals(docMap1, docMap2));
 
-    liveDocs.set(0, maxDoc);
-    docMap1 = MergeState.DocMap.buildDelCountDocmap(maxDoc, 0, liveDocs, PackedInts.COMPACT);
-    docMap2 = MergeState.DocMap.buildDirectDocMap(maxDoc, maxDoc, liveDocs, PackedInts.COMPACT);
-    assertTrue(equals(docMap1, docMap2));
+    final MergeState.DocMap docMap = MergeState.DocMap.build(maxDoc, liveDocs);
+
+    assertEquals(maxDoc, docMap.maxDoc());
+    assertEquals(numDocs, docMap.numDocs());
+    assertEquals(numDeletedDocs, docMap.numDeletedDocs());
+    // assert the mapping is compact
+    for (int i = 0, del = 0; i < maxDoc; ++i) {
+      if (!liveDocs.get(i)) {
+        assertEquals(-1, docMap.get(i));
+        ++del;
+      } else {
+        assertEquals(i - del, docMap.get(i));
+      }
+    }
   }
 }

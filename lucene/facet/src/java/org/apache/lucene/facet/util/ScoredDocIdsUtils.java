@@ -74,6 +74,7 @@ public class ScoredDocIdsUtils {
   
   /** Clear all deleted documents from a given open-bit-set according to a given reader */
   private static void clearDeleted(final IndexReader reader, final FixedBitSet set) throws IOException {
+    // TODO use BitsFilteredDocIdSet?
     
     // If there are no deleted docs
     if (!reader.hasDeletions()) {
@@ -161,6 +162,10 @@ public class ScoredDocIdsUtils {
                 return docids[next];
               }
 
+              @Override
+              public long cost() {
+                return size;
+              }
             };
           }
         };
@@ -297,6 +302,10 @@ public class ScoredDocIdsUtils {
               return ++next < maxDoc ? next : NO_MORE_DOCS;
             }
 
+            @Override
+            public long cost() {
+              return maxDoc;
+            }
           };
         }
       };
@@ -393,6 +402,10 @@ public class ScoredDocIdsUtils {
               return next < maxDoc ? next : NO_MORE_DOCS;
             }
 
+            @Override
+            public long cost() {
+              return maxDoc;
+            }
           };
         }
       };

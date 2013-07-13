@@ -23,6 +23,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
@@ -94,6 +95,35 @@ class TermsIncludingScoreQuery extends Query {
   }
 
   @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    } if (!super.equals(obj)) {
+      return false;
+    } if (getClass() != obj.getClass()) {
+      return false;
+    }
+
+    TermsIncludingScoreQuery other = (TermsIncludingScoreQuery) obj;
+    if (!field.equals(other.field)) {
+      return false;
+    }
+    if (!unwrittenOriginalQuery.equals(other.unwrittenOriginalQuery)) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public int hashCode() {
+    final int prime = 31;
+    int result = super.hashCode();
+    result += prime * field.hashCode();
+    result += prime * unwrittenOriginalQuery.hashCode();
+    return result;
+  }
+
+  @Override
   public Weight createWeight(IndexSearcher searcher) throws IOException {
     final Weight originalWeight = originalQuery.createWeight(searcher);
     return new Weight() {
@@ -131,18 +161,21 @@ class TermsIncludingScoreQuery extends Query {
         if (terms == null) {
           return null;
         }
+        
+        // what is the runtime...seems ok?
+        final long cost = context.reader().maxDoc() * terms.size();
 
         segmentTermsEnum = terms.iterator(segmentTermsEnum);
         if (scoreDocsInOrder) {
           if (multipleValuesPerDocument) {
-            return new MVInOrderScorer(this, acceptDocs, segmentTermsEnum, context.reader().maxDoc());
+            return new MVInOrderScorer(this, acceptDocs, segmentTermsEnum, context.reader().maxDoc(), cost);
           } else {
-            return new SVInOrderScorer(this, acceptDocs, segmentTermsEnum, context.reader().maxDoc());
+            return new SVInOrderScorer(this, acceptDocs, segmentTermsEnum, context.reader().maxDoc(), cost);
           }
         } else if (multipleValuesPerDocument) {
-          return new MVInnerScorer(this, acceptDocs, segmentTermsEnum, context.reader().maxDoc());
+          return new MVInnerScorer(this, acceptDocs, segmentTermsEnum, context.reader().maxDoc(), cost);
         } else {
-          return new SVInnerScorer(this, acceptDocs, segmentTermsEnum);
+          return new SVInnerScorer(this, acceptDocs, segmentTermsEnum, cost);
         }
       }
     };
@@ -154,16 +187,28 @@ class TermsIncludingScoreQuery extends Query {
     final BytesRef spare = new BytesRef();
     final Bits acceptDocs;
     final TermsEnum termsEnum;
+    final long cost;
 
     int upto;
     DocsEnum docsEnum;
     DocsEnum reuse;
     int scoreUpto;
+    int doc;
 
-    SVInnerScorer(Weight weight, Bits acceptDocs, TermsEnum termsEnum) {
+    SVInnerScorer(Weight weight, Bits acceptDocs, TermsEnum termsEnum, long cost) {
       super(weight);
       this.acceptDocs = acceptDocs;
       this.termsEnum = termsEnum;
+      this.cost = cost;
+      this.doc = -1;
+    }
+
+    @Override
+    public void score(Collector collector) throws IOException {
+      collector.setScorer(this);
+      for (int doc = nextDocOutOfOrder(); doc != NO_MORE_DOCS; doc = nextDocOutOfOrder()) {
+        collector.collect(doc);
+      }
     }
 
     @Override
@@ -177,23 +222,22 @@ class TermsIncludingScoreQuery extends Query {
 
     @Override
     public int docID() {
-      return docsEnum != null ? docsEnum.docID() : DocIdSetIterator.NO_MORE_DOCS;
+      return doc;
     }
 
-    @Override
-    public int nextDoc() throws IOException {
+    int nextDocOutOfOrder() throws IOException {
       if (docsEnum != null) {
         int docId = docsEnum.nextDoc();
         if (docId == DocIdSetIterator.NO_MORE_DOCS) {
           docsEnum = null;
         } else {
-          return docId;
+          return doc = docId;
         }
       }
 
       do {
         if (upto == terms.size()) {
-          return DocIdSetIterator.NO_MORE_DOCS;
+          return doc = DocIdSetIterator.NO_MORE_DOCS;
         }
 
         scoreUpto = upto;
@@ -202,7 +246,12 @@ class TermsIncludingScoreQuery extends Query {
         }
       } while (docsEnum == null);
 
-      return docsEnum.nextDoc();
+      return doc = docsEnum.nextDoc();
+    }
+
+    @Override
+    public int nextDoc() throws IOException {
+      throw new UnsupportedOperationException("nextDoc() isn't supported because doc ids are emitted out of order");
     }
 
     @Override
@@ -213,7 +262,7 @@ class TermsIncludingScoreQuery extends Query {
     private int advanceForExplainOnly(int target) throws IOException {
       int docId;
       do {
-        docId = nextDoc();
+        docId = nextDocOutOfOrder();
         if (docId < target) {
           int tempDocId = docsEnum.advance(target);
           if (tempDocId == target) {
@@ -236,6 +285,11 @@ class TermsIncludingScoreQuery extends Query {
     public int freq() {
       return 1;
     }
+
+    @Override
+    public long cost() {
+      return cost;
+    }
   }
 
   // This impl that tracks whether a docid has already been emitted. This check makes sure that docs aren't emitted
@@ -245,13 +299,13 @@ class TermsIncludingScoreQuery extends Query {
 
     final FixedBitSet alreadyEmittedDocs;
 
-    MVInnerScorer(Weight weight, Bits acceptDocs, TermsEnum termsEnum, int maxDoc) {
-      super(weight, acceptDocs, termsEnum);
+    MVInnerScorer(Weight weight, Bits acceptDocs, TermsEnum termsEnum, int maxDoc, long cost) {
+      super(weight, acceptDocs, termsEnum, cost);
       alreadyEmittedDocs = new FixedBitSet(maxDoc);
     }
 
     @Override
-    public int nextDoc() throws IOException {
+    int nextDocOutOfOrder() throws IOException {
       if (docsEnum != null) {
         int docId;
         do {
@@ -301,15 +355,17 @@ class TermsIncludingScoreQuery extends Query {
 
     final DocIdSetIterator matchingDocsIterator;
     final float[] scores;
+    final long cost;
 
     int currentDoc = -1;
 
-    SVInOrderScorer(Weight weight, Bits acceptDocs, TermsEnum termsEnum, int maxDoc) throws IOException {
+    SVInOrderScorer(Weight weight, Bits acceptDocs, TermsEnum termsEnum, int maxDoc, long cost) throws IOException {
       super(weight);
       FixedBitSet matchingDocs = new FixedBitSet(maxDoc);
       this.scores = new float[maxDoc];
       fillDocsAndScores(matchingDocs, acceptDocs, termsEnum);
       this.matchingDocsIterator = matchingDocs.iterator();
+      this.cost = cost;
     }
 
     protected void fillDocsAndScores(FixedBitSet matchingDocs, Bits acceptDocs, TermsEnum termsEnum) throws IOException {
@@ -359,13 +415,17 @@ class TermsIncludingScoreQuery extends Query {
         throws IOException {
       return null;
     }
+
+    public long cost() {
+      return cost;
+    }
   }
 
   // This scorer deals with the fact that a document can have more than one score from multiple related documents.
   class MVInOrderScorer extends SVInOrderScorer {
 
-    MVInOrderScorer(Weight weight, Bits acceptDocs, TermsEnum termsEnum, int maxDoc) throws IOException {
-      super(weight, acceptDocs, termsEnum, maxDoc);
+    MVInOrderScorer(Weight weight, Bits acceptDocs, TermsEnum termsEnum, int maxDoc, long cost) throws IOException {
+      super(weight, acceptDocs, termsEnum, maxDoc, cost);
     }
 
     @Override

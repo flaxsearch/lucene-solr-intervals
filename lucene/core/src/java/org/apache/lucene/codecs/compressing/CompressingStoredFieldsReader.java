@@ -60,6 +60,9 @@ import org.apache.lucene.util.packed.PackedInts;
  */
 public final class CompressingStoredFieldsReader extends StoredFieldsReader {
 
+  // Do not reuse the decompression buffer when there is more than 32kb to decompress
+  private static final int BUFFER_REUSE_THRESHOLD = 1 << 15;
+
   private final FieldInfos fieldInfos;
   private final CompressingStoredFieldsIndexReader indexReader;
   private final IndexInput fieldsStream;
@@ -93,19 +96,22 @@ public final class CompressingStoredFieldsReader extends StoredFieldsReader {
     numDocs = si.getDocCount();
     IndexInput indexStream = null;
     try {
-      fieldsStream = d.openInput(IndexFileNames.segmentFileName(segment, segmentSuffix, FIELDS_EXTENSION), context);
+      // Load the index into memory
       final String indexStreamFN = IndexFileNames.segmentFileName(segment, segmentSuffix, FIELDS_INDEX_EXTENSION);
       indexStream = d.openInput(indexStreamFN, context);
-
       final String codecNameIdx = formatName + CODEC_SFX_IDX;
-      final String codecNameDat = formatName + CODEC_SFX_DAT;
       CodecUtil.checkHeader(indexStream, codecNameIdx, VERSION_START, VERSION_CURRENT);
+      assert CodecUtil.headerLength(codecNameIdx) == indexStream.getFilePointer();
+      indexReader = new CompressingStoredFieldsIndexReader(indexStream, si);
+      indexStream.close();
+      indexStream = null;
+
+      // Open the data file and read metadata
+      final String fieldsStreamFN = IndexFileNames.segmentFileName(segment, segmentSuffix, FIELDS_EXTENSION);
+      fieldsStream = d.openInput(fieldsStreamFN, context);
+      final String codecNameDat = formatName + CODEC_SFX_DAT;
       CodecUtil.checkHeader(fieldsStream, codecNameDat, VERSION_START, VERSION_CURRENT);
       assert CodecUtil.headerLength(codecNameDat) == fieldsStream.getFilePointer();
-      assert CodecUtil.headerLength(codecNameIdx) == indexStream.getFilePointer();
-
-      indexReader = new CompressingStoredFieldsIndexReader(indexStream, si);
-      indexStream = null;
 
       packedIntsVersion = fieldsStream.readVInt();
       decompressor = compressionMode.newDecompressor();
@@ -134,7 +140,7 @@ public final class CompressingStoredFieldsReader extends StoredFieldsReader {
   @Override
   public void close() throws IOException {
     if (!closed) {
-      IOUtils.close(fieldsStream, indexReader);
+      IOUtils.close(fieldsStream);
       closed = true;
     }
   }
@@ -202,7 +208,7 @@ public final class CompressingStoredFieldsReader extends StoredFieldsReader {
         || docBase + chunkDocs > numDocs) {
       throw new CorruptIndexException("Corrupted: docID=" + docID
           + ", docBase=" + docBase + ", chunkDocs=" + chunkDocs
-          + ", numDocs=" + numDocs);
+          + ", numDocs=" + numDocs + " (resource=" + fieldsStream + ")");
     }
 
     final int numStoredFields, offset, length, totalLength;
@@ -216,7 +222,7 @@ public final class CompressingStoredFieldsReader extends StoredFieldsReader {
       if (bitsPerStoredFields == 0) {
         numStoredFields = fieldsStream.readVInt();
       } else if (bitsPerStoredFields > 31) {
-        throw new CorruptIndexException("bitsPerStoredFields=" + bitsPerStoredFields);
+        throw new CorruptIndexException("bitsPerStoredFields=" + bitsPerStoredFields + " (resource=" + fieldsStream + ")");
       } else {
         final long filePointer = fieldsStream.getFilePointer();
         final PackedInts.Reader reader = PackedInts.getDirectReaderNoHeader(fieldsStream, PackedInts.Format.PACKED, packedIntsVersion, chunkDocs, bitsPerStoredFields);
@@ -230,7 +236,7 @@ public final class CompressingStoredFieldsReader extends StoredFieldsReader {
         offset = (docID - docBase) * length;
         totalLength = chunkDocs * length;
       } else if (bitsPerStoredFields > 31) {
-        throw new CorruptIndexException("bitsPerLength=" + bitsPerLength);
+        throw new CorruptIndexException("bitsPerLength=" + bitsPerLength + " (resource=" + fieldsStream + ")");
       } else {
         final PackedInts.ReaderIterator it = PackedInts.getReaderIteratorNoHeader(fieldsStream, PackedInts.Format.PACKED, packedIntsVersion, chunkDocs, bitsPerLength, 1);
         int off = 0;
@@ -248,13 +254,14 @@ public final class CompressingStoredFieldsReader extends StoredFieldsReader {
     }
 
     if ((length == 0) != (numStoredFields == 0)) {
-      throw new CorruptIndexException("length=" + length + ", numStoredFields=" + numStoredFields);
+      throw new CorruptIndexException("length=" + length + ", numStoredFields=" + numStoredFields + " (resource=" + fieldsStream + ")");
     }
     if (numStoredFields == 0) {
       // nothing to do
       return;
     }
 
+    final BytesRef bytes = totalLength <= BUFFER_REUSE_THRESHOLD ? this.bytes : new BytesRef();
     decompressor.decompress(fieldsStream, totalLength, offset, length, bytes);
     assert bytes.length == length;
 
@@ -338,7 +345,7 @@ public final class CompressingStoredFieldsReader extends StoredFieldsReader {
           || docBase + chunkDocs > numDocs) {
         throw new CorruptIndexException("Corrupted: current docBase=" + this.docBase
             + ", current numDocs=" + this.chunkDocs + ", new docBase=" + docBase
-            + ", new numDocs=" + chunkDocs);
+            + ", new numDocs=" + chunkDocs + " (resource=" + fieldsStream + ")");
       }
       this.docBase = docBase;
       this.chunkDocs = chunkDocs;
@@ -357,7 +364,7 @@ public final class CompressingStoredFieldsReader extends StoredFieldsReader {
         if (bitsPerStoredFields == 0) {
           Arrays.fill(numStoredFields, 0, chunkDocs, fieldsStream.readVInt());
         } else if (bitsPerStoredFields > 31) {
-          throw new CorruptIndexException("bitsPerStoredFields=" + bitsPerStoredFields);
+          throw new CorruptIndexException("bitsPerStoredFields=" + bitsPerStoredFields + " (resource=" + fieldsStream + ")");
         } else {
           final PackedInts.ReaderIterator it = PackedInts.getReaderIteratorNoHeader(fieldsStream, PackedInts.Format.PACKED, packedIntsVersion, chunkDocs, bitsPerStoredFields, 1);
           for (int i = 0; i < chunkDocs; ++i) {
@@ -387,7 +394,7 @@ public final class CompressingStoredFieldsReader extends StoredFieldsReader {
       final int chunkSize = chunkSize();
       decompressor.decompress(fieldsStream, chunkSize, 0, chunkSize, bytes);
       if (bytes.length != chunkSize) {
-        throw new CorruptIndexException("Corrupted: expected chunk size = " + chunkSize() + ", got " + bytes.length);
+        throw new CorruptIndexException("Corrupted: expected chunk size = " + chunkSize() + ", got " + bytes.length + " (resource=" + fieldsStream + ")");
       }
     }
 

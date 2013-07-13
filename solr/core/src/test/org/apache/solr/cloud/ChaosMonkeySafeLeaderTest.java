@@ -20,33 +20,41 @@ package org.apache.solr.cloud;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.lucene.util.LuceneTestCase.BadApple;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.core.Diagnostics;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.servlet.SolrDispatchFilter;
 import org.apache.solr.update.DirectUpdateHandler2;
+import org.apache.solr.update.SolrCmdDistributor;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 
 @Slow
-@BadApple
-public class ChaosMonkeySafeLeaderTest extends AbstractFullDistribZkTestBase {
+public class  ChaosMonkeySafeLeaderTest extends AbstractFullDistribZkTestBase {
   
-  private static final int BASE_RUN_LENGTH = 120000;
-  private static final int RUN_LENGTH = Integer.parseInt(System.getProperty("solr.tests.cloud.cm.runlength", Integer.toString(BASE_RUN_LENGTH)));
+  private static final Integer RUN_LENGTH = Integer.parseInt(System.getProperty("solr.tests.cloud.cm.runlength", "-1"));
 
   @BeforeClass
   public static void beforeSuperClass() {
-
+    SolrCmdDistributor.testing_errorHook = new Diagnostics.Callable() {
+      @Override
+      public void call(Object... data) {
+        SolrCmdDistributor.Request sreq = (SolrCmdDistributor.Request)data[1];
+        if (sreq.exception == null) return;
+        if (sreq.exception.getMessage().contains("Timeout")) {
+          Diagnostics.logThreadDumps("REQUESTING THREAD DUMP DUE TO TIMEOUT: " + sreq.exception.getMessage());
+        }
+      }
+    };
   }
   
   @AfterClass
   public static void afterSuperClass() {
-    
+    SolrCmdDistributor.testing_errorHook = null;
   }
   
   @Before
@@ -94,10 +102,18 @@ public class ChaosMonkeySafeLeaderTest extends AbstractFullDistribZkTestBase {
     }
     
     chaosMonkey.startTheMonkey(false, 500);
-    int runLength = RUN_LENGTH;
-    Thread.sleep(runLength);
-    
-    chaosMonkey.stopTheMonkey();
+    long runLength;
+    if (RUN_LENGTH != -1) {
+      runLength = RUN_LENGTH;
+    } else {
+      int[] runTimes = new int[] {5000,6000,10000,15000,15000,30000,30000,45000,90000,120000};
+      runLength = runTimes[random().nextInt(runTimes.length - 1)];
+    }
+    try {
+      Thread.sleep(runLength);
+    } finally {
+      chaosMonkey.stopTheMonkey();
+    }
     
     for (StopableIndexingThread indexThread : threads) {
       indexThread.safeStop();

@@ -17,10 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -33,6 +29,10 @@ import org.apache.lucene.search.Weight.PostingFeatures;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class TestTermScorer extends LuceneTestCase {
   protected Directory directory;
@@ -141,7 +141,7 @@ public class TestTermScorer extends LuceneTestCase {
     Weight weight = indexSearcher.createNormalizedWeight(termQuery);
     assertTrue(indexSearcher.getTopReaderContext() instanceof AtomicReaderContext);
     AtomicReaderContext context = (AtomicReaderContext) indexSearcher.getTopReaderContext();
-    Scorer ts = weight.scorer(context, true, true, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
+    Scorer ts = weight.scorer(context, true, false, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
     assertTrue("next did not return a doc",
         ts.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertTrue("score is not correct", ts.score() == 1.6931472f);
@@ -160,7 +160,7 @@ public class TestTermScorer extends LuceneTestCase {
     Weight weight = indexSearcher.createNormalizedWeight(termQuery);
     assertTrue(indexSearcher.getTopReaderContext() instanceof AtomicReaderContext);
     AtomicReaderContext context = (AtomicReaderContext) indexSearcher.getTopReaderContext();
-    Scorer ts = weight.scorer(context, true, true, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
+    Scorer ts = weight.scorer(context, true, false, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
     assertTrue("Didn't skip", ts.advance(3) != DocIdSetIterator.NO_MORE_DOCS);
     // The next doc should be doc 5
     assertTrue("doc should be number 5", ts.docID() == 5);

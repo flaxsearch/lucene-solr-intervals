@@ -17,8 +17,8 @@ package org.apache.solr.common.cloud;
  * limitations under the License.
  */
 
-import org.apache.noggit.JSONUtil;
-import org.apache.noggit.JSONWriter;
+import org.noggit.JSONUtil;
+import org.noggit.JSONWriter;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -31,13 +31,18 @@ import java.util.Map;
 public class Slice extends ZkNodeProps {
   public static String REPLICAS = "replicas";
   public static String RANGE = "range";
+  public static String STATE = "state";
   public static String LEADER = "leader";       // FUTURE: do we want to record the leader as a slice property in the JSON (as opposed to isLeader as a replica property?)
+  public static String ACTIVE = "active";
+  public static String INACTIVE = "inactive";
+  public static String CONSTRUCTION = "construction";
 
   private final String name;
   private final DocRouter.Range range;
   private final Integer replicationFactor;      // FUTURE: optional per-slice override of the collection replicationFactor
   private final Map<String,Replica> replicas;
   private final Replica leader;
+  private final String state;
 
   /**
    * @param name  The name of the slice
@@ -49,6 +54,12 @@ public class Slice extends ZkNodeProps {
     this.name = name;
 
     Object rangeObj = propMap.get(RANGE);
+    if (propMap.containsKey(STATE) && propMap.get(STATE) != null)
+      this.state = (String) propMap.get(STATE);
+    else {
+      this.state = ACTIVE;                         //Default to ACTIVE
+      propMap.put(STATE, this.state);
+    }
     DocRouter.Range tmpRange = null;
     if (rangeObj instanceof DocRouter.Range) {
       tmpRange = (DocRouter.Range)rangeObj;
@@ -133,6 +144,10 @@ public class Slice extends ZkNodeProps {
 
   public DocRouter.Range getRange() {
     return range;
+  }
+
+  public String getState() {
+    return state;
   }
 
   @Override

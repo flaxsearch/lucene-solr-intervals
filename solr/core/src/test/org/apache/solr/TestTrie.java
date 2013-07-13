@@ -27,7 +27,6 @@ import org.junit.After;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import java.io.StringReader;
 import java.text.SimpleDateFormat;
 import java.util.Locale;
 import java.util.TimeZone;
@@ -53,11 +52,11 @@ public class TestTrie extends SolrTestCaseJ4 {
   
   @Test
   public void testTokenizer() throws Exception {
-    FieldType type = h.getCore().getSchema().getFieldType("tint");
+    FieldType type = h.getCore().getLatestSchema().getFieldType("tint");
     assertTrue(type instanceof TrieField);
     
     String value = String.valueOf(random().nextInt());
-    TokenStream ts = type.getAnalyzer().tokenStream("dummy", new StringReader(value));
+    TokenStream ts = type.getAnalyzer().tokenStream("dummy", value);
     OffsetAttribute ofsAtt = ts.addAttribute(OffsetAttribute.class);
     ts.reset();
     int count = 0;
@@ -74,7 +73,7 @@ public class TestTrie extends SolrTestCaseJ4 {
     ts.close();
     
     // Test empty one:
-    ts = type.getAnalyzer().tokenStream("dummy", new StringReader(""));
+    ts = type.getAnalyzer().tokenStream("dummy", "");
     ts.reset();
     assertFalse(ts.incrementToken());
     ts.end();
@@ -303,7 +302,7 @@ public class TestTrie extends SolrTestCaseJ4 {
   }
 
   private void checkPrecisionSteps(String fieldType) {
-    FieldType type = h.getCore().getSchema().getFieldType(fieldType);
+    FieldType type = h.getCore().getLatestSchema().getFieldType(fieldType);
     if (type instanceof TrieField) {
       TrieField field = (TrieField) type;
       assertTrue(field.getPrecisionStep() > 0 && field.getPrecisionStep() < 64);

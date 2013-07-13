@@ -83,6 +83,10 @@ public class MatchAllDocsQuery extends Query {
     public IntervalIterator intervals(boolean collectIntervals) throws IOException {
       throw new UnsupportedOperationException("MatchAllDocsQuery doesn't support IntervalIterators");
     }
+
+    public long cost() {
+      return maxDoc;
+    }
   }
 
   private class MatchAllDocsWeight extends Weight {

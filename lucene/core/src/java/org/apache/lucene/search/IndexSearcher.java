@@ -32,7 +32,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import org.apache.lucene.document.Document;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DirectoryReader; // javadocs
 import org.apache.lucene.index.IndexReader;
@@ -428,6 +427,12 @@ public class IndexSearcher {
    *         {@link BooleanQuery#getMaxClauseCount()} clauses.
    */
   protected TopDocs search(Weight weight, ScoreDoc after, int nDocs) throws IOException {
+    int limit = reader.maxDoc();
+    if (limit == 0) {
+      limit = 1;
+    }
+    nDocs = Math.min(nDocs, limit);
+    
     if (executor == null) {
       return search(leafContexts, weight, after, nDocs);
     } else {
@@ -513,6 +518,12 @@ public class IndexSearcher {
 
     if (sort == null) throw new NullPointerException("Sort must not be null");
     
+    int limit = reader.maxDoc();
+    if (limit == 0) {
+      limit = 1;
+    }
+    nDocs = Math.min(nDocs, limit);
+
     if (executor == null) {
       // use all leaves here!
       return search(leafContexts, weight, after, nDocs, sort, fillFields, doDocScores, doMaxScore);
@@ -593,10 +604,21 @@ public class IndexSearcher {
     // threaded...?  the Collector could be sync'd?
     // always use single thread:
     for (AtomicReaderContext ctx : leaves) { // search each subreader
-      collector.setNextReader(ctx);
+      try {
+        collector.setNextReader(ctx);
+      } catch (CollectionTerminatedException e) {
+        // there is no doc of interest in this reader context
+        // continue with the following leaf
+        continue;
+      }
       Scorer scorer = weight.scorer(ctx, !collector.acceptsDocsOutOfOrder(), true, collector.postingFeatures(), ctx.reader().getLiveDocs());
       if (scorer != null) {
-        scorer.score(collector);
+        try {
+          scorer.score(collector);
+        } catch (CollectionTerminatedException e) {
+          // collection was terminated prematurely
+          // continue with the following leaf
+        }
       }
     }
   }
@@ -787,6 +809,10 @@ public class IndexSearcher {
       public IntervalIterator intervals(boolean collectIntervals) throws IOException {
         return null;
       }
+
+      public long cost() {
+        return 1;
+      }
     }
 
     private final FakeScorer fakeScorer = new FakeScorer();
@@ -795,7 +821,7 @@ public class IndexSearcher {
     public TopFieldDocs call() throws IOException {
       assert slice.leaves.length == 1;
       final TopFieldDocs docs = searcher.search(Arrays.asList(slice.leaves),
-          weight, after, nDocs, sort, true, doDocScores, doMaxScore);
+          weight, after, nDocs, sort, true, doDocScores || sort.needsScores(), doMaxScore);
       lock.lock();
       try {
         final AtomicReaderContext ctx = slice.leaves[0];

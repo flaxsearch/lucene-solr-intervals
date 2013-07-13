@@ -73,7 +73,6 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
@@ -85,9 +84,8 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.FastInputStream;
 import org.apache.solr.common.util.NamedList;
-import org.apache.solr.core.CachingDirectoryFactory.CloseListener;
-import org.apache.solr.core.DirectoryFactory.DirContext;
 import org.apache.solr.core.DirectoryFactory;
+import org.apache.solr.core.DirectoryFactory.DirContext;
 import org.apache.solr.core.IndexDeletionPolicyWrapper;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.ReplicationHandler.FileInfo;
@@ -220,6 +218,7 @@ public class SnapPuller {
           return;
         }
         try {
+          LOG.debug("Polling for index modifications");
           executorStartTime = System.currentTimeMillis();
           replicationHandler.doFetch(null, false);
         } catch (Exception e) {
@@ -244,7 +243,9 @@ public class SnapPuller {
     params.set(CommonParams.WT, "javabin");
     params.set(CommonParams.QT, "/replication");
     QueryRequest req = new QueryRequest(params);
-    SolrServer server = new HttpSolrServer(masterUrl, myHttpClient); //XXX modify to use shardhandler
+    HttpSolrServer server = new HttpSolrServer(masterUrl, myHttpClient); //XXX modify to use shardhandler
+    server.setSoTimeout(60000);
+    server.setConnectionTimeout(15000);
     try {
       return server.request(req);
     } catch (SolrServerException e) {
@@ -262,7 +263,9 @@ public class SnapPuller {
     params.set(CommonParams.WT, "javabin");
     params.set(CommonParams.QT, "/replication");
     QueryRequest req = new QueryRequest(params);
-    SolrServer server = new HttpSolrServer(masterUrl, myHttpClient);  //XXX modify to use shardhandler
+    HttpSolrServer server = new HttpSolrServer(masterUrl, myHttpClient);  //XXX modify to use shardhandler
+    server.setSoTimeout(60000);
+    server.setConnectionTimeout(15000);
 
     try {
       NamedList response = server.request(req);
@@ -315,20 +318,25 @@ public class SnapPuller {
       long latestVersion = (Long) response.get(CMD_INDEX_VERSION);
       long latestGeneration = (Long) response.get(GENERATION);
 
-      IndexCommit commit;
-      RefCounted<SolrIndexSearcher> searcherRefCounted = null;
-      try {
-        searcherRefCounted = core.getNewestSearcher(false);
-        if (searcherRefCounted == null) {
-          SolrException.log(LOG, "No open searcher found - fetch aborted");
-          return false;
+      // TODO: make sure that getLatestCommit only returns commit points for the main index (i.e. no side-car indexes)
+      IndexCommit commit = core.getDeletionPolicy().getLatestCommit();
+      if (commit == null) {
+        // Presumably the IndexWriter hasn't been opened yet, and hence the deletion policy hasn't been updated with commit points
+        RefCounted<SolrIndexSearcher> searcherRefCounted = null;
+        try {
+          searcherRefCounted = core.getNewestSearcher(false);
+          if (searcherRefCounted == null) {
+            LOG.warn("No open searcher found - fetch aborted");
+            return false;
+          }
+          commit = searcherRefCounted.get().getIndexReader().getIndexCommit();
+        } finally {
+          if (searcherRefCounted != null)
+            searcherRefCounted.decref();
         }
-        commit = searcherRefCounted.get().getIndexReader().getIndexCommit();
-      } finally {
-        if (searcherRefCounted != null)
-          searcherRefCounted.decref();
       }
-      
+
+
       if (latestVersion == 0L) {
         if (forceReplication && commit.getGeneration() != 0) {
           // since we won't get the files for an empty index,
@@ -379,10 +387,9 @@ public class SnapPuller {
 
       tmpIndexDir = core.getDirectoryFactory().get(tmpIndex, DirContext.DEFAULT, core.getSolrConfig().indexConfig.lockType);
       
-      // make sure it's the newest known index dir...
-      indexDirPath = core.getNewIndexDir();
+      // cindex dir...
+      indexDirPath = core.getIndexDir();
       indexDir = core.getDirectoryFactory().get(indexDirPath, DirContext.DEFAULT, core.getSolrConfig().indexConfig.lockType);
-      Directory oldDirectory = null;
 
       try {
         
@@ -401,9 +408,26 @@ public class SnapPuller {
             successfulInstall = modifyIndexProps(tmpIdxDirName);
             deleteTmpIdxDir  =  false;
           } else {
-            successfulInstall = moveIndexFiles(tmpIndexDir, indexDir);
+            solrCore.getUpdateHandler().getSolrCoreState()
+                .closeIndexWriter(core, true);
+            try {
+              successfulInstall = moveIndexFiles(tmpIndexDir, indexDir);
+            } finally {
+              solrCore.getUpdateHandler().getSolrCoreState()
+                  .openIndexWriter(core);
+            }
           }
           if (successfulInstall) {
+            if (isFullCopyNeeded) {
+              // let the system know we are changing dir's and the old one
+              // may be closed
+              if (indexDir != null) {
+                LOG.info("removing old index directory " + indexDir);
+                core.getDirectoryFactory().doneWithDirectory(indexDir);
+                core.getDirectoryFactory().remove(indexDir);
+              }
+            }
+            
             LOG.info("Configuration files are modified, core will be reloaded");
             logReplicationTimeAndConfFiles(modifiedConfFiles, successfulInstall);//write to a file time of replication and conf files.
             reloadCore();
@@ -413,54 +437,34 @@ public class SnapPuller {
           if (isFullCopyNeeded) {
             successfulInstall = modifyIndexProps(tmpIdxDirName);
             deleteTmpIdxDir =  false;
-            RefCounted<IndexWriter> iw = core.getUpdateHandler().getSolrCoreState().getIndexWriter(core);
-            try {
-               oldDirectory = iw.get().getDirectory();
-            } finally {
-              iw.decref();
-            }
           } else {
-            successfulInstall = moveIndexFiles(tmpIndexDir, indexDir);
+            solrCore.getUpdateHandler().getSolrCoreState().closeIndexWriter(core, true);
+            try {
+              successfulInstall = moveIndexFiles(tmpIndexDir, indexDir);
+            } finally {
+              solrCore.getUpdateHandler().getSolrCoreState().openIndexWriter(core);
+            }
           }
           if (successfulInstall) {
             logReplicationTimeAndConfFiles(modifiedConfFiles, successfulInstall);
           }
-        }
-        
-        if (isFullCopyNeeded) {
-          // we have to do this before commit
-          final Directory freezeIndexDir = indexDir;
-          final String freezeIndexDirPath = indexDirPath;
-          core.getDirectoryFactory().addCloseListener(oldDirectory, new CloseListener(){
-
-            @Override
-            public void preClose() {
-              LOG.info("removing old index files " + freezeIndexDir);
-              if (core.getDirectoryFactory().exists(freezeIndexDirPath)) {
-                DirectoryFactory.empty(freezeIndexDir);
-              }
-            }
-            
-            @Override
-            public void postClose() {
-              LOG.info("removing old index directory " + freezeIndexDir);
-              try {
-                core.getDirectoryFactory().remove(freezeIndexDir);
-              } catch (IOException e) {
-                SolrException.log(LOG, "Error removing directory " + freezeIndexDir, e);
-              }
-            }
-            
-          });
         }
 
         if (successfulInstall) {
           if (isFullCopyNeeded) {
             // let the system know we are changing dir's and the old one
             // may be closed
-            core.getDirectoryFactory().doneWithDirectory(oldDirectory);
+            if (indexDir != null) {
+              LOG.info("removing old index directory " + indexDir);
+              core.getDirectoryFactory().doneWithDirectory(indexDir);
+              core.getDirectoryFactory().remove(indexDir);
+            }
           }
-          doCommit(isFullCopyNeeded);
+          if (isFullCopyNeeded) {
+            solrCore.getUpdateHandler().newIndexWriter(isFullCopyNeeded);
+          }
+          
+          openNewSearcherAndUpdateCommitPoint(isFullCopyNeeded);
         }
         
         replicationStartTime = 0;
@@ -474,13 +478,6 @@ public class SnapPuller {
         throw new InterruptedException("Index fetch interrupted");
       } catch (Exception e) {
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Index fetch failed : ", e);
-      } finally {
-        if (deleteTmpIdxDir) {
-          LOG.info("removing temporary index download directory files " + tmpIndexDir);
-          if (tmpIndex != null && core.getDirectoryFactory().exists(tmpIndex)) {
-            DirectoryFactory.empty(tmpIndexDir);
-          }
-        } 
       }
     } finally {
       try {
@@ -497,16 +494,19 @@ public class SnapPuller {
         stop = false;
         fsyncException = null;
       } finally {
-        if (tmpIndexDir != null) {
-          core.getDirectoryFactory().release(tmpIndexDir);
-        }
         if (deleteTmpIdxDir && tmpIndexDir != null) {
           try {
+            core.getDirectoryFactory().doneWithDirectory(tmpIndexDir);
             core.getDirectoryFactory().remove(tmpIndexDir);
           } catch (IOException e) {
             SolrException.log(LOG, "Error removing directory " + tmpIndexDir, e);
           }
         }
+        
+        if (tmpIndexDir != null) {
+          core.getDirectoryFactory().release(tmpIndexDir);
+        }
+        
         if (indexDir != null) {
           core.getDirectoryFactory().release(indexDir);
         }
@@ -636,45 +636,45 @@ public class SnapPuller {
     return sb;
   }
 
-  private void doCommit(boolean isFullCopyNeeded) throws IOException {
+  private void openNewSearcherAndUpdateCommitPoint(boolean isFullCopyNeeded) throws IOException {
     SolrQueryRequest req = new LocalSolrQueryRequest(solrCore,
         new ModifiableSolrParams());
-    // reboot the writer on the new index and get a new searcher
-    solrCore.getUpdateHandler().newIndexWriter(isFullCopyNeeded, false);
     
+    RefCounted<SolrIndexSearcher> searcher = null;
+    IndexCommit commitPoint;
     try {
-      // first try to open an NRT searcher so that the new 
-      // IndexWriter is registered with the reader
       Future[] waitSearcher = new Future[1];
-      solrCore.getSearcher(true, false, waitSearcher, true);
+      searcher = solrCore.getSearcher(true, true, waitSearcher, true);
       if (waitSearcher[0] != null) {
         try {
-         waitSearcher[0].get();
-       } catch (InterruptedException e) {
-         SolrException.log(LOG,e);
-       } catch (ExecutionException e) {
-         SolrException.log(LOG,e);
-       }
-     }
-
-      // update our commit point to the right dir
-      CommitUpdateCommand cuc = new CommitUpdateCommand(req, false);
-      cuc.waitSearcher = false;
-      cuc.openSearcher = false;
-      solrCore.getUpdateHandler().commit(cuc);
-
+          waitSearcher[0].get();
+        } catch (InterruptedException e) {
+          SolrException.log(LOG, e);
+        } catch (ExecutionException e) {
+          SolrException.log(LOG, e);
+        }
+      }
+      commitPoint = searcher.get().getIndexReader().getIndexCommit();
     } finally {
       req.close();
+      if (searcher != null) {
+        searcher.decref();
+      }
     }
-  }
 
+    // update the commit point in replication handler
+    replicationHandler.indexCommitPoint = commitPoint;
+    
+  }
 
   /**
    * All the files are copied to a temp dir first
    */
   private String createTempindexDir(SolrCore core, String tmpIdxDirName) {
-    File tmpIdxDir = new File(core.getDataDir(), tmpIdxDirName);
-    return tmpIdxDir.toString();
+    // TODO: there should probably be a DirectoryFactory#concatPath(parent, name)
+    // or something
+    String tmpIdxDir = core.getDataDir() + tmpIdxDirName;
+    return tmpIdxDir;
   }
 
   private void reloadCore() {
@@ -684,7 +684,7 @@ public class SnapPuller {
         try {
           solrCore.getCoreDescriptor().getCoreContainer().reload(solrCore.getName());
         } catch (Exception e) {
-          LOG.error("Could not restart core ", e);
+          LOG.error("Could not reload core ", e);
         }
       }
     }.start();
@@ -738,7 +738,7 @@ public class SnapPuller {
           dirFileFetcher.fetchFile();
           filesDownloaded.add(new HashMap<String,Object>(file));
         } else {
-          LOG.info("Skipping download for " + file.get(NAME));
+          LOG.info("Skipping download for " + file.get(NAME) + " because it already exists");
         }
       }
     } finally {
@@ -773,6 +773,7 @@ public class SnapPuller {
     boolean success = false;
     try {
       if (indexDir.fileExists(fname)) {
+        LOG.info("Skipping move file - it already exists:" + fname);
         return true;
       }
     } catch (IOException e) {
@@ -816,21 +817,53 @@ public class SnapPuller {
   }
 
   /**
+   * Make file list 
+   */
+  private List<File> makeTmpConfDirFileList(File dir, List<File> fileList) {
+    File[] files = dir.listFiles();
+    for (File file : files) {
+      if (file.isFile()) {
+        fileList.add(file);
+      } else if (file.isDirectory()) {
+        fileList = makeTmpConfDirFileList(file, fileList);
+      }
+    }
+    return fileList;
+  }
+  
+  /**
    * The conf files are copied to the tmp dir to the conf dir. A backup of the old file is maintained
    */
   private void copyTmpConfFiles2Conf(File tmpconfDir) {
+    boolean status = false;
     File confDir = new File(solrCore.getResourceLoader().getConfigDir());
-    for (File file : tmpconfDir.listFiles()) {
-      File oldFile = new File(confDir, file.getName());
+    for (File file : makeTmpConfDirFileList(tmpconfDir, new ArrayList<File>())) {
+      File oldFile = new File(confDir, file.getPath().substring(tmpconfDir.getPath().length(), file.getPath().length()));
+      if (!oldFile.getParentFile().exists()) {
+        status = oldFile.getParentFile().mkdirs();
+        if (status) {
+        } else {
+          throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
+                  "Unable to mkdirs: " + oldFile.getParentFile());
+        }
+      }
       if (oldFile.exists()) {
-        File backupFile = new File(confDir, oldFile.getName() + "." + getDateAsStr(new Date(oldFile.lastModified())));
-        boolean status = oldFile.renameTo(backupFile);
+        File backupFile = new File(oldFile.getPath() + "." + getDateAsStr(new Date(oldFile.lastModified())));
+        if (!backupFile.getParentFile().exists()) {
+          status = backupFile.getParentFile().mkdirs();
+          if (status) {
+          } else {
+            throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
+                    "Unable to mkdirs: " + backupFile.getParentFile());
+          }
+        }
+        status = oldFile.renameTo(backupFile);
         if (!status) {
           throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
                   "Unable to rename: " + oldFile + " to: " + backupFile);
         }
       }
-      boolean status = file.renameTo(oldFile);
+      status = file.renameTo(oldFile);
       if (status) {
       } else {
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
@@ -1237,7 +1270,9 @@ public class SnapPuller {
      * Open a new stream using HttpClient
      */
     FastInputStream getStream() throws IOException {
-      SolrServer s = new HttpSolrServer(masterUrl, myHttpClient, null);  //XXX use shardhandler
+      HttpSolrServer s = new HttpSolrServer(masterUrl, myHttpClient, null);  //XXX use shardhandler
+      s.setSoTimeout(60000);
+      s.setConnectionTimeout(15000);
       ModifiableSolrParams params = new ModifiableSolrParams();
 
 //    //the method is command=filecontent
@@ -1496,7 +1531,9 @@ public class SnapPuller {
      * Open a new stream using HttpClient
      */
     FastInputStream getStream() throws IOException {
-      SolrServer s = new HttpSolrServer(masterUrl, myHttpClient, null);  //XXX use shardhandler
+      HttpSolrServer s = new HttpSolrServer(masterUrl, myHttpClient, null);  //XXX use shardhandler
+      s.setSoTimeout(60000);
+      s.setConnectionTimeout(15000);
       ModifiableSolrParams params = new ModifiableSolrParams();
 
 //    //the method is command=filecontent
@@ -1549,7 +1586,9 @@ public class SnapPuller {
     params.set(COMMAND, CMD_DETAILS);
     params.set("slave", false);
     params.set(CommonParams.QT, "/replication");
-    SolrServer server = new HttpSolrServer(masterUrl, myHttpClient); //XXX use shardhandler
+    HttpSolrServer server = new HttpSolrServer(masterUrl, myHttpClient); //XXX use shardhandler
+    server.setSoTimeout(60000);
+    server.setConnectionTimeout(15000);
     QueryRequest request = new QueryRequest(params);
     return server.request(request);
   }

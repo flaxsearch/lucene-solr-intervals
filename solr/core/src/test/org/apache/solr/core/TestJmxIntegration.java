@@ -16,17 +16,19 @@
  */
 package org.apache.solr.core;
 
+import java.lang.management.ManagementFactory;
+import java.util.*;
+import javax.management.*;
+
+import org.apache.lucene.util.Constants;
 import org.apache.solr.core.JmxMonitoredMap.SolrDynamicMBean;
 import org.apache.solr.util.AbstractSolrTestCase;
 import org.junit.After;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
-
-import javax.management.*;
-import java.lang.management.ManagementFactory;
-import java.util.*;
 
 /**
  * Test for JMX Integration
@@ -67,19 +69,38 @@ public class TestJmxIntegration extends AbstractSolrTestCase {
     assertTrue("No MBeans found in server", mbeanServer.getMBeanCount() > 0);
 
     Set<ObjectInstance> objects = mbeanServer.queryMBeans(null, null);
-    assertFalse("No SolrInfoMBean objects found in mbean server", objects
+    assertFalse("No objects found in mbean server", objects
             .isEmpty());
+    int numDynamicMbeans = 0;
     for (ObjectInstance o : objects) {
+      assertNotNull("Null name on: " + o.toString(), o.getObjectName());
       MBeanInfo mbeanInfo = mbeanServer.getMBeanInfo(o.getObjectName());
       if (mbeanInfo.getClassName().endsWith(SolrDynamicMBean.class.getName())) {
-        assertTrue("No Attributes found for mbean: " + mbeanInfo, mbeanInfo
-                .getAttributes().length > 0);
+        numDynamicMbeans++;
+        MBeanAttributeInfo[] attrs = mbeanInfo.getAttributes();
+        assertTrue("No Attributes found for mbean: " + mbeanInfo, 
+                   0 < attrs.length);
+        for (MBeanAttributeInfo attr : attrs) {
+          // ensure every advertised attribute is gettable
+          try {
+            Object trash = mbeanServer.getAttribute(o.getObjectName(), attr.getName());
+          } catch (javax.management.AttributeNotFoundException e) {
+            throw new RuntimeException("Unable to featch attribute for " + o.getObjectName()
+                                       + ": " + attr.getName(), e);
+          }
+        }
       }
     }
+    assertTrue("No SolrDynamicMBeans found", 0 < numDynamicMbeans);
   }
 
   @Test
   public void testJmxUpdate() throws Exception {
+
+    // Workaround for SOLR-4418 (this test fails with "No
+    // mbean found for SolrIndexSearcher" on IBM J9 6.0 and 7.0):
+    Assume.assumeTrue(!"IBM Corporation".equals(Constants.JVM_VENDOR));
+
     List<MBeanServer> servers = MBeanServerFactory.findMBeanServer(null);
     log.info("Servers in testJmxUpdate: " + servers);
     log.info(h.getCore().getInfoRegistry().toString());

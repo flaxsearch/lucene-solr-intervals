@@ -28,6 +28,7 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.AlreadyClosedException;
@@ -74,6 +75,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
       customType.setStoreTermVectorOffsets(true);
       
       doc.add(newField("field", "aaa bbb ccc ddd eee fff ggg hhh iii jjj", customType));
+      doc.add(new NumericDocValuesField("dv", 5));
 
       int idUpto = 0;
       int fullCount = 0;
@@ -356,11 +358,14 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
         boolean sawClose = false;
         boolean sawMerge = false;
         for (int i = 0; i < trace.length; i++) {
+          if (sawAbortOrFlushDoc && sawMerge && sawClose) {
+            break;
+          }
           if ("abort".equals(trace[i].getMethodName()) ||
               "finishDocument".equals(trace[i].getMethodName())) {
             sawAbortOrFlushDoc = true;
           }
-          if ("merge".equals(trace[i])) {
+          if ("merge".equals(trace[i].getMethodName())) {
             sawMerge = true;
           }
           if ("close".equals(trace[i].getMethodName())) {
@@ -368,8 +373,9 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
           }
         }
         if (sawAbortOrFlushDoc && !sawClose && !sawMerge) {
-          if (onlyOnce)
+          if (onlyOnce) {
             doFail = false;
+          }
           //System.out.println(Thread.currentThread().getName() + ": now fail");
           //new Throwable().printStackTrace(System.out);
           throw new IOException("now failing on purpose");

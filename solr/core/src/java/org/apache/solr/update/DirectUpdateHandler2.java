@@ -29,8 +29,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexReader;
@@ -53,6 +51,7 @@ import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.FunctionRangeQuery;
 import org.apache.solr.search.QParser;
@@ -70,7 +69,6 @@ import org.apache.solr.util.RefCounted;
  */
 public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState.IndexWriterCloser {
   protected final SolrCoreState solrCoreState;
-  protected final Lock commitLock = new ReentrantLock();
 
   // stats
   AtomicLong addCommands = new AtomicLong();
@@ -91,6 +89,8 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
   // tracks when auto-commit should occur
   protected final CommitTracker commitTracker;
   protected final CommitTracker softCommitTracker;
+  
+  protected boolean commitWithinSoftCommit;
 
   public DirectUpdateHandler2(SolrCore core) {
     super(core);
@@ -106,10 +106,14 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
     int softCommitDocsUpperBound = updateHandlerInfo.autoSoftCommmitMaxDocs; // getInt("updateHandler/autoSoftCommit/maxDocs", -1);
     int softCommitTimeUpperBound = updateHandlerInfo.autoSoftCommmitMaxTime; // getInt("updateHandler/autoSoftCommit/maxTime", -1);
     softCommitTracker = new CommitTracker("Soft", core, softCommitDocsUpperBound, softCommitTimeUpperBound, true, true);
+    
+    commitWithinSoftCommit = updateHandlerInfo.commitWithinSoftCommit;
+
+
   }
   
   public DirectUpdateHandler2(SolrCore core, UpdateHandler updateHandler) {
-    super(core);
+    super(core, updateHandler.getUpdateLog());
     solrCoreState = core.getSolrCoreState();
     
     UpdateHandlerInfo updateHandlerInfo = core.getSolrConfig()
@@ -122,8 +126,12 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
     int softCommitTimeUpperBound = updateHandlerInfo.autoSoftCommmitMaxTime; // getInt("updateHandler/autoSoftCommit/maxTime", -1);
     softCommitTracker = new CommitTracker("Soft", core, softCommitDocsUpperBound, softCommitTimeUpperBound, updateHandlerInfo.openSearcher, true);
     
-    this.ulog = updateHandler.getUpdateLog();
-    if (this.ulog != null) {
+    commitWithinSoftCommit = updateHandlerInfo.commitWithinSoftCommit;
+
+    UpdateLog existingLog = updateHandler.getUpdateLog();
+    if (this.ulog != null && this.ulog == existingLog) {
+      // If we are reusing the existing update log, inform the log that it's update handler has changed.
+      // We do this as late as possible.
       this.ulog.init(this, core);
     }
   }
@@ -159,6 +167,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
       }
       
       try {
+        IndexSchema schema = cmd.getReq().getSchema();
         
         if (cmd.overwrite) {
           
@@ -229,8 +238,13 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
         }
         
         if ((cmd.getFlags() & UpdateCommand.IGNORE_AUTOCOMMIT) == 0) {
-          commitTracker.addedDocument(-1);
-          softCommitTracker.addedDocument(cmd.commitWithin);
+          if (commitWithinSoftCommit) {
+            commitTracker.addedDocument(-1);
+            softCommitTracker.addedDocument(cmd.commitWithin);
+          } else {
+            softCommitTracker.addedDocument(-1);
+            commitTracker.addedDocument(cmd.commitWithin);
+          }
         }
         
         rc = 1;
@@ -252,7 +266,11 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
   
   private void updateDeleteTrackers(DeleteUpdateCommand cmd) {
     if ((cmd.getFlags() & UpdateCommand.IGNORE_AUTOCOMMIT) == 0) {
-      softCommitTracker.deletedDocument(cmd.commitWithin);
+      if (commitWithinSoftCommit) {
+        softCommitTracker.deletedDocument(cmd.commitWithin);
+      } else {
+        commitTracker.deletedDocument(cmd.commitWithin);
+      }
       
       if (commitTracker.getTimeUpperBound() > 0) {
         commitTracker.scheduleCommitWithin(commitTracker.getTimeUpperBound());
@@ -389,7 +407,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
       RefCounted<IndexWriter> iw = solrCoreState.getIndexWriter(core);
       try {
         IndexWriter writer = iw.get();
-        writer.updateDocument(idTerm, luceneDocument, core.getSchema()
+        writer.updateDocument(idTerm, luceneDocument, cmd.getReq().getSchema()
             .getAnalyzer());
         
         for (Query q : dbqList) {
@@ -487,7 +505,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
     try {
       // only allow one hard commit to proceed at once
       if (!cmd.softCommit) {
-        commitLock.lock();
+        solrCoreState.getCommitLock().lock();
       }
 
       log.info("start "+cmd);
@@ -522,11 +540,17 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
           }
           
           // SolrCore.verbose("writer.commit() start writer=",writer);
-          final Map<String,String> commitData = new HashMap<String,String>();
-          commitData.put(SolrIndexWriter.COMMIT_TIME_MSEC_KEY,
-              String.valueOf(System.currentTimeMillis()));
-          writer.setCommitData(commitData);
-          writer.commit();
+
+          if (writer.hasUncommittedChanges()) {
+            final Map<String,String> commitData = new HashMap<String,String>();
+            commitData.put(SolrIndexWriter.COMMIT_TIME_MSEC_KEY,
+                String.valueOf(System.currentTimeMillis()));
+            writer.setCommitData(commitData);
+            writer.commit();
+          } else {
+            log.info("No uncommitted changes. Skipping IW.commit.");
+          }
+
           // SolrCore.verbose("writer.commit() end");
           numDocsPending.set(0);
           callPostCommitCallbacks();
@@ -581,7 +605,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
     }
     finally {
       if (!cmd.softCommit) {
-        commitLock.unlock();
+        solrCoreState.getCommitLock().unlock();
       }
 
       addCommands.set(0);
@@ -604,8 +628,8 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
   }
 
   @Override
-  public void newIndexWriter(boolean rollback, boolean forceNewDir) throws IOException {
-    solrCoreState.newIndexWriter(core, rollback, forceNewDir);
+  public void newIndexWriter(boolean rollback) throws IOException {
+    solrCoreState.newIndexWriter(core, rollback);
   }
   
   /**
@@ -665,7 +689,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
   @Override
   public void closeWriter(IndexWriter writer) throws IOException {
     boolean clearRequestInfo = false;
-    commitLock.lock();
+    solrCoreState.getCommitLock().lock();
     try {
       SolrQueryRequest req = new LocalSolrQueryRequest(core, new ModifiableSolrParams());
       SolrQueryResponse rsp = new SolrQueryResponse();
@@ -730,14 +754,14 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
       if (writer != null) writer.close();
 
     } finally {
-      commitLock.unlock();
+      solrCoreState.getCommitLock().unlock();
       if (clearRequestInfo) SolrRequestInfo.clearRequestInfo();
     }
   }
 
   @Override
   public void split(SplitIndexCommand cmd) throws IOException {
-    // TODO: do a commit first?
+    commit(new CommitUpdateCommand(cmd.req, false));
     SolrIndexSplitter splitter = new SolrIndexSplitter(cmd);
     splitter.split();
   }

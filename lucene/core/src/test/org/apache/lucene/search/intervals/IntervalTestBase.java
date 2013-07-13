@@ -25,6 +25,7 @@ import org.junit.Before;
 
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -191,7 +192,7 @@ public abstract class IntervalTestBase extends LuceneTestCase {
 
     @Override
     public String toString() {
-      return String.format("%d:%d[%d]->%d[%d]%s",
+      return String.format(Locale.ROOT, "%d:%d[%d]->%d[%d]%s",
                             docid, start, startOffset, end, endOffset, composite ? "C" : "");
     }
   }

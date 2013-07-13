@@ -19,8 +19,6 @@ package org.apache.solr.schema;
 
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.search.*;
-import org.apache.lucene.index.GeneralField;
-import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.StorableField;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
@@ -37,7 +35,6 @@ import java.util.Map;
 import java.util.List;
 import java.util.ArrayList;
 import java.io.IOException;
-import java.io.StringReader;
 
 /** <code>TextField</code> is the basic type for configurable text analysis.
  * Analyzers for field types using this implementation should be defined in the schema.
@@ -58,6 +55,7 @@ public class TextField extends FieldType {
    * @see #setMultiTermAnalyzer
    */
   protected Analyzer multiTermAnalyzer=null;
+  private boolean isExplicitMultiTermAnalyzer = false;
 
   @Override
   protected void init(IndexSchema schema, Map<String,String> args) {
@@ -138,11 +136,11 @@ public class TextField extends FieldType {
   }
 
   public static BytesRef analyzeMultiTerm(String field, String part, Analyzer analyzerIn) {
-    if (part == null) return null;
+    if (part == null || analyzerIn == null) return null;
 
     TokenStream source;
     try {
-      source = analyzerIn.tokenStream(field, new StringReader(part));
+      source = analyzerIn.tokenStream(field, part);
       source.reset();
     } catch (IOException e) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Unable to initialize TokenStream to analyze multiTerm term: " + part, e);
@@ -182,7 +180,7 @@ public class TextField extends FieldType {
 
     TokenStream source;
     try {
-      source = analyzer.tokenStream(field, new StringReader(queryText));
+      source = analyzer.tokenStream(field, queryText);
       source.reset();
     } catch (IOException e) {
       throw new RuntimeException("Unable to initialize TokenStream to analyze query text", e);
@@ -331,4 +329,11 @@ public class TextField extends FieldType {
 
   }
 
+  public void setIsExplicitMultiTermAnalyzer(boolean isExplicitMultiTermAnalyzer) {
+    this.isExplicitMultiTermAnalyzer = isExplicitMultiTermAnalyzer;
+  }
+
+  public boolean isExplicitMultiTermAnalyzer() {
+    return isExplicitMultiTermAnalyzer;
+  }
 }

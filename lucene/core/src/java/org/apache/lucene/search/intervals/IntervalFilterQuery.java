@@ -127,7 +127,7 @@ public class IntervalFilterQuery extends Query implements Cloneable {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {
           float freq = scorer.freq();
-          Similarity.SloppySimScorer docScorer = similarity.sloppySimScorer(stats, context);
+          Similarity.SimScorer docScorer = similarity.simScorer(stats, context);
           ComplexExplanation result = new ComplexExplanation();
           result.setDescription("weight("+getQuery()+" in "+doc+") [" + similarity.getClass().getSimpleName() + "], result of:");
           Explanation scoreExplanation = docScorer.explain(doc, new Explanation(freq, "phraseFreq=" + freq));
@@ -149,7 +149,7 @@ public class IntervalFilterQuery extends Query implements Cloneable {
       flags = flags == PostingFeatures.DOCS_AND_FREQS ? PostingFeatures.POSITIONS : flags;
       ScorerFactory factory = new ScorerFactory(other, context, topScorer, flags, acceptDocs);
       final Scorer scorer = factory.scorer();
-      Similarity.SloppySimScorer docScorer = similarity.sloppySimScorer(stats, context);
+      Similarity.SimScorer docScorer = similarity.simScorer(stats, context);
       return scorer == null ? null : new IntervalFilterScorer(this, scorer, factory, docScorer);
     }
 
@@ -198,10 +198,10 @@ public class IntervalFilterQuery extends Query implements Cloneable {
     private IntervalIterator filter;
     private Interval current;
     private final ScorerFactory factory;
-    private final Similarity.SloppySimScorer docScorer;
+    private final Similarity.SimScorer docScorer;
 
     public IntervalFilterScorer(Weight weight, Scorer other, ScorerFactory factory,
-                                Similarity.SloppySimScorer docScorer) throws IOException {
+                                Similarity.SimScorer docScorer) throws IOException {
       super(weight);
       this.other = other;
       this.factory = factory;
@@ -331,6 +331,11 @@ public class IntervalFilterQuery extends Query implements Cloneable {
         }
       } while ((docId = other.nextDoc()) != Scorer.NO_MORE_DOCS);
       return NO_MORE_DOCS;
+    }
+
+    @Override
+    public long cost() {
+      return other.cost();
     }
 
     @Override

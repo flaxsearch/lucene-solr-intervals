@@ -18,14 +18,9 @@
 package org.apache.solr.core;
 
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrException.ErrorCode;
 
+import java.util.Map;
 import java.util.regex.Pattern;
-
-import javax.script.ScriptEngineManager;
-
-import org.junit.Assume;
 
 public abstract class AbstractBadConfigTestBase extends SolrTestCaseJ4 {
 
@@ -35,32 +30,56 @@ public abstract class AbstractBadConfigTestBase extends SolrTestCaseJ4 {
    * files causes an error matching the specified errString ot be thrown.
    */
   protected final void assertConfigs(final String solrconfigFile,
-                                     final String schemaFile, 
+                                     final String schemaFile,
+                                     final String errString)
+      throws Exception {
+    assertConfigs(solrconfigFile, schemaFile, null, errString);
+  }
+
+    /**
+     * Given a solrconfig.xml file name, a schema file name, a solr home directory, 
+     * and an expected errString, asserts that initializing a core with these 
+     * files causes an error matching the specified errString ot be thrown.
+     */
+  protected final void assertConfigs(final String solrconfigFile,
+                                     final String schemaFile,
+                                     final String solrHome,
                                      final String errString) 
     throws Exception {
 
     ignoreException(Pattern.quote(errString));
     try {
-      initCore( solrconfigFile, schemaFile );
-    } catch (Exception e) {
-      // short circuit out if we found what we expected
-      if (-1 != e.getMessage().indexOf(errString)) return;
-      // Test the cause too in case the expected error is wrapped by the TestHarness
-      // (NOTE: we don't go all the way down. Either errString should be changed,
-      // or some error wrapping should use a better message or both)
-      if (null != e.getCause() &&
-          null != e.getCause().getMessage() &&
-          -1 != e.getCause().getMessage().indexOf(errString)) return;
 
-      // otherwise, rethrow it, possibly completley unrelated
-      throw new SolrException
-        (ErrorCode.SERVER_ERROR, 
-         "Unexpected error, expected error matching: " + errString, e);
-    } finally {
+      if (null == solrHome) {
+        initCore( solrconfigFile, schemaFile );
+      } else {
+        initCore( solrconfigFile, schemaFile, solrHome );
+      }
+
+      CoreContainer cc = h.getCoreContainer();
+      for (Map.Entry<String, Exception> entry : cc.getCoreInitFailures().entrySet()) {
+        if (matches(entry.getValue(), errString))
+          return;
+      }
+    }
+    catch (Exception e) {
+      if (matches(e, errString))
+        return;
+      throw e;
+    }
+    finally {
       deleteCore();
       resetExceptionIgnores();
     }
     fail("Did not encounter any exception from: " + solrconfigFile + " using " + schemaFile);
+  }
+
+  private static boolean matches(Exception e, String errString) {
+    for (Throwable t = e; t != null; t = t.getCause()) {
+      if (t.getMessage() != null && -1 != t.getMessage().indexOf(errString))
+        return true;
+    }
+    return false;
   }
 
 }

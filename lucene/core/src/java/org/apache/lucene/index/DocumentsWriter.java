@@ -33,10 +33,7 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FlushInfo;
-import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.InfoStream;
-import org.apache.lucene.util.MutableBits;
 
 /**
  * This class accepts multiple added documents and directly
@@ -113,6 +110,7 @@ final class DocumentsWriter {
   List<String> newFiles;
 
   final IndexWriter indexWriter;
+  final LiveIndexWriterConfig indexWriterConfig;
 
   private AtomicInteger numDocsInRAM = new AtomicInteger(0);
 
@@ -143,6 +141,7 @@ final class DocumentsWriter {
     this.indexWriter = writer;
     this.infoStream = config.getInfoStream();
     this.similarity = config.getSimilarity();
+    this.indexWriterConfig = writer.getConfig();
     this.perThreadPool = config.getIndexerThreadPool();
     this.chain = config.getIndexingChain();
     this.perThreadPool.initialize(this, globalFieldNumbers, config);
@@ -237,6 +236,63 @@ final class DocumentsWriter {
     } finally {
       if (infoStream.isEnabled("DW")) {
         infoStream.message("DW", "done abort; abortedFiles=" + abortedFiles + " success=" + success);
+      }
+    }
+  }
+  
+  synchronized void lockAndAbortAll() {
+    assert indexWriter.holdsFullFlushLock();
+    if (infoStream.isEnabled("DW")) {
+      infoStream.message("DW", "lockAndAbortAll");
+    }
+    boolean success = false;
+    try {
+      deleteQueue.clear();
+      final int limit = perThreadPool.getMaxThreadStates();
+      for (int i = 0; i < limit; i++) {
+        final ThreadState perThread = perThreadPool.getThreadState(i);
+        perThread.lock();
+        if (perThread.isActive()) { // we might be closed or 
+          try {
+            perThread.dwpt.abort();
+          } finally {
+            perThread.dwpt.checkAndResetHasAborted();
+            flushControl.doOnAbort(perThread);
+          }
+        }
+      }
+      deleteQueue.clear();
+      flushControl.abortPendingFlushes();
+      flushControl.waitForFlush();
+      success = true;
+    } finally {
+      if (infoStream.isEnabled("DW")) {
+        infoStream.message("DW", "finished lockAndAbortAll success=" + success);
+      }
+      if (!success) {
+        // if something happens here we unlock all states again
+        unlockAllAfterAbortAll();
+      }
+    }
+  }
+  
+  final synchronized void unlockAllAfterAbortAll() {
+    assert indexWriter.holdsFullFlushLock();
+    if (infoStream.isEnabled("DW")) {
+      infoStream.message("DW", "unlockAll");
+    }
+    final int limit = perThreadPool.getMaxThreadStates();
+    for (int i = 0; i < limit; i++) {
+      try {
+        final ThreadState perThread = perThreadPool.getThreadState(i);
+        if (perThread.isHeldByCurrentThread()) {
+          perThread.unlock();
+        }
+      } catch(Throwable e) {
+        if (infoStream.isEnabled("DW")) {
+          infoStream.message("DW", "unlockAll: could not unlock state: " + i + " msg:" + e.getMessage());
+        }
+        // ignore & keep on unlocking
       }
     }
   }
@@ -459,7 +515,7 @@ final class DocumentsWriter {
     // buffer, force them all to apply now. This is to
     // prevent too-frequent flushing of a long tail of
     // tiny segments:
-    final double ramBufferSizeMB = indexWriter.getConfig().getRAMBufferSizeMB();
+    final double ramBufferSizeMB = indexWriterConfig.getRAMBufferSizeMB();
     if (ramBufferSizeMB != IndexWriterConfig.DISABLE_AUTO_FLUSH &&
         flushControl.getDeleteBytesUsed() > (1024*1024*ramBufferSizeMB/2)) {
       if (infoStream.isEnabled("DW")) {

@@ -22,9 +22,8 @@ import java.io.IOException;
 import java.util.Comparator;
 
 import org.apache.lucene.search.spell.TermFreqIterator;
-import org.apache.lucene.search.suggest.fst.Sort;
-import org.apache.lucene.search.suggest.fst.Sort.ByteSequencesReader;
-import org.apache.lucene.search.suggest.fst.Sort.ByteSequencesWriter;
+import org.apache.lucene.search.suggest.Sort.ByteSequencesReader;
+import org.apache.lucene.search.suggest.Sort.ByteSequencesWriter;
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.ByteArrayDataOutput;
 import org.apache.lucene.util.ArrayUtil;
@@ -121,13 +120,7 @@ public class SortedTermFreqIteratorWrapper implements TermFreqIterator {
       if (cmp != 0) {
         return cmp;
       }
-      if (leftCost < rightCost) {
-        return -1;
-      } else if (rightCost < leftCost) {
-        return 1;
-      } else {
-        return 0;
-      }
+      return Long.compare(leftCost, rightCost);
     }
   };
   

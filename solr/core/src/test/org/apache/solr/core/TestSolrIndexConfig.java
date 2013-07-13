@@ -19,6 +19,7 @@ package org.apache.solr.core;
 
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.update.LoggingInfoStream;
 import org.junit.BeforeClass;
 
 public class TestSolrIndexConfig extends SolrTestCaseJ4 {
@@ -29,8 +30,9 @@ public class TestSolrIndexConfig extends SolrTestCaseJ4 {
   }
   
   public void testIndexConfig() throws Exception {
-    IndexWriterConfig iwc = solrConfig.indexConfig.toIndexWriterConfig(h.getCore().getSchema());
+    IndexWriterConfig iwc = solrConfig.indexConfig.toIndexWriterConfig(h.getCore().getLatestSchema());
 
     assertEquals(123, iwc.getMaxThreadStates());
+    assertTrue(iwc.getInfoStream() instanceof LoggingInfoStream);
   }
 }

@@ -19,10 +19,13 @@ package org.apache.solr.client.solrj.impl;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -36,6 +39,8 @@ import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.request.IsUpdateRequest;
 import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
+import org.apache.solr.common.cloud.Aliases;
 import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
@@ -86,6 +91,13 @@ public class CloudSolrServer extends SolrServer {
       this.lbServer = new LBHttpSolrServer(myClient);
       this.updatesToLeaders = true;
   }
+  
+  public CloudSolrServer(String zkHost, boolean updatesToLeaders) throws MalformedURLException {
+    this.zkHost = zkHost;
+    this.myClient = HttpClientUtil.createClient(null);
+    this.lbServer = new LBHttpSolrServer(myClient);
+    this.updatesToLeaders = updatesToLeaders;
+}
 
   /**
    * @param zkHost The client endpoint of the zookeeper quorum containing the cloud state,
@@ -117,6 +129,11 @@ public class CloudSolrServer extends SolrServer {
   /** Sets the default collection for request */
   public void setDefaultCollection(String collection) {
     this.defaultCollection = collection;
+  }
+
+  /** Gets the default collection for request */
+  public String getDefaultCollection() {
+    return defaultCollection;
   }
 
   /** Set the connect timeout to the zookeeper ensemble in ms */
@@ -183,13 +200,13 @@ public class CloudSolrServer extends SolrServer {
       reqParams = new ModifiableSolrParams();
     }
     List<String> theUrlList = new ArrayList<String>();
-    if (request.getPath().equals("/admin/collections")) {
+    if (request.getPath().equals("/admin/collections") || request.getPath().equals("/admin/cores")) {
       Set<String> liveNodes = clusterState.getLiveNodes();
       for (String liveNode : liveNodes) {
         int splitPointBetweenHostPortAndContext = liveNode.indexOf("_");
         theUrlList.add("http://"
             + liveNode.substring(0, splitPointBetweenHostPortAndContext) + "/"
-            + liveNode.substring(splitPointBetweenHostPortAndContext + 1));
+            + URLDecoder.decode(liveNode, "UTF-8").substring(splitPointBetweenHostPortAndContext + 1));
       }
     } else {
       String collection = reqParams.get("collection", defaultCollection);
@@ -199,9 +216,21 @@ public class CloudSolrServer extends SolrServer {
             "No collection param specified on request and no default collection has been set.");
       }
       
-      // Extract each comma separated collection name and store in a List.
-      List<String> collectionList = StrUtils.splitSmart(collection, ",", true);
+      Set<String> collectionsList = getCollectionList(clusterState, collection);
+      if (collectionsList.size() == 0) {
+        throw new SolrException(ErrorCode.BAD_REQUEST, "Could not find collection: " + collection);
+      }
+      collection = collectionsList.iterator().next();
       
+      StringBuilder collectionString = new StringBuilder();
+      Iterator<String> it = collectionsList.iterator();
+      for (int i = 0; i < collectionsList.size(); i++) {
+        String col = it.next(); 
+        collectionString.append(col);
+        if (i < collectionsList.size() - 1) {
+          collectionString.append(",");
+        }
+      }
       // TODO: not a big deal because of the caching, but we could avoid looking
       // at every shard
       // when getting leaders if we tweaked some things
@@ -210,9 +239,12 @@ public class CloudSolrServer extends SolrServer {
       // specified,
       // add it to the Map of slices.
       Map<String,Slice> slices = new HashMap<String,Slice>();
-      for (String collectionName : collectionList) {
-        ClientUtils.addSlices(slices, collectionName,
-            clusterState.getSlices(collectionName), true);
+      for (String collectionName : collectionsList) {
+        Collection<Slice> colSlices = clusterState.getActiveSlices(collectionName);
+        if (colSlices == null) {
+          throw new SolrServerException("Could not find collection:" + collectionName);
+        }
+        ClientUtils.addSlices(slices, collectionName, colSlices, true);
       }
       Set<String> liveNodes = clusterState.getLiveNodes();
       
@@ -287,6 +319,30 @@ public class CloudSolrServer extends SolrServer {
     return rsp.getResponse();
   }
 
+  private Set<String> getCollectionList(ClusterState clusterState,
+      String collection) {
+    // Extract each comma separated collection name and store in a List.
+    List<String> rawCollectionsList = StrUtils.splitSmart(collection, ",", true);
+    Set<String> collectionsList = new HashSet<String>();
+    // validate collections
+    for (String collectionName : rawCollectionsList) {
+      if (!clusterState.getCollections().contains(collectionName)) {
+        Aliases aliases = zkStateReader.getAliases();
+        String alias = aliases.getCollectionAlias(collectionName);
+        if (alias != null) {
+          List<String> aliasList = StrUtils.splitSmart(alias, ",", true); 
+          collectionsList.addAll(aliasList);
+          continue;
+        }
+        
+        throw new SolrException(ErrorCode.BAD_REQUEST, "Collection not found: " + collectionName);
+      }
+      
+      collectionsList.add(collectionName);
+    }
+    return collectionsList;
+  }
+
   @Override
   public void shutdown() {
     if (zkStateReader != null) {
@@ -303,6 +359,10 @@ public class CloudSolrServer extends SolrServer {
 
   public LBHttpSolrServer getLbServer() {
     return lbServer;
+  }
+  
+  public boolean isUpdatesToLeaders() {
+    return updatesToLeaders;
   }
 
   // for tests

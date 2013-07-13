@@ -35,6 +35,7 @@ public class TestCSVLoader extends SolrTestCaseJ4 {
 
   @BeforeClass
   public static void beforeClass() throws Exception {
+    System.setProperty("enable.update.log", "false"); // schema12 doesn't support _version_
     initCore("solrconfig.xml","schema12.xml");
   }
 
@@ -104,6 +105,25 @@ public class TestCSVLoader extends SolrTestCaseJ4 {
     assertQ(req("id:[100 TO 110]"),"//*[@numFound='0']");
     assertU(commit());
     assertQ(req("id:[100 TO 110]"),"//*[@numFound='3']");
+  }
+
+  @Test
+  public void testCSVRowId() throws Exception {
+    makeFile("id\n100\n101\n102");
+    loadLocal("rowid", "rowid_i");//add a special field
+    // check default commit of false
+    assertU(commit());
+    assertQ(req("rowid_i:1"),"//*[@numFound='1']");
+    assertQ(req("rowid_i:2"),"//*[@numFound='1']");
+    assertQ(req("rowid_i:100"),"//*[@numFound='0']");
+
+    makeFile("id\n200\n201\n202");
+    loadLocal("rowid", "rowid_i", "rowidOffset", "100");//add a special field
+    // check default commit of false
+    assertU(commit());
+    assertQ(req("rowid_i:101"),"//*[@numFound='1']");
+    assertQ(req("rowid_i:102"),"//*[@numFound='1']");
+    assertQ(req("rowid_i:10000"),"//*[@numFound='0']");
   }
 
   @Test

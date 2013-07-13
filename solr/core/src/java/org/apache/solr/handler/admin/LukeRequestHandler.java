@@ -59,6 +59,7 @@ import org.apache.solr.search.SolrIndexSearcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.lucene.index.FieldInfo.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS;
 import static org.apache.lucene.index.FieldInfo.IndexOptions.DOCS_AND_FREQS;
 import static org.apache.lucene.index.FieldInfo.IndexOptions.DOCS_ONLY;
 
@@ -181,6 +182,7 @@ public class LukeRequestHandler extends RequestHandlerBase
     flags.append( (f != null && f.fieldType().indexed())                     ? FieldFlag.INDEXED.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().tokenized())                   ? FieldFlag.TOKENIZED.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().stored())                      ? FieldFlag.STORED.getAbbreviation() : '-' );
+    flags.append( (f != null && f.fieldType().docValueType() != null)        ? FieldFlag.DOC_VALUES.getAbbreviation() : "-" );
     flags.append( (false)                                          ? FieldFlag.MULTI_VALUED.getAbbreviation() : '-' ); // SchemaField Specific
     flags.append( (f != null && f.fieldType().storeTermVectors())            ? FieldFlag.TERM_VECTOR_STORED.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().storeTermVectorOffsets())   ? FieldFlag.TERM_VECTOR_OFFSET.getAbbreviation() : '-' );
@@ -192,6 +194,9 @@ public class LukeRequestHandler extends RequestHandlerBase
 
     flags.append((f != null && DOCS_AND_FREQS == opts) ?
         FieldFlag.OMIT_POSITIONS.getAbbreviation() : '-');
+    
+    flags.append((f != null && DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS == opts) ?
+        FieldFlag.STORE_OFFSETS_WITH_POSITIONS.getAbbreviation() : '-');
 
     flags.append( (f != null && f.getClass().getSimpleName().equals("LazyField")) ? FieldFlag.LAZY.getAbbreviation() : '-' );
     flags.append( (f != null && f.binaryValue()!=null)                      ? FieldFlag.BINARY.getAbbreviation() : '-' );
@@ -215,6 +220,7 @@ public class LukeRequestHandler extends RequestHandlerBase
     flags.append( (f != null && f.indexed())             ? FieldFlag.INDEXED.getAbbreviation() : '-' );
     flags.append( (t != null && t.isTokenized())         ? FieldFlag.TOKENIZED.getAbbreviation() : '-' );
     flags.append( (f != null && f.stored())              ? FieldFlag.STORED.getAbbreviation() : '-' );
+    flags.append( (f != null && f.hasDocValues())        ? FieldFlag.DOC_VALUES.getAbbreviation() : "-" );
     flags.append( (f != null && f.multiValued())         ? FieldFlag.MULTI_VALUED.getAbbreviation() : '-' );
     flags.append( (f != null && f.storeTermVector() )    ? FieldFlag.TERM_VECTOR_STORED.getAbbreviation() : '-' );
     flags.append( (f != null && f.storeTermOffsets() )   ? FieldFlag.TERM_VECTOR_OFFSET.getAbbreviation() : '-' );
@@ -223,6 +229,7 @@ public class LukeRequestHandler extends RequestHandlerBase
     flags.append( (f != null &&
         f.omitTermFreqAndPositions() )        ? FieldFlag.OMIT_TF.getAbbreviation() : '-' );
     flags.append( (f != null && f.omitPositions() )      ? FieldFlag.OMIT_POSITIONS.getAbbreviation() : '-' );
+    flags.append( (f != null && f.storeOffsetsWithPositions() )      ? FieldFlag.STORE_OFFSETS_WITH_POSITIONS.getAbbreviation() : '-' );
     flags.append( (lazy)                                 ? FieldFlag.LAZY.getAbbreviation() : '-' );
     flags.append( (binary)                               ? FieldFlag.BINARY.getAbbreviation() : '-' );
     flags.append( (f != null && f.sortMissingFirst() )   ? FieldFlag.SORT_MISSING_FIRST.getAbbreviation() : '-' );
@@ -469,7 +476,7 @@ public class LukeRequestHandler extends RequestHandlerBase
         Map<String, Object> tok = new HashMap<String, Object>();
         String className = cfiltfac.getClass().getName();
         tok.put("className", className);
-        tok.put("args", cfiltfac.getArgs());
+        tok.put("args", cfiltfac.getOriginalArgs());
         cfilters.add(className.substring(className.lastIndexOf('.')+1), tok);
       }
       if (cfilters.size() > 0) {
@@ -479,7 +486,7 @@ public class LukeRequestHandler extends RequestHandlerBase
       SimpleOrderedMap<Object> tokenizer = new SimpleOrderedMap<Object>();
       TokenizerFactory tfac = tchain.getTokenizerFactory();
       tokenizer.add("className", tfac.getClass().getName());
-      tokenizer.add("args", tfac.getArgs());
+      tokenizer.add("args", tfac.getOriginalArgs());
       aninfo.add("tokenizer", tokenizer);
 
       TokenFilterFactory[] filtfacs = tchain.getTokenFilterFactories();
@@ -488,7 +495,7 @@ public class LukeRequestHandler extends RequestHandlerBase
         Map<String, Object> tok = new HashMap<String, Object>();
         String className = filtfac.getClass().getName();
         tok.put("className", className);
-        tok.put("args", filtfac.getArgs());
+        tok.put("args", filtfac.getOriginalArgs());
         filters.add(className.substring(className.lastIndexOf('.')+1), tok);
       }
       if (filters.size() > 0) {
@@ -518,7 +525,7 @@ public class LukeRequestHandler extends RequestHandlerBase
       field.add("positionIncrementGap", ft.getAnalyzer().getPositionIncrementGap(f.getName()));
     }
     field.add("copyDests", toListOfStringDests(schema.getCopyFieldsList(f.getName())));
-    field.add("copySources", toListOfStrings(schema.getCopySources(f.getName())));
+    field.add("copySources", schema.getCopySources(f.getName()));
 
 
     fields.put( f.getName(), field );

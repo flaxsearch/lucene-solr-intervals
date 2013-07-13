@@ -23,7 +23,7 @@ import java.util.Locale;
 /**
  * @since solr 1.3
  */
-public interface CoreAdminParams 
+public abstract class CoreAdminParams
 {
   /** What Core are we talking about **/
   public final static String CORE = "core";
@@ -74,7 +74,19 @@ public interface CoreAdminParams
   /** The shard id in solr cloud */
   public final static String SHARD = "shard";
   
+  /** The shard range in solr cloud */
+  public final static String SHARD_RANGE = "shard.range";
+
+  /** The shard range in solr cloud */
+  public final static String SHARD_STATE = "shard.state";
+
+  /** The target core to which a split index should be written to
+   * Multiple targetCores can be specified by multiple targetCore parameters */
+  public final static String TARGET_CORE = "targetCore";
+  
   public static final String ROLES = "roles";
+  
+  public static final String CORE_NODE_NAME = "coreNodeName";
   
   /** Prefix for core property name=value pair **/
   public final static String PROPERTY_PREFIX = "property.";
@@ -86,6 +98,9 @@ public interface CoreAdminParams
 
   public static final String DELETE_INSTANCE_DIR = "deleteInstanceDir";
 
+  public static final String LOAD_ON_STARTUP = "loadOnStartup";
+  
+  public static final String TRANSIENT = "transient";
 
   public enum CoreAdminAction {
     STATUS,  
@@ -100,7 +115,12 @@ public interface CoreAdminParams
     SPLIT,
     PREPRECOVERY,
     REQUESTRECOVERY, 
-    REQUESTSYNCSHARD;
+    REQUESTSYNCSHARD,
+    CREATEALIAS,
+    DELETEALIAS,
+    REQUESTAPPLYUPDATES,
+    LOAD_ON_STARTUP,
+    TRANSIENT;
     
     public static CoreAdminAction get( String p )
     {

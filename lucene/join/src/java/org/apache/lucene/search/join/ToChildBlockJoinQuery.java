@@ -17,14 +17,8 @@ package org.apache.lucene.search.join;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Set;
-
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexWriter;       // javadocs
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.Explanation;
@@ -32,11 +26,15 @@ import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Scorer.ChildScorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Set;
 
 /**
  * Just like {@link ToParentBlockJoinQuery}, except this
@@ -307,6 +305,10 @@ public class ToChildBlockJoinQuery extends Query {
     public IntervalIterator intervals(boolean collectIntervals) throws IOException {
       return parentScorer.intervals(collectIntervals);
     }
+
+    public long cost() {
+      return parentScorer.cost();
+    }
   }
 
   @Override
@@ -340,7 +342,8 @@ public class ToChildBlockJoinQuery extends Query {
       final ToChildBlockJoinQuery other = (ToChildBlockJoinQuery) _other;
       return origParentQuery.equals(other.origParentQuery) &&
         parentsFilter.equals(other.parentsFilter) &&
-        doScores == other.doScores;
+        doScores == other.doScores &&
+        super.equals(other);
     } else {
       return false;
     }
@@ -349,7 +352,7 @@ public class ToChildBlockJoinQuery extends Query {
   @Override
   public int hashCode() {
     final int prime = 31;
-    int hash = 1;
+    int hash = super.hashCode();
     hash = prime * hash + origParentQuery.hashCode();
     hash = prime * hash + new Boolean(doScores).hashCode();
     hash = prime * hash + parentsFilter.hashCode();

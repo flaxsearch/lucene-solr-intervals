@@ -18,7 +18,6 @@ package org.apache.lucene.sandbox.queries;
  */
 
 import java.io.IOException;
-import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,6 +29,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.Terms;
 import org.apache.lucene.search.*;
 import org.apache.lucene.search.similarities.TFIDFSimilarity;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
@@ -71,7 +71,7 @@ public class FuzzyLikeThisQuery extends Query
     @Override
     public int hashCode() {
       final int prime = 31;
-      int result = 1;
+      int result = super.hashCode();
       result = prime * result + ((analyzer == null) ? 0 : analyzer.hashCode());
       result = prime * result
           + ((fieldVals == null) ? 0 : fieldVals.hashCode());
@@ -88,6 +88,9 @@ public class FuzzyLikeThisQuery extends Query
         return false;
       if (getClass() != obj.getClass())
         return false;
+      if (!super.equals(obj)) {
+        return false;
+      }
       FuzzyLikeThisQuery other = (FuzzyLikeThisQuery) obj;
       if (analyzer == null) {
         if (other.analyzer != null)
@@ -190,12 +193,16 @@ public class FuzzyLikeThisQuery extends Query
 
   private void addTerms(IndexReader reader, FieldVals f) throws IOException {
     if (f.queryString == null) return;
-    TokenStream ts = analyzer.tokenStream(f.fieldName, new StringReader(f.queryString));
+    TokenStream ts = analyzer.tokenStream(f.fieldName, f.queryString);
     CharTermAttribute termAtt = ts.addAttribute(CharTermAttribute.class);
 
     int corpusNumDocs = reader.numDocs();
     HashSet<String> processedTerms = new HashSet<String>();
     ts.reset();
+    final Terms terms = MultiFields.getTerms(reader, f.fieldName);
+    if (terms == null) {
+      return;
+    }
     while (ts.incrementToken()) {
       String term = termAtt.toString();
       if (!processedTerms.contains(term)) {
@@ -206,7 +213,7 @@ public class FuzzyLikeThisQuery extends Query
         AttributeSource atts = new AttributeSource();
         MaxNonCompetitiveBoostAttribute maxBoostAtt =
             atts.addAttribute(MaxNonCompetitiveBoostAttribute.class);
-        SlowFuzzyTermsEnum fe = new SlowFuzzyTermsEnum(MultiFields.getTerms(reader, startTerm.field()), atts, startTerm, f.minSimilarity, f.prefixLength);
+        SlowFuzzyTermsEnum fe = new SlowFuzzyTermsEnum(terms, atts, startTerm, f.minSimilarity, f.prefixLength);
         //store the df so all variants use same idf
         int df = reader.docFreq(startTerm);
         int numVariants = 0;

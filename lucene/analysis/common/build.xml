@@ -25,6 +25,7 @@
 
   <!-- some files for testing that do not have license headers -->
   <property name="rat.excludes" value="**/*.aff,**/*.dic,**/*.txt,**/charfilter/*.htm*,**/*LuceneResourcesWikiPage.html"/>
+  <property name="rat.additional-includes" value="src/tools/**"/>
 
   <import file="../analysis-module-build.xml"/>
 	
@@ -59,6 +60,8 @@
     <exec dir="src/java/org/apache/lucene/analysis/charfilter"
           output="src/java/org/apache/lucene/analysis/charfilter/HTMLCharacterEntities.jflex"
           executable="${python.exe}" failonerror="true" logerror="true">
+      <!-- Tell Python not to write any bytecode cache into the filesystem: -->
+      <arg value="-B"/>
       <arg value="htmlentity.py"/>
     </exec>
     <fixcrlf file="src/java/org/apache/lucene/analysis/charfilter/HTMLCharacterEntities.jflex" encoding="UTF-8"/>
