@@ -19,7 +19,6 @@ package org.apache.lucene.codecs.simpletext;
 
 import java.io.IOException;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -109,7 +108,7 @@ class SimpleTextFieldsReader extends FieldsProducer {
     }
 
     @Override
-    public boolean seekExact(BytesRef text, boolean useCache /* ignored */) throws IOException {
+    public boolean seekExact(BytesRef text) throws IOException {
 
       final BytesRefFSTEnum.InputOutput<PairOutputs.Pair<Long,PairOutputs.Pair<Long,Long>>> result = fstEnum.seekExact(text);
       if (result != null) {
@@ -125,7 +124,7 @@ class SimpleTextFieldsReader extends FieldsProducer {
     }
 
     @Override
-    public SeekStatus seekCeil(BytesRef text, boolean useCache /* ignored */) throws IOException {
+    public SeekStatus seekCeil(BytesRef text) throws IOException {
 
       //System.out.println("seek to text=" + text.utf8ToString());
       final BytesRefFSTEnum.InputOutput<PairOutputs.Pair<Long,PairOutputs.Pair<Long,Long>>> result = fstEnum.seekCeil(text);
@@ -217,11 +216,6 @@ class SimpleTextFieldsReader extends FieldsProducer {
         docsAndPositionsEnum = new SimpleTextDocsAndPositionsEnum();
       } 
       return docsAndPositionsEnum.reset(docsStart, liveDocs, indexOptions, docFreq);
-    }
-    
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
     }
   }
 
@@ -574,6 +568,11 @@ class SimpleTextFieldsReader extends FieldsProducer {
       */
       //System.out.println("FST " + fst.sizeInBytes());
     }
+    
+    /** Returns approximate RAM bytes used */
+    public long ramBytesUsed() {
+      return (fst!=null) ? fst.sizeInBytes() : 0;
+    }
 
     @Override
     public TermsEnum iterator(TermsEnum reuse) throws IOException {
@@ -582,11 +581,6 @@ class SimpleTextFieldsReader extends FieldsProducer {
       } else {
         return TermsEnum.EMPTY;
       }
-    }
-
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
     }
 
     @Override
@@ -630,7 +624,7 @@ class SimpleTextFieldsReader extends FieldsProducer {
     return Collections.unmodifiableSet(fields.keySet()).iterator();
   }
 
-  private final Map<String,Terms> termsCache = new HashMap<String,Terms>();
+  private final Map<String,SimpleTextTerms> termsCache = new HashMap<String,SimpleTextTerms>();
 
   @Override
   synchronized public Terms terms(String field) throws IOException {
@@ -641,7 +635,7 @@ class SimpleTextFieldsReader extends FieldsProducer {
         return null;
       } else {
         terms = new SimpleTextTerms(field, fp);
-        termsCache.put(field, terms);
+        termsCache.put(field, (SimpleTextTerms) terms);
       }
     }
     return terms;
@@ -655,5 +649,14 @@ class SimpleTextFieldsReader extends FieldsProducer {
   @Override
   public void close() throws IOException {
     in.close();
+  }
+
+  @Override
+  public long ramBytesUsed() {
+    long sizeInBytes = 0;
+    for(SimpleTextTerms simpleTextTerms : termsCache.values()) {
+      sizeInBytes += (simpleTextTerms!=null) ? simpleTextTerms.ramBytesUsed() : 0;
+    }
+    return sizeInBytes;
   }
 }

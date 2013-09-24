@@ -113,7 +113,7 @@ public class DefaultSolrHighlighter extends SolrHighlighter implements PluginInf
     formatters.put("", fmt);
     formatters.put(null, fmt);
 
-    // Load the formatters
+    // Load the encoders
     SolrEncoder enc = solrCore.initPlugins(info.getChildren("encoder"), encoders,SolrEncoder.class,null);
     if (enc == null) enc = new DefaultEncoder();
     encoders.put("", enc);
@@ -690,6 +690,11 @@ final class TokenOrderingFilter extends TokenFilter {
       restoreState(queue.removeFirst().state);
       return true;
     }
+  }
+
+  @Override
+  public void reset() throws IOException {
+    // this looks wrong: but its correct.
   }
 }
 

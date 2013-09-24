@@ -31,12 +31,9 @@ import org.apache.lucene.util.mutable.MutableValue;
 import org.apache.lucene.util.mutable.MutableValueInt;
 
 /**
- * Obtains int field values from the {@link org.apache.lucene.search.FieldCache}
- * using <code>getInts()</code>
- * and makes those values available as other numeric types, casting as needed. *
- *
+ * Obtains int field values from {@link FieldCache#getInts} and makes those
+ * values available as other numeric types, casting as needed.
  */
-
 public class IntFieldSource extends FieldCacheSource {
   final FieldCache.IntParser parser;
 
@@ -95,7 +92,7 @@ public class IntFieldSource extends FieldCacheSource {
 
       @Override
       public boolean exists(int doc) {
-        return valid.get(doc);
+        return arr.get(doc) != 0 || valid.get(doc);
       }
 
       @Override
@@ -150,7 +147,7 @@ public class IntFieldSource extends FieldCacheSource {
           @Override
           public void fillValue(int doc) {
             mval.value = arr.get(doc);
-            mval.exists = valid.get(doc);
+            mval.exists = mval.value != 0 || valid.get(doc);
           }
         };
       }

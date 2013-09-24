@@ -28,7 +28,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.ClosableThread;
 import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.DocCollection;
@@ -54,7 +53,7 @@ public class Overseer {
   public static final String DELETECORE = "deletecore";
   public static final String REMOVECOLLECTION = "removecollection";
   public static final String REMOVESHARD = "removeshard";
-  
+
   private static final int STATE_UPDATE_DELAY = 1500;  // delay between cloud state updates
 
 
@@ -203,13 +202,36 @@ public class Overseer {
         clusterState = createShard(clusterState, message);
       } else if ("updateshardstate".equals(operation))  {
         clusterState = updateShardState(clusterState, message);
+      } else if (OverseerCollectionProcessor.CREATECOLLECTION.equals(operation)) {
+         clusterState = buildCollection(clusterState, message);
       } else {
         throw new RuntimeException("unknown operation:" + operation
             + " contents:" + message.getProperties());
       }
       return clusterState;
     }
-      
+
+    private ClusterState buildCollection(ClusterState clusterState, ZkNodeProps message) {
+      String collection = message.getStr("name");
+      log.info("building a new collection: " + collection);
+      if(clusterState.getCollections().contains(collection) ){
+        log.warn("Collection {} already exists. exit" ,collection);
+        return clusterState;
+      }
+
+      ArrayList<String> shardNames = new ArrayList<String>();
+
+      if(ImplicitDocRouter.NAME.equals( message.getStr("router.name",DocRouter.DEFAULT_NAME))){
+        getShardNames(shardNames,message.getStr("shards",DocRouter.DEFAULT_NAME));
+      } else {
+        int numShards = message.getInt(ZkStateReader.NUM_SHARDS_PROP, -1);
+        if(numShards<1) throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,"numShards is a required parameter for 'compositeId' router");
+        getShardNames(numShards, shardNames);
+      }
+
+      return createCollection(clusterState,collection,shardNames,message);
+    }
+
     private ClusterState updateShardState(ClusterState clusterState, ZkNodeProps message) {
       String collection = message.getStr(ZkStateReader.COLLECTION_PROP);
       log.info("Update shard state invoked for collection: " + collection);
@@ -272,17 +294,6 @@ public class Overseer {
         final String collection = message.getStr(ZkStateReader.COLLECTION_PROP);
         assert collection.length() > 0 : message;
         
-        try {
-          if (!zkClient.exists(ZkStateReader.COLLECTIONS_ZKNODE + "/" + collection, true)) {
-            log.warn("Could not find collection node for " + collection + ", skipping publish state");
-          }
-        } catch (KeeperException e) {
-          throw new SolrException(ErrorCode.SERVER_ERROR, e);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          throw new SolrException(ErrorCode.SERVER_ERROR, e);
-        }
-        
         String coreNodeName = message.getStr(ZkStateReader.CORE_NODE_NAME_PROP);
         if (coreNodeName == null) {
           coreNodeName = getAssignedCoreNodeName(state, message);
@@ -294,12 +305,22 @@ public class Overseer {
           }
           message.getProperties().put(ZkStateReader.CORE_NODE_NAME_PROP, coreNodeName);
         }
-        Integer numShards = message.getStr(ZkStateReader.NUM_SHARDS_PROP)!=null?Integer.parseInt(message.getStr(ZkStateReader.NUM_SHARDS_PROP)):null;
+        Integer numShards = message.getInt(ZkStateReader.NUM_SHARDS_PROP, null);
         log.info("Update state numShards={} message={}", numShards, message);
+
+        String router = message.getStr(OverseerCollectionProcessor.ROUTER,DocRouter.DEFAULT_NAME);
+        List<String> shardNames  = new ArrayList<String>();
+
         //collection does not yet exist, create placeholders if num shards is specified
         boolean collectionExists = state.getCollections().contains(collection);
         if (!collectionExists && numShards!=null) {
-          state = createCollection(state, collection, numShards);
+          if(ImplicitDocRouter.NAME.equals(router)){
+            getShardNames(shardNames, message.getStr("shards",null));
+            numShards = shardNames.size();
+          }else {
+            getShardNames(numShards, shardNames);
+          }
+          state = createCollection(state, collection, shardNames, message);
         }
         
         // use the provided non null shardId
@@ -391,34 +412,42 @@ public class Overseer {
           return newClusterState;
       }
 
-    private  Map<String,Object> defaultCollectionProps() {
-      HashMap<String,Object> props = new HashMap<String, Object>(2);
-      props.put(DocCollection.DOC_ROUTER, DocRouter.DEFAULT_NAME);
-      return props;
-    }
+      private ClusterState createCollection(ClusterState state, String collectionName, List<String> shards , ZkNodeProps message) {
+        log.info("Create collection {} with shards {}", collectionName, shards);;
 
-      private ClusterState createCollection(ClusterState state, String collectionName, int numShards) {
-        log.info("Create collection {} with numShards {}", collectionName, numShards);
+//        String routerName = message.getStr(OverseerCollectionProcessor.ROUTER,DocRouter.DEFAULT_NAME);
+        DocRouter router = DocRouter.getDocRouter(message.getStr(OverseerCollectionProcessor.ROUTER,DocRouter.DEFAULT_NAME));
 
-        DocRouter router = DocRouter.DEFAULT;
-        List<DocRouter.Range> ranges = router.partitionRange(numShards, router.fullRange());
+        List<DocRouter.Range> ranges = router.partitionRange(shards.size(), router.fullRange());
 
         Map<String, DocCollection> newCollections = new LinkedHashMap<String,DocCollection>();
 
 
         Map<String, Slice> newSlices = new LinkedHashMap<String,Slice>();
         newCollections.putAll(state.getCollectionStates());
+        for (int i = 0; i < shards.size(); i++) {
+          String sliceName = shards.get(i);
+        /*}
         for (int i = 0; i < numShards; i++) {
-          final String sliceName = "shard" + (i+1);
+          final String sliceName = "shard" + (i+1);*/
 
-          Map<String,Object> sliceProps = new LinkedHashMap<String,Object>(1);
-          sliceProps.put(Slice.RANGE, ranges.get(i));
+          Map<String, Object> sliceProps = new LinkedHashMap<String, Object>(1);
+          sliceProps.put(Slice.RANGE, ranges == null? null: ranges.get(i));
 
           newSlices.put(sliceName, new Slice(sliceName, null, sliceProps));
         }
 
         // TODO: fill in with collection properties read from the /collections/<collectionName> node
-        Map<String,Object> collectionProps = defaultCollectionProps();
+        Map<String,Object> collectionProps = new HashMap<String,Object>();
+
+        for (Entry<String, Object> e : OverseerCollectionProcessor.COLL_PROPS.entrySet()) {
+          Object val = message.get(e.getKey());
+          if(val == null){
+            val = OverseerCollectionProcessor.COLL_PROPS.get(e.getKey());
+          }
+          if(val != null) collectionProps.put(e.getKey(),val);
+        }
+        collectionProps.put(DocCollection.DOC_ROUTER, DocRouter.getRouterSpec(message));
 
         DocCollection newCollection = new DocCollection(collectionName, newSlices, collectionProps, router);
 
@@ -466,7 +495,6 @@ public class Overseer {
       private ClusterState updateSlice(ClusterState state, String collectionName, Slice slice) {
         // System.out.println("###!!!### OLD CLUSTERSTATE: " + JSONUtil.toJSON(state.getCollectionStates()));
         // System.out.println("Updating slice:" + slice);
-
         Map<String, DocCollection> newCollections = new LinkedHashMap<String,DocCollection>(state.getCollectionStates());  // make a shallow copy
         DocCollection coll = newCollections.get(collectionName);
         Map<String,Slice> slices;
@@ -478,7 +506,7 @@ public class Overseer {
           // without explicitly creating a collection.  In this current case, we assume custom sharding with an "implicit" router.
           slices = new HashMap<String, Slice>(1);
           props = new HashMap<String,Object>(1);
-          props.put(DocCollection.DOC_ROUTER, ImplicitDocRouter.NAME);
+          props.put(DocCollection.DOC_ROUTER, ZkNodeProps.makeMap("name",ImplicitDocRouter.NAME));
           router = new ImplicitDocRouter();
         } else {
           props = coll.getProperties();
@@ -570,9 +598,10 @@ public class Overseer {
      * Remove collection slice from cloudstate
      */
     private ClusterState removeShard(final ClusterState clusterState, ZkNodeProps message) {
-
       final String collection = message.getStr(ZkStateReader.COLLECTION_PROP);
       final String sliceId = message.getStr(ZkStateReader.SHARD_ID_PROP);
+
+      log.info("Removing collection: " + collection + " shard: " + sliceId + " from clusterstate");
 
       final Map<String, DocCollection> newCollections = new LinkedHashMap<String,DocCollection>(clusterState.getCollectionStates()); // shallow copy
       DocCollection coll = newCollections.get(collection);
@@ -679,6 +708,28 @@ public class Overseer {
         return this.isClosed;
       }
     
+  }
+
+  static void getShardNames(Integer numShards, List<String> shardNames) {
+    if(numShards == null)
+      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "numShards" + " is a required param");
+    for (int i = 0; i < numShards; i++) {
+      final String sliceName = "shard" + (i + 1);
+      shardNames.add(sliceName);
+    }
+
+  }
+
+  static void getShardNames(List<String> shardNames, String shards) {
+    if(shards ==null)
+      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "shards" + " is a required param");
+    for (String s : shards.split(",")) {
+      if(s ==null || s.trim().isEmpty()) continue;
+      shardNames.add(s.trim());
+    }
+    if(shardNames.isEmpty())
+      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "shards" + " is a required param");
+
   }
 
   class OverseerThread extends Thread implements ClosableThread {

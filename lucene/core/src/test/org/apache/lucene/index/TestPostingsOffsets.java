@@ -301,7 +301,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
       final FieldCache.Ints docIDToID = FieldCache.DEFAULT.getInts(sub, "id", false);
       for(String term : terms) {
         //System.out.println("  term=" + term);
-        if (termsEnum.seekExact(new BytesRef(term), random().nextBoolean())) {
+        if (termsEnum.seekExact(new BytesRef(term))) {
           docs = termsEnum.docs(null, docs);
           assertNotNull(docs);
           int doc;
@@ -379,7 +379,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
       riw.addDocument(doc);
     }
     CompositeReader ir = riw.getReader();
-    SlowCompositeReaderWrapper slow = new SlowCompositeReaderWrapper(ir);
+    AtomicReader slow = SlowCompositeReaderWrapper.wrap(ir);
     FieldInfos fis = slow.getFieldInfos();
     assertEquals(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS, fis.fieldInfo("foo").getIndexOptions());
     slow.close();

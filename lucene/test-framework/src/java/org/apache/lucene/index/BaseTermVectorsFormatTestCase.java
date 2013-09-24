@@ -406,7 +406,7 @@ public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
       uniqueTerms.add(new BytesRef(term));
     }
     final BytesRef[] sortedTerms = uniqueTerms.toArray(new BytesRef[0]);
-    Arrays.sort(sortedTerms, terms.getComparator());
+    Arrays.sort(sortedTerms);
     final TermsEnum termsEnum = terms.iterator(random().nextBoolean() ? null : this.termsEnum.get());
     this.termsEnum.set(termsEnum);
     for (int i = 0; i < sortedTerms.length; ++i) {
@@ -500,9 +500,9 @@ public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
     assertNull(termsEnum.next());
     for (int i = 0; i < 5; ++i) {
       if (random().nextBoolean()) {
-        assertTrue(termsEnum.seekExact(RandomPicks.randomFrom(random(), tk.termBytes), random().nextBoolean()));
+        assertTrue(termsEnum.seekExact(RandomPicks.randomFrom(random(), tk.termBytes)));
       } else {
-        assertEquals(SeekStatus.FOUND, termsEnum.seekCeil(RandomPicks.randomFrom(random(), tk.termBytes), random().nextBoolean()));
+        assertEquals(SeekStatus.FOUND, termsEnum.seekCeil(RandomPicks.randomFrom(random(), tk.termBytes)));
       }
     }
   }

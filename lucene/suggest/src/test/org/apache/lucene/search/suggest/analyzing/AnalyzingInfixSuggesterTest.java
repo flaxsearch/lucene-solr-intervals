@@ -18,18 +18,21 @@ package org.apache.lucene.search.suggest.analyzing;
  */
 
 import java.io.File;
+import java.io.IOException;
 import java.io.Reader;
+import java.io.StringReader;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
+import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.search.BooleanClause;
-import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.PrefixQuery;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.core.StopFilter;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.search.suggest.Lookup.LookupResult;
 import org.apache.lucene.search.suggest.TermFreqPayload;
 import org.apache.lucene.search.suggest.TermFreqPayloadArrayIterator;
@@ -121,6 +124,109 @@ public class AnalyzingInfixSuggesterTest extends LuceneTestCase {
     assertEquals(10, results.get(0).value);
     assertEquals(new BytesRef("foobaz"), results.get(0).payload);
     suggester.close();
+  }
+
+  /** Used to return highlighted result; see {@link
+   *  LookupResult#highlightKey} */
+  private static final class LookupHighlightFragment {
+    /** Portion of text for this fragment. */
+    public final String text;
+
+    /** True if this text matched a part of the user's
+     *  query. */
+    public final boolean isHit;
+
+    /** Sole constructor. */
+    public LookupHighlightFragment(String text, boolean isHit) {
+      this.text = text;
+      this.isHit = isHit;
+    }
+
+    @Override
+    public String toString() {
+      return "LookupHighlightFragment(text=" + text + " isHit=" + isHit + ")";
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  public void testHighlightAsObject() throws Exception {
+    TermFreqPayload keys[] = new TermFreqPayload[] {
+      new TermFreqPayload("a penny saved is a penny earned", 10, new BytesRef("foobaz")),
+    };
+
+    File tempDir = _TestUtil.getTempDir("AnalyzingInfixSuggesterTest");
+
+    Analyzer a = new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false);
+    AnalyzingInfixSuggester suggester = new AnalyzingInfixSuggester(TEST_VERSION_CURRENT, tempDir, a, a, 3) {
+        @Override
+        protected Directory getDirectory(File path) {
+          return newDirectory();
+        }
+
+        @Override
+        protected Object highlight(String text, Set<String> matchedTokens, String prefixToken) throws IOException {
+          TokenStream ts = queryAnalyzer.tokenStream("text", new StringReader(text));
+          CharTermAttribute termAtt = ts.addAttribute(CharTermAttribute.class);
+          OffsetAttribute offsetAtt = ts.addAttribute(OffsetAttribute.class);
+          ts.reset();
+          List<LookupHighlightFragment> fragments = new ArrayList<LookupHighlightFragment>();
+          int upto = 0;
+          while (ts.incrementToken()) {
+            String token = termAtt.toString();
+            int startOffset = offsetAtt.startOffset();
+            int endOffset = offsetAtt.endOffset();
+            if (upto < startOffset) {
+              fragments.add(new LookupHighlightFragment(text.substring(upto, startOffset), false));
+              upto = startOffset;
+            } else if (upto > startOffset) {
+              continue;
+            }
+
+            if (matchedTokens.contains(token)) {
+              // Token matches.
+              fragments.add(new LookupHighlightFragment(text.substring(startOffset, endOffset), true));
+              upto = endOffset;
+            } else if (prefixToken != null && token.startsWith(prefixToken)) {
+              fragments.add(new LookupHighlightFragment(text.substring(startOffset, startOffset+prefixToken.length()), true));
+              if (prefixToken.length() < token.length()) {
+                fragments.add(new LookupHighlightFragment(text.substring(startOffset+prefixToken.length(), startOffset+token.length()), false));
+              }
+              upto = endOffset;
+            }
+          }
+          ts.end();
+          int endOffset = offsetAtt.endOffset();
+          if (upto < endOffset) {
+            fragments.add(new LookupHighlightFragment(text.substring(upto), false));
+          }
+          ts.close();
+
+          return fragments;
+        }
+      };
+    suggester.build(new TermFreqPayloadArrayIterator(keys));
+
+    List<LookupResult> results = suggester.lookup(_TestUtil.stringToCharSequence("ear", random()), 10, true, true);
+    assertEquals(1, results.size());
+    assertEquals("a penny saved is a penny <b>ear</b>ned", toString((List<LookupHighlightFragment>) results.get(0).highlightKey));
+    assertEquals(10, results.get(0).value);
+    assertEquals(new BytesRef("foobaz"), results.get(0).payload);
+    suggester.close();
+  }
+
+  public String toString(List<LookupHighlightFragment> fragments) {
+    StringBuilder sb = new StringBuilder();
+    for(LookupHighlightFragment fragment : fragments) {
+      if (fragment.isHit) {
+        sb.append("<b>");
+      }
+      sb.append(fragment.text);
+      if (fragment.isHit) {
+        sb.append("</b>");
+      }
+    }
+
+    return sb.toString();
   }
 
   public void testRandomMinPrefixLength() throws Exception {
@@ -243,24 +349,17 @@ public class AnalyzingInfixSuggesterTest extends LuceneTestCase {
     suggester.build(new TermFreqPayloadArrayIterator(keys));
     List<LookupResult> results = suggester.lookup(_TestUtil.stringToCharSequence("penn", random()), 10, true, true);
     assertEquals(1, results.size());
-    assertEquals("a <b>Penny</b> saved is a <b>penn</b>y earned", results.get(0).key);
+    assertEquals("a <b>Penn</b>y saved is a <b>penn</b>y earned", results.get(0).key);
     suggester.close();
 
-    // Try again, but overriding addPrefixMatch to normalize case:
+    // Try again, but overriding addPrefixMatch to highlight
+    // the entire hit:
     suggester = new AnalyzingInfixSuggester(TEST_VERSION_CURRENT, tempDir, a, a, 3) {
         @Override
         protected void addPrefixMatch(StringBuilder sb, String surface, String analyzed, String prefixToken) {
-          prefixToken = prefixToken.toLowerCase(Locale.ROOT);
-          String surfaceLower = surface.toLowerCase(Locale.ROOT);
           sb.append("<b>");
-          if (surfaceLower.startsWith(prefixToken)) {
-            sb.append(surface.substring(0, prefixToken.length()));
-            sb.append("</b>");
-            sb.append(surface.substring(prefixToken.length()));
-          } else {
-            sb.append(surface);
-            sb.append("</b>");
-          }
+          sb.append(surface);
+          sb.append("</b>");
         }
 
         @Override
@@ -271,7 +370,7 @@ public class AnalyzingInfixSuggesterTest extends LuceneTestCase {
     suggester.build(new TermFreqPayloadArrayIterator(keys));
     results = suggester.lookup(_TestUtil.stringToCharSequence("penn", random()), 10, true, true);
     assertEquals(1, results.size());
-    assertEquals("a <b>Penn</b>y saved is a <b>penn</b>y earned", results.get(0).key);
+    assertEquals("a <b>Penny</b> saved is a <b>penny</b> earned", results.get(0).key);
     suggester.close();
   }
 
@@ -294,63 +393,38 @@ public class AnalyzingInfixSuggesterTest extends LuceneTestCase {
     suggester.close();
   }
 
-  public void testForkLastToken() throws Exception {
-    Analyzer a = new Analyzer() {
+  public void testSuggestStopFilter() throws Exception {
+    final CharArraySet stopWords = StopFilter.makeStopSet(TEST_VERSION_CURRENT, "a");
+    Analyzer indexAnalyzer = new Analyzer() {
         @Override
         protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
           MockTokenizer tokens = new MockTokenizer(reader);
-          // ForkLastTokenFilter is a bit evil:
-          tokens.setEnableChecks(false);
           return new TokenStreamComponents(tokens,
-                                           new StopKeywordFilter(TEST_VERSION_CURRENT,
-                                                                 new ForkLastTokenFilter(tokens), StopKeywordFilter.makeStopSet(TEST_VERSION_CURRENT, "a")));
+                                           new StopFilter(TEST_VERSION_CURRENT, tokens, stopWords));
+        }
+      };
+
+    Analyzer queryAnalyzer = new Analyzer() {
+        @Override
+        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+          MockTokenizer tokens = new MockTokenizer(reader);
+          return new TokenStreamComponents(tokens,
+                                           new SuggestStopFilter(tokens, stopWords));
+        }
+      };
+
+    File tempDir = _TestUtil.getTempDir("AnalyzingInfixSuggesterTest");
+
+    AnalyzingInfixSuggester suggester = new AnalyzingInfixSuggester(TEST_VERSION_CURRENT, tempDir, indexAnalyzer, queryAnalyzer, 3) {
+        @Override
+        protected Directory getDirectory(File path) {
+          return newDirectory();
         }
       };
 
     TermFreqPayload keys[] = new TermFreqPayload[] {
       new TermFreqPayload("a bob for apples", 10, new BytesRef("foobaz")),
     };
-
-    File tempDir = _TestUtil.getTempDir("AnalyzingInfixSuggesterTest");
-
-    AnalyzingInfixSuggester suggester = new AnalyzingInfixSuggester(TEST_VERSION_CURRENT, tempDir, a, a, 3) {
-        @Override
-        protected Query finishQuery(BooleanQuery in, boolean allTermsRequired) {
-          List<BooleanClause> clauses = in.clauses();
-          if (clauses.size() >= 2 && allTermsRequired) {
-            String t1 = getTerm(clauses.get(clauses.size()-2).getQuery());
-            String t2 = getTerm(clauses.get(clauses.size()-1).getQuery());
-            if (t1.equals(t2)) {
-              // The last 2 tokens came from
-              // ForkLastTokenFilter; we remove them and
-              // replace them with a MUST BooleanQuery that
-              // SHOULDs the two of them together:
-              BooleanQuery sub = new BooleanQuery();
-              BooleanClause other = clauses.get(clauses.size()-2);
-              sub.add(new BooleanClause(clauses.get(clauses.size()-2).getQuery(), BooleanClause.Occur.SHOULD));
-              sub.add(new BooleanClause(clauses.get(clauses.size()-1).getQuery(), BooleanClause.Occur.SHOULD));
-              clauses.subList(clauses.size()-2, clauses.size()).clear();
-              clauses.add(new BooleanClause(sub, BooleanClause.Occur.MUST));
-            }
-          }
-          return in;
-        }
-
-        private String getTerm(Query query) {
-          if (query instanceof TermQuery) {
-            return ((TermQuery) query).getTerm().text();
-          } else if (query instanceof PrefixQuery) {
-            return ((PrefixQuery) query).getPrefix().text();
-          } else {
-            return null;
-          }
-        }
-
-        @Override
-        protected Directory getDirectory(File path) {
-          return newDirectory();
-        }
-      };
 
     suggester.build(new TermFreqPayloadArrayIterator(keys));
     List<LookupResult> results = suggester.lookup(_TestUtil.stringToCharSequence("a", random()), 10, true, true);

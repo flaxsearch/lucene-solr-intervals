@@ -23,7 +23,10 @@ import java.util.NoSuchElementException;
 
 import org.apache.lucene.codecs.DocValuesConsumer;
 import org.apache.lucene.util.Counter;
-import org.apache.lucene.util.packed.AppendingLongBuffer;
+import org.apache.lucene.util.OpenBitSet;
+import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.packed.AppendingDeltaPackedLongBuffer;
+import org.apache.lucene.util.packed.PackedInts;
 
 /** Buffers up pending long per doc, then flushes when
  *  segment flushes. */
@@ -31,17 +34,21 @@ class NumericDocValuesWriter extends DocValuesWriter {
 
   private final static long MISSING = 0L;
 
-  private AppendingLongBuffer pending;
+  private AppendingDeltaPackedLongBuffer pending;
   private final Counter iwBytesUsed;
   private long bytesUsed;
+  private final OpenBitSet docsWithField;
   private final FieldInfo fieldInfo;
+  private final boolean trackDocsWithField;
 
-  public NumericDocValuesWriter(FieldInfo fieldInfo, Counter iwBytesUsed) {
-    pending = new AppendingLongBuffer();
-    bytesUsed = pending.ramBytesUsed();
+  public NumericDocValuesWriter(FieldInfo fieldInfo, Counter iwBytesUsed, boolean trackDocsWithField) {
+    pending = new AppendingDeltaPackedLongBuffer(PackedInts.COMPACT);
+    docsWithField = new OpenBitSet();
+    bytesUsed = pending.ramBytesUsed() + docsWithFieldBytesUsed();
     this.fieldInfo = fieldInfo;
     this.iwBytesUsed = iwBytesUsed;
     iwBytesUsed.addAndGet(bytesUsed);
+    this.trackDocsWithField = trackDocsWithField;
   }
 
   public void addValue(int docID, long value) {
@@ -55,12 +62,20 @@ class NumericDocValuesWriter extends DocValuesWriter {
     }
 
     pending.add(value);
+    if (trackDocsWithField) {
+      docsWithField.set(docID);
+    }
 
     updateBytesUsed();
   }
+  
+  private long docsWithFieldBytesUsed() {
+    // size of the long[] + some overhead
+    return RamUsageEstimator.sizeOf(docsWithField.getBits()) + 64;
+  }
 
   private void updateBytesUsed() {
-    final long newBytesUsed = pending.ramBytesUsed();
+    final long newBytesUsed = pending.ramBytesUsed() + docsWithFieldBytesUsed();
     iwBytesUsed.addAndGet(newBytesUsed - bytesUsed);
     bytesUsed = newBytesUsed;
   }
@@ -89,7 +104,7 @@ class NumericDocValuesWriter extends DocValuesWriter {
   
   // iterates over the values we have in ram
   private class NumericIterator implements Iterator<Number> {
-    final AppendingLongBuffer.Iterator iter = pending.iterator();
+    final AppendingDeltaPackedLongBuffer.Iterator iter = pending.iterator();
     final int size = (int)pending.size();
     final int maxDoc;
     int upto;
@@ -108,14 +123,18 @@ class NumericDocValuesWriter extends DocValuesWriter {
       if (!hasNext()) {
         throw new NoSuchElementException();
       }
-      long value;
+      Long value;
       if (upto < size) {
-        value = iter.next();
+        long v = iter.next();
+        if (!trackDocsWithField || docsWithField.get(upto)) {
+          value = v;
+        } else {
+          value = null;
+        }
       } else {
-        value = 0;
+        value = trackDocsWithField ? null : MISSING;
       }
       upto++;
-      // TODO: make reusable Number
       return value;
     }
 

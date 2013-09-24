@@ -22,9 +22,11 @@ import java.util.List;
 
 import org.apache.lucene.index.MultiTermsEnum.TermsEnumIndex;
 import org.apache.lucene.index.MultiTermsEnum.TermsEnumWithSlice;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.packed.AppendingLongBuffer;
+import org.apache.lucene.util.packed.AppendingPackedLongBuffer;
 import org.apache.lucene.util.packed.MonotonicAppendingLongBuffer;
+import org.apache.lucene.util.packed.PackedInts;
 
 /**
  * A wrapper for CompositeIndexReader providing access to DocValues.
@@ -132,6 +134,51 @@ public class MultiDocValues {
           return values[subIndex].get(docID - starts[subIndex]);
         }
       };
+    }
+  }
+  
+  /** Returns a Bits for a reader's docsWithField (potentially merging on-the-fly) 
+   * <p>
+   * This is a slow way to access this bitset. Instead, access them per-segment
+   * with {@link AtomicReader#getDocsWithField(String)}
+   * </p> 
+   * */
+  public static Bits getDocsWithField(final IndexReader r, final String field) throws IOException {
+    final List<AtomicReaderContext> leaves = r.leaves();
+    final int size = leaves.size();
+    if (size == 0) {
+      return null;
+    } else if (size == 1) {
+      return leaves.get(0).reader().getDocsWithField(field);
+    }
+
+    boolean anyReal = false;
+    boolean anyMissing = false;
+    final Bits[] values = new Bits[size];
+    final int[] starts = new int[size+1];
+    for (int i = 0; i < size; i++) {
+      AtomicReaderContext context = leaves.get(i);
+      Bits v = context.reader().getDocsWithField(field);
+      if (v == null) {
+        v = new Bits.MatchNoBits(context.reader().maxDoc());
+        anyMissing = true;
+      } else {
+        anyReal = true;
+        if (v instanceof Bits.MatchAllBits == false) {
+          anyMissing = true;
+        }
+      }
+      values[i] = v;
+      starts[i] = context.docBase;
+    }
+    starts[size] = r.maxDoc();
+
+    if (!anyReal) {
+      return null;
+    } else if (!anyMissing) {
+      return new Bits.MatchAllBits(r.maxDoc());
+    } else {
+      return new MultiBits(values, starts, false);
     }
   }
 
@@ -277,7 +324,7 @@ public class MultiDocValues {
     // globalOrd -> (globalOrd - segmentOrd)
     final MonotonicAppendingLongBuffer globalOrdDeltas;
     // globalOrd -> sub index
-    final AppendingLongBuffer subIndexes;
+    final AppendingPackedLongBuffer subIndexes;
     // segmentOrd -> (globalOrd - segmentOrd)
     final MonotonicAppendingLongBuffer ordDeltas[];
     
@@ -293,8 +340,8 @@ public class MultiDocValues {
       // create the ordinal mappings by pulling a termsenum over each sub's 
       // unique terms, and walking a multitermsenum over those
       this.owner = owner;
-      globalOrdDeltas = new MonotonicAppendingLongBuffer();
-      subIndexes = new AppendingLongBuffer();
+      globalOrdDeltas = new MonotonicAppendingLongBuffer(PackedInts.COMPACT);
+      subIndexes = new AppendingPackedLongBuffer(PackedInts.COMPACT);
       ordDeltas = new MonotonicAppendingLongBuffer[subs.length];
       for (int i = 0; i < ordDeltas.length; i++) {
         ordDeltas[i] = new MonotonicAppendingLongBuffer();
@@ -403,7 +450,7 @@ public class MultiDocValues {
     public int getOrd(int docID) {
       int subIndex = ReaderUtil.subIndex(docID, docStarts);
       int segmentOrd = values[subIndex].getOrd(docID - docStarts[subIndex]);
-      return (int) mapping.getGlobalOrd(subIndex, segmentOrd);
+      return segmentOrd == -1 ? segmentOrd : (int) mapping.getGlobalOrd(subIndex, segmentOrd);
     }
  
     @Override

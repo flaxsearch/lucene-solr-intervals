@@ -31,13 +31,9 @@ import org.apache.lucene.util.mutable.MutableValue;
 import org.apache.lucene.util.mutable.MutableValueLong;
 
 /**
- * Obtains float field values from the {@link org.apache.lucene.search.FieldCache}
- * using <code>getFloats()</code>
- * and makes those values available as other numeric types, casting as needed.
- *
- *
+ * Obtains long field values from {@link FieldCache#getLongs} and makes those
+ * values available as other numeric types, casting as needed.
  */
-
 public class LongFieldSource extends FieldCacheSource {
 
   protected final FieldCache.LongParser parser;
@@ -81,7 +77,7 @@ public class LongFieldSource extends FieldCacheSource {
 
       @Override
       public boolean exists(int doc) {
-        return valid.get(doc);
+        return arr.get(doc) != 0 || valid.get(doc);
       }
 
       @Override
@@ -141,7 +137,7 @@ public class LongFieldSource extends FieldCacheSource {
           @Override
           public void fillValue(int doc) {
             mval.value = arr.get(doc);
-            mval.exists = valid.get(doc);
+            mval.exists = mval.value != 0 || valid.get(doc);
           }
         };
       }

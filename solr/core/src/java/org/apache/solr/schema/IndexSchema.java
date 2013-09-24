@@ -51,6 +51,7 @@ import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
@@ -379,6 +380,7 @@ public class IndexSchema {
     protected final HashMap<String, Analyzer> analyzers;
 
     SolrIndexAnalyzer() {
+      super(PER_FIELD_REUSE_STRATEGY);
       analyzers = analyzerCache();
     }
 
@@ -397,13 +399,11 @@ public class IndexSchema {
       return analyzer != null ? analyzer : getDynamicFieldType(fieldName).getAnalyzer();
     }
 
-    @Override
-    protected TokenStreamComponents wrapComponents(String fieldName, TokenStreamComponents components) {
-      return components;
-    }
   }
 
   private class SolrQueryAnalyzer extends SolrIndexAnalyzer {
+    SolrQueryAnalyzer() {}
+
     @Override
     protected HashMap<String, Analyzer> analyzerCache() {
       HashMap<String, Analyzer> cache = new HashMap<String, Analyzer>();
@@ -606,10 +606,13 @@ public class IndexSchema {
         aware.inform(this);
       }
     } catch (SolrException e) {
-      throw e;
+      throw new SolrException(ErrorCode.getErrorCode(e.code()), e.getMessage() + ". Schema file is " +
+          loader.getInstanceDir() + resourceName, e);
     } catch(Exception e) {
       // unexpected exception...
-      throw new SolrException(ErrorCode.SERVER_ERROR, "Schema Parsing Failed: " + e.getMessage(), e);
+      throw new SolrException(ErrorCode.SERVER_ERROR,
+          "Schema Parsing Failed: " + e.getMessage() + ". Schema file is " + loader.getInstanceDir() + resourceName,
+          e);
     }
 
     // create the field analyzers
@@ -671,6 +674,14 @@ public class IndexSchema {
           requiredFields.add(f);
         }
       } else if (node.getNodeName().equals(DYNAMIC_FIELD)) {
+        if( f.getDefaultValue() != null ) {
+          throw new SolrException(ErrorCode.SERVER_ERROR,
+                                  DYNAMIC_FIELD + " can not have a default value: " + name);
+        }
+        if ( f.isRequired() ) {
+          throw new SolrException(ErrorCode.SERVER_ERROR,
+                                  DYNAMIC_FIELD + " can not be required: " + name);
+        }
         if (isValidFieldGlob(name)) {
           // make sure nothing else has the same path
           addDynamicField(dFields, f);

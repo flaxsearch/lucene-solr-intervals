@@ -19,17 +19,17 @@ package org.apache.lucene.codecs.blockterms;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 import org.apache.lucene.codecs.CodecUtil;
-import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.PostingsConsumer;
 import org.apache.lucene.codecs.PostingsWriterBase;
+import org.apache.lucene.codecs.PushFieldsConsumer;
 import org.apache.lucene.codecs.TermStats;
+import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.TermsConsumer;
-import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentWriteState;
@@ -52,14 +52,15 @@ import org.apache.lucene.util.RamUsageEstimator;
  * @lucene.experimental
  */
 
-public class BlockTermsWriter extends FieldsConsumer {
+public class BlockTermsWriter extends PushFieldsConsumer {
 
   final static String CODEC_NAME = "BLOCK_TERMS_DICT";
 
   // Initial format
   public static final int VERSION_START = 0;
   public static final int VERSION_APPEND_ONLY = 1;
-  public static final int VERSION_CURRENT = VERSION_APPEND_ONLY;
+  public static final int VERSION_META_ARRAY = 2;
+  public static final int VERSION_CURRENT = VERSION_META_ARRAY;
 
   /** Extension of terms file */
   static final String TERMS_EXTENSION = "tib";
@@ -77,8 +78,9 @@ public class BlockTermsWriter extends FieldsConsumer {
     public final long sumTotalTermFreq;
     public final long sumDocFreq;
     public final int docCount;
+    public final int longsSize;
 
-    public FieldMetaData(FieldInfo fieldInfo, long numTerms, long termsStartPointer, long sumTotalTermFreq, long sumDocFreq, int docCount) {
+    public FieldMetaData(FieldInfo fieldInfo, long numTerms, long termsStartPointer, long sumTotalTermFreq, long sumDocFreq, int docCount, int longsSize) {
       assert numTerms > 0;
       this.fieldInfo = fieldInfo;
       this.termsStartPointer = termsStartPointer;
@@ -86,6 +88,7 @@ public class BlockTermsWriter extends FieldsConsumer {
       this.sumTotalTermFreq = sumTotalTermFreq;
       this.sumDocFreq = sumDocFreq;
       this.docCount = docCount;
+      this.longsSize = longsSize;
     }
   }
 
@@ -96,6 +99,7 @@ public class BlockTermsWriter extends FieldsConsumer {
   public BlockTermsWriter(TermsIndexWriterBase termsIndexWriter,
       SegmentWriteState state, PostingsWriterBase postingsWriter)
       throws IOException {
+    super(state);
     final String termsFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, TERMS_EXTENSION);
     this.termsIndexWriter = termsIndexWriter;
     out = state.directory.createOutput(termsFileName, state.context);
@@ -109,7 +113,7 @@ public class BlockTermsWriter extends FieldsConsumer {
       
       //System.out.println("BTW.init seg=" + state.segmentName);
       
-      postingsWriter.start(out); // have consumer write its format/header
+      postingsWriter.init(out); // have consumer write its format/header
       success = true;
     } finally {
       if (!success) {
@@ -133,9 +137,7 @@ public class BlockTermsWriter extends FieldsConsumer {
 
   @Override
   public void close() throws IOException {
-
     try {
-      
       final long dirStart = out.getFilePointer();
 
       out.writeVInt(fields.size());
@@ -148,6 +150,9 @@ public class BlockTermsWriter extends FieldsConsumer {
         }
         out.writeVLong(field.sumDocFreq);
         out.writeVInt(field.docCount);
+        if (VERSION_CURRENT >= VERSION_META_ARRAY) {
+          out.writeVInt(field.longsSize);
+        }
       }
       writeTrailer(dirStart);
     } finally {
@@ -161,7 +166,7 @@ public class BlockTermsWriter extends FieldsConsumer {
   
   private static class TermEntry {
     public final BytesRef term = new BytesRef();
-    public TermStats stats;
+    public BlockTermState state;
   }
 
   class TermsWriter extends TermsConsumer {
@@ -173,6 +178,7 @@ public class BlockTermsWriter extends FieldsConsumer {
     long sumTotalTermFreq;
     long sumDocFreq;
     int docCount;
+    int longsSize;
 
     private TermEntry[] pendingTerms;
 
@@ -190,15 +196,10 @@ public class BlockTermsWriter extends FieldsConsumer {
         pendingTerms[i] = new TermEntry();
       }
       termsStartPointer = out.getFilePointer();
-      postingsWriter.setField(fieldInfo);
       this.postingsWriter = postingsWriter;
+      this.longsSize = postingsWriter.setField(fieldInfo);
     }
     
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
-    }
-
     @Override
     public PostingsConsumer startTerm(BytesRef text) throws IOException {
       //System.out.println("BTW: startTerm term=" + fieldInfo.name + ":" + text.utf8ToString() + " " + text + " seg=" + segment);
@@ -237,11 +238,12 @@ public class BlockTermsWriter extends FieldsConsumer {
       }
       final TermEntry te = pendingTerms[pendingCount];
       te.term.copyBytes(text);
-      te.stats = stats;
+      te.state = postingsWriter.newTermState();
+      te.state.docFreq = stats.docFreq;
+      te.state.totalTermFreq = stats.totalTermFreq;
+      postingsWriter.finishTerm(te.state);
 
       pendingCount++;
-
-      postingsWriter.finishTerm(stats);
       numTerms++;
     }
 
@@ -264,7 +266,8 @@ public class BlockTermsWriter extends FieldsConsumer {
                                      termsStartPointer,
                                      sumTotalTermFreq,
                                      sumDocFreq,
-                                     docCount));
+                                     docCount,
+                                     longsSize));
       }
     }
 
@@ -285,6 +288,7 @@ public class BlockTermsWriter extends FieldsConsumer {
     }
 
     private final RAMOutputStream bytesWriter = new RAMOutputStream();
+    private final RAMOutputStream bufferWriter = new RAMOutputStream();
 
     private void flushBlock() throws IOException {
       //System.out.println("BTW.flushBlock seg=" + segment + " pendingCount=" + pendingCount + " fp=" + out.getFilePointer());
@@ -318,19 +322,34 @@ public class BlockTermsWriter extends FieldsConsumer {
       // TODO: cutover to better intblock codec.  simple64?
       // write prefix, suffix first:
       for(int termCount=0;termCount<pendingCount;termCount++) {
-        final TermStats stats = pendingTerms[termCount].stats;
-        assert stats != null;
-        bytesWriter.writeVInt(stats.docFreq);
+        final BlockTermState state = pendingTerms[termCount].state;
+        assert state != null;
+        bytesWriter.writeVInt(state.docFreq);
         if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
-          bytesWriter.writeVLong(stats.totalTermFreq-stats.docFreq);
+          bytesWriter.writeVLong(state.totalTermFreq-state.docFreq);
         }
       }
-
       out.writeVInt((int) bytesWriter.getFilePointer());
       bytesWriter.writeTo(out);
       bytesWriter.reset();
 
-      postingsWriter.flushTermsBlock(pendingCount, pendingCount);
+      // 4th pass: write the metadata 
+      long[] longs = new long[longsSize];
+      boolean absolute = true;
+      for(int termCount=0;termCount<pendingCount;termCount++) {
+        final BlockTermState state = pendingTerms[termCount].state;
+        postingsWriter.encodeTerm(longs, bufferWriter, fieldInfo, state, absolute);
+        for (int i = 0; i < longsSize; i++) {
+          bytesWriter.writeVLong(longs[i]);
+        }
+        bufferWriter.writeTo(bytesWriter);
+        bufferWriter.reset();
+        absolute = false;
+      }
+      out.writeVInt((int) bytesWriter.getFilePointer());
+      bytesWriter.writeTo(out);
+      bytesWriter.reset();
+
       lastPrevTerm.copyBytes(pendingTerms[pendingCount-1].term);
       pendingCount = 0;
     }

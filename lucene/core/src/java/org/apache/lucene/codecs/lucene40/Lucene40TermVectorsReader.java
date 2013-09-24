@@ -20,7 +20,6 @@ package org.apache.lucene.codecs.lucene40;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -361,13 +360,6 @@ public class Lucene40TermVectorsReader extends TermVectorsReader implements Clos
     }
 
     @Override
-    public Comparator<BytesRef> getComparator() {
-      // TODO: really indexer hardwires
-      // this...?  I guess codec could buffer and re-sort...
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
-    }
-
-    @Override
     public boolean hasOffsets() {
       return storeOffsets;
     }
@@ -433,7 +425,7 @@ public class Lucene40TermVectorsReader extends TermVectorsReader implements Clos
 
     // NOTE: slow!  (linear scan)
     @Override
-    public SeekStatus seekCeil(BytesRef text, boolean useCache)
+    public SeekStatus seekCeil(BytesRef text)
       throws IOException {
       if (nextTerm != 0) {
         final int cmp = text.compareTo(term);
@@ -568,11 +560,6 @@ public class Lucene40TermVectorsReader extends TermVectorsReader implements Clos
       }
       docsAndPositionsEnum.reset(liveDocs, positions, startOffsets, endOffsets, payloadOffsets, payloadData);
       return docsAndPositionsEnum;
-    }
-
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
     }
   }
 
@@ -762,6 +749,11 @@ public class Lucene40TermVectorsReader extends TermVectorsReader implements Clos
     }
     
     return new Lucene40TermVectorsReader(fieldInfos, cloneTvx, cloneTvd, cloneTvf, size, numTotalDocs);
+  }
+
+  @Override
+  public long ramBytesUsed() {
+    return 0;
   }
 }
 

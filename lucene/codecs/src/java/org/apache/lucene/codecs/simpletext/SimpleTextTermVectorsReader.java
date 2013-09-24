@@ -19,7 +19,6 @@ package org.apache.lucene.codecs.simpletext;
 
 import java.io.IOException;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.SortedMap;
@@ -272,11 +271,6 @@ public class SimpleTextTermVectorsReader extends TermVectorsReader {
     }
 
     @Override
-    public Comparator<BytesRef> getComparator() {
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
-    }
-
-    @Override
     public long size() throws IOException {
       return terms.size();
     }
@@ -331,7 +325,7 @@ public class SimpleTextTermVectorsReader extends TermVectorsReader {
     }
     
     @Override
-    public SeekStatus seekCeil(BytesRef text, boolean useCache) throws IOException {
+    public SeekStatus seekCeil(BytesRef text) throws IOException {
       iterator = terms.tailMap(text).entrySet().iterator();
       if (!iterator.hasNext()) {
         return SeekStatus.END;
@@ -393,11 +387,6 @@ public class SimpleTextTermVectorsReader extends TermVectorsReader {
       SimpleTVDocsAndPositionsEnum e = new SimpleTVDocsAndPositionsEnum();
       e.reset(liveDocs, postings.positions, postings.startOffsets, postings.endOffsets, postings.payloads);
       return e;
-    }
-
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
     }
   }
   
@@ -537,5 +526,10 @@ public class SimpleTextTermVectorsReader extends TermVectorsReader {
     public long cost() {
       return 1;
     }
+  }
+
+  @Override
+  public long ramBytesUsed() {
+    return 0;
   }
 }

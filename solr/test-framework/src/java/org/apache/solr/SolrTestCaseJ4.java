@@ -20,9 +20,13 @@ package org.apache.solr;
 import com.carrotsearch.randomizedtesting.RandomizedContext;
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakFilters;
 import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
+import org.apache.commons.codec.Charsets;
 import org.apache.commons.io.FileUtils;
+import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util._TestUtil;
 import org.apache.lucene.util.QuickPatchThreadsFilter;
 import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrException;
@@ -34,6 +38,7 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.XML;
 import org.apache.solr.core.ConfigSolr;
+import org.apache.solr.core.ConfigSolrXmlOld;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.SolrConfig;
@@ -68,6 +73,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -93,7 +99,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
     QuickPatchThreadsFilter.class
 })
 public abstract class SolrTestCaseJ4 extends LuceneTestCase {
-  private static String coreName = CoreContainer.DEFAULT_DEFAULT_CORE_NAME;
+  private static String coreName = ConfigSolrXmlOld.DEFAULT_DEFAULT_CORE_NAME;
   public static int DEFAULT_CONNECTION_TIMEOUT = 15000;  // default socket connection timeout in ms
 
 
@@ -110,14 +116,14 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   @SuppressWarnings("unused")
   private static void beforeClass() {
     System.setProperty("jetty.testMode", "true");
-    
-    System.setProperty("useCompoundFile", Boolean.toString(random().nextBoolean()));
     System.setProperty("enable.update.log", usually() ? "true" : "false");
     System.setProperty("tests.shardhandler.randomSeed", Long.toString(random().nextLong()));
+    System.setProperty("solr.clustering.enabled", "false");
     setupLogging();
     startTrackingSearchers();
     startTrackingZkClients();
     ignoreException("ignore_exception");
+    newRandomConfig();
   }
 
   @AfterClass
@@ -128,7 +134,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     endTrackingSearchers();
     endTrackingZkClients();
     resetFactory();
-    coreName = CoreContainer.DEFAULT_DEFAULT_CORE_NAME;
+    coreName = ConfigSolrXmlOld.DEFAULT_DEFAULT_CORE_NAME;
     System.clearProperty("jetty.testMode");
     System.clearProperty("tests.shardhandler.randomSeed");
     System.clearProperty("enable.update.log");
@@ -179,6 +185,28 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     SolrResourceLoader loader = new SolrResourceLoader(solrHome.getAbsolutePath());
     h = new TestHarness(loader, ConfigSolr.fromFile(loader, new File(solrHome, "solr.xml")));
     lrf = h.getRequestFactory("standard", 0, 20, CommonParams.VERSION, "2.2");
+  }
+  
+  /** sets system properties based on 
+   * {@link #newIndexWriterConfig(org.apache.lucene.util.Version, org.apache.lucene.analysis.Analyzer)}
+   * 
+   * configs can use these system properties to vary the indexwriter settings
+   */
+  public static void newRandomConfig() {
+    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+
+    System.setProperty("useCompoundFile", String.valueOf(iwc.getUseCompoundFile()));
+
+    System.setProperty("solr.tests.maxBufferedDocs", String.valueOf(iwc.getMaxBufferedDocs()));
+    System.setProperty("solr.tests.ramBufferSizeMB", String.valueOf(iwc.getRAMBufferSizeMB()));
+    System.setProperty("solr.tests.mergeScheduler", iwc.getMergeScheduler().getClass().getName());
+
+    // don't ask iwc.getMaxThreadStates(), sometimes newIWC uses 
+    // RandomDocumentsWriterPerThreadPool and all hell breaks loose
+    int maxIndexingThreads = rarely(random())
+      ? _TestUtil.nextInt(random(), 5, 20) // crazy value
+      : _TestUtil.nextInt(random(), 1, 4); // reasonable value
+    System.setProperty("solr.tests.maxIndexingThreads", String.valueOf(maxIndexingThreads));
   }
 
   @Override
@@ -943,6 +971,10 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     return sd;
   }
 
+  public static List<SolrInputDocument> sdocs(SolrInputDocument... docs) {
+    return Arrays.asList(docs);
+  }
+
   /** Converts "test JSON" and returns standard JSON.
    *  Currently this only consists of changing unescaped single quotes to double quotes,
    *  and escaped single quotes to single quotes.
@@ -1501,7 +1533,7 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   }
 
   /** Return a Map from field value to a list of document ids */
-  Map<Comparable, List<Comparable>> invertField(Map<Comparable, Doc> model, String field) {
+  public Map<Comparable, List<Comparable>> invertField(Map<Comparable, Doc> model, String field) {
     Map<Comparable, List<Comparable>> value_to_id = new HashMap<Comparable, List<Comparable>>();
 
     // invert field
@@ -1567,15 +1599,61 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
       throw new RuntimeException("XPath is invalid", e2);
     }
   }
-  // Creates a mininmal conf dir.
-  public void copyMinConf(File dstRoot) throws IOException {
+  public static void copyMinConf(File dstRoot) throws IOException {
+    copyMinConf(dstRoot, null);
+  }
+
+  // Creates a minimal conf dir. Optionally adding in a core.properties file from the string passed in
+  // the string to write to the core.properties file may be null in which case nothing is done with it.
+  // propertiesContent may be an empty string, which will actually work.
+  public static void copyMinConf(File dstRoot, String propertiesContent) throws IOException {
 
     File subHome = new File(dstRoot, "conf");
-    assertTrue("Failed to make subdirectory ", dstRoot.mkdirs());
+    if (! dstRoot.exists()) {
+      assertTrue("Failed to make subdirectory ", dstRoot.mkdirs());
+    }
+    if (propertiesContent != null) {
+      FileUtils.writeStringToFile(new File(dstRoot, "core.properties"), propertiesContent, Charsets.UTF_8.toString());
+    }
     String top = SolrTestCaseJ4.TEST_HOME() + "/collection1/conf";
     FileUtils.copyFile(new File(top, "schema-tiny.xml"), new File(subHome, "schema.xml"));
     FileUtils.copyFile(new File(top, "solrconfig-minimal.xml"), new File(subHome, "solrconfig.xml"));
     FileUtils.copyFile(new File(top, "solrconfig.snippet.randomindexconfig.xml"), new File(subHome, "solrconfig.snippet.randomindexconfig.xml"));
+  }
+
+  // Creates minimal full setup, including the old solr.xml file that used to be hard coded in ConfigSolrXmlOld
+  // TODO: remove for 5.0
+  public static void copyMinFullSetup(File dstRoot) throws IOException {
+    if (! dstRoot.exists()) {
+      assertTrue("Failed to make subdirectory ", dstRoot.mkdirs());
+    }
+    File xmlF = new File(SolrTestCaseJ4.TEST_HOME(), "solr.xml");
+    FileUtils.copyFile(xmlF, new File(dstRoot, "solr.xml"));
+    copyMinConf(dstRoot);
+  }
+
+  // Creates a consistent configuration, _including_ solr.xml at dstRoot. Creates collection1/conf and copies
+  // the stock files in there. Seems to be indicated for some tests when we remove the default, hard-coded
+  // solr.xml from being automatically synthesized from SolrConfigXmlOld.DEFAULT_SOLR_XML.
+  public static void copySolrHomeToTemp(File dstRoot, String collection) throws IOException {
+    if (!dstRoot.exists()) {
+      assertTrue("Failed to make subdirectory ", dstRoot.mkdirs());
+    }
+
+    FileUtils.copyFile(new File(SolrTestCaseJ4.TEST_HOME(), "solr.xml"), new File(dstRoot, "solr.xml"));
+
+    File subHome = new File(dstRoot, collection + File.separator + "conf");
+    String top = SolrTestCaseJ4.TEST_HOME() + "/collection1/conf";
+    FileUtils.copyFile(new File(top, "currency.xml"), new File(subHome, "currency.xml"));
+    FileUtils.copyFile(new File(top, "mapping-ISOLatin1Accent.txt"), new File(subHome, "mapping-ISOLatin1Accent.txt"));
+    FileUtils.copyFile(new File(top, "old_synonyms.txt"), new File(subHome, "old_synonyms.txt"));
+    FileUtils.copyFile(new File(top, "open-exchange-rates.json"), new File(subHome, "open-exchange-rates.json"));
+    FileUtils.copyFile(new File(top, "protwords.txt"), new File(subHome, "protwords.txt"));
+    FileUtils.copyFile(new File(top, "schema.xml"), new File(subHome, "schema.xml"));
+    FileUtils.copyFile(new File(top, "solrconfig.snippet.randomindexconfig.xml"), new File(subHome, "solrconfig.snippet.randomindexconfig.xml"));
+    FileUtils.copyFile(new File(top, "solrconfig.xml"), new File(subHome, "solrconfig.xml"));
+    FileUtils.copyFile(new File(top, "stopwords.txt"), new File(subHome, "stopwords.txt"));
+    FileUtils.copyFile(new File(top, "synonyms.txt"), new File(subHome, "synonyms.txt"));
   }
 
   public static CoreDescriptorBuilder buildCoreDescriptor(CoreContainer container, String name, String instancedir) {

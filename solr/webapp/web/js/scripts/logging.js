@@ -15,7 +15,7 @@
  limitations under the License.
 */
 
-var loglevel_path = null;
+var loglevel_path = app.config.solr_path + '/admin/info/logging';
 var frame_element = null;
 
 var logging_handler = function( response, text_status, xhr )
@@ -334,8 +334,8 @@ var load_logging_viewer = function()
             var lines = doc.message.split( "\n" );
             if( 1 < lines.length )
             {
-              doc.message = lines[0];
               doc.trace = doc.message;
+              doc.message = lines[0];
               delete lines;
             }
           }
@@ -360,14 +360,7 @@ var load_logging_viewer = function()
           if( has_trace )
           {
             content += '<tr class="trace">' + "\n";
-              
-              // (1) with colspan
               content += '<td colspan="4"><pre>' + doc.trace.esc() + '</pre></td>' + "\n";
-              
-              // (2) without colspan
-              //content += '<td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>';
-              //content += '<td>' + doc.trace.esc().replace( /\n/g, '<br>' ) + '</td>' + "\n";
-
             content += '</tr>' + "\n";
           }
 
@@ -409,8 +402,6 @@ sammy.get
   /^#\/(~logging)$/,
   function( context )
   {
-    var core_basepath = $( '[data-basepath]', app.menu_element ).attr( 'data-basepath' );
-    loglevel_path = core_basepath + '/admin/logging';
     var content_element = $( '#content' );
 
     $.get
@@ -495,8 +486,6 @@ sammy.get
   /^#\/(~logging)\/level$/,
   function( context )
   {
-    var core_basepath = $( '[data-basepath]', app.menu_element ).attr( 'data-basepath' );
-    loglevel_path = core_basepath + '/admin/logging';
     var content_element = $( '#content' );
 
     $.get

@@ -756,6 +756,11 @@ public class MemoryIndex {
       return null;
     }
 
+    @Override
+    public Bits getDocsWithField(String field) throws IOException {
+      return null;
+    }
+
     private class MemoryFields extends Fields {
       @Override
       public Iterator<String> iterator() {
@@ -796,11 +801,6 @@ public class MemoryIndex {
             @Override 
             public TermsEnum iterator(TermsEnum reuse) {
               return new MemoryTermsEnum(info);
-            }
-
-            @Override
-            public Comparator<BytesRef> getComparator() {
-              return BytesRef.getUTF8SortedAsUnicodeComparator();
             }
 
             @Override
@@ -885,13 +885,13 @@ public class MemoryIndex {
     
 
       @Override
-      public boolean seekExact(BytesRef text, boolean useCache) {
+      public boolean seekExact(BytesRef text) {
         termUpto = binarySearch(text, br, 0, info.terms.size()-1, info.terms, info.sortedTerms, BytesRef.getUTF8SortedAsUnicodeComparator());
         return termUpto >= 0;
       }
 
       @Override
-      public SeekStatus seekCeil(BytesRef text, boolean useCache) {
+      public SeekStatus seekCeil(BytesRef text) {
         termUpto = binarySearch(text, br, 0, info.terms.size()-1, info.terms, info.sortedTerms, BytesRef.getUTF8SortedAsUnicodeComparator());
         if (termUpto < 0) { // not found; choose successor
           termUpto = -termUpto-1;
@@ -958,11 +958,6 @@ public class MemoryIndex {
         }
         final int ord = info.sortedTerms[termUpto];
         return ((MemoryDocsAndPositionsEnum) reuse).reset(liveDocs, info.sliceArray.start[ord], info.sliceArray.end[ord], info.sliceArray.freq[ord]);
-      }
-
-      @Override
-      public Comparator<BytesRef> getComparator() {
-        return BytesRef.getUTF8SortedAsUnicodeComparator();
       }
 
       @Override

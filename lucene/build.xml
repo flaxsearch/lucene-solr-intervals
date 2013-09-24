@@ -283,6 +283,7 @@
     <!-- codecs: problems -->
     <!-- core: problems -->
     <check-missing-javadocs dir="build/docs/demo" level="method"/>
+    <check-missing-javadocs dir="build/docs/expressions" level="method"/>
     <!-- facet: problems -->
     <!-- grouping: problems -->
     <!-- highlighter: problems -->
@@ -597,6 +598,12 @@
     <modules-crawl target="jar-core"/>
   </target>
 
+  <target name="jar-src" description="create source jars for all modules">
+    <ant dir="${common.dir}/core" target="jar-src" inheritAll="false" />
+    <ant dir="${common.dir}/test-framework" target="jar-src" inheritAll="false" />
+    <modules-crawl target="jar-src"/>
+  </target>
+
   <target name="get-jenkins-line-docs" unless="enwiki.exists">
     <sequential>
       <!-- TODO: can get .lzma instead (it's ~17% smaller) but there's no builtin ant support...? -->
@@ -608,6 +615,15 @@
 
   <target name="jar-checksums" depends="resolve">
     <jar-checksum-macro srcdir="${common.dir}" dstdir="${common.dir}/licenses"/>
+  </target>
+
+  <target name="regenerate">
+    <subant target="regenerate" failonerror="true" inheritall="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+      <fileset dir="core" includes="build.xml"/>
+      <fileset dir="test-framework" includes="build.xml"/>
+    </subant>
+    <modules-crawl target="regenerate"/>
   </target>
 
 </project>

@@ -30,18 +30,30 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
 
 import org.apache.http.client.HttpClient;
+import org.apache.solr.client.solrj.ResponseParser;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
 import org.apache.solr.client.solrj.request.IsUpdateRequest;
+import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.Aliases;
 import org.apache.solr.common.cloud.ClusterState;
+import org.apache.solr.common.cloud.DocCollection;
+import org.apache.solr.common.cloud.DocRouter;
+import org.apache.solr.common.cloud.ImplicitDocRouter;
+import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
@@ -49,7 +61,9 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.cloud.ZooKeeperException;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.params.UpdateParams;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.SolrjNamedThreadFactory;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.zookeeper.KeeperException;
 
@@ -58,6 +72,10 @@ import org.apache.zookeeper.KeeperException;
  * Instances of this class communicate with Zookeeper to discover
  * Solr endpoints for SolrCloud collections, and then use the 
  * {@link LBHttpSolrServer} to issue requests.
+ * 
+ * This class assumes the id field for your documents is called
+ * 'id' - if this is not the case, you must set the right name
+ * with {@link #setIdField(String)}.
  */
 public class CloudSolrServer extends SolrServer {
   private volatile ZkStateReader zkStateReader;
@@ -65,7 +83,8 @@ public class CloudSolrServer extends SolrServer {
   private int zkConnectTimeout = 10000;
   private int zkClientTimeout = 10000;
   private volatile String defaultCollection;
-  private LBHttpSolrServer lbServer;
+  private final LBHttpSolrServer lbServer;
+  private final boolean shutdownLBHttpSolrServer;
   private HttpClient myClient;
   Random rand = new Random();
   
@@ -79,8 +98,31 @@ public class CloudSolrServer extends SolrServer {
   private volatile int lastClusterStateHashCode;
   
   private final boolean updatesToLeaders;
+  private boolean parallelUpdates = true;
+  private ExecutorService threadPool = Executors
+      .newCachedThreadPool(new SolrjNamedThreadFactory(
+          "CloudSolrServer ThreadPool"));
+  private String idField = "id";
+  private final Set<String> NON_ROUTABLE_PARAMS;
+  {
+    NON_ROUTABLE_PARAMS = new HashSet<String>();
+    NON_ROUTABLE_PARAMS.add(UpdateParams.EXPUNGE_DELETES);
+    NON_ROUTABLE_PARAMS.add(UpdateParams.MAX_OPTIMIZE_SEGMENTS);
+    NON_ROUTABLE_PARAMS.add(UpdateParams.COMMIT);
+    NON_ROUTABLE_PARAMS.add(UpdateParams.WAIT_SEARCHER);
+    NON_ROUTABLE_PARAMS.add(UpdateParams.OPEN_SEARCHER);
+    
+    NON_ROUTABLE_PARAMS.add(UpdateParams.SOFT_COMMIT);
+    NON_ROUTABLE_PARAMS.add(UpdateParams.PREPARE_COMMIT);
+    NON_ROUTABLE_PARAMS.add(UpdateParams.OPTIMIZE);
+    
+    // Not supported via SolrCloud
+    // NON_ROUTABLE_PARAMS.add(UpdateParams.ROLLBACK);
 
-  
+  }
+
+
+
   /**
    * @param zkHost The client endpoint of the zookeeper quorum containing the cloud state,
    * in the form HOST:PORT.
@@ -90,14 +132,17 @@ public class CloudSolrServer extends SolrServer {
       this.myClient = HttpClientUtil.createClient(null);
       this.lbServer = new LBHttpSolrServer(myClient);
       this.updatesToLeaders = true;
+      shutdownLBHttpSolrServer = true;
   }
   
-  public CloudSolrServer(String zkHost, boolean updatesToLeaders) throws MalformedURLException {
+  public CloudSolrServer(String zkHost, boolean updatesToLeaders)
+      throws MalformedURLException {
     this.zkHost = zkHost;
     this.myClient = HttpClientUtil.createClient(null);
     this.lbServer = new LBHttpSolrServer(myClient);
     this.updatesToLeaders = updatesToLeaders;
-}
+    shutdownLBHttpSolrServer = true;
+  }
 
   /**
    * @param zkHost The client endpoint of the zookeeper quorum containing the cloud state,
@@ -108,6 +153,7 @@ public class CloudSolrServer extends SolrServer {
     this.zkHost = zkHost;
     this.lbServer = lbServer;
     this.updatesToLeaders = true;
+    shutdownLBHttpSolrServer = false;
   }
   
   /**
@@ -120,10 +166,41 @@ public class CloudSolrServer extends SolrServer {
     this.zkHost = zkHost;
     this.lbServer = lbServer;
     this.updatesToLeaders = updatesToLeaders;
+    shutdownLBHttpSolrServer = false;
+  }
+  
+  public ResponseParser getParser() {
+    return lbServer.getParser();
+  }
+  
+  /**
+   * Note: This setter method is <b>not thread-safe</b>.
+   * 
+   * @param processor
+   *          Default Response Parser chosen to parse the response if the parser
+   *          were not specified as part of the request.
+   * @see org.apache.solr.client.solrj.SolrRequest#getResponseParser()
+   */
+  public void setParser(ResponseParser processor) {
+    lbServer.setParser(processor);
   }
 
   public ZkStateReader getZkStateReader() {
     return zkStateReader;
+  }
+
+  /**
+   * @param idField the field to route documents on.
+   */
+  public void setIdField(String idField) {
+    this.idField = idField;
+  }
+
+  /**
+   * @return the field that updates are routed on.
+   */
+  public String getIdField() {
+    return idField;
   }
   
   /** Sets the default collection for request */
@@ -179,18 +256,258 @@ public class CloudSolrServer extends SolrServer {
     }
   }
 
+  public void setParallelUpdates(boolean parallelUpdates) {
+    this.parallelUpdates = parallelUpdates;
+  }
+
+  private NamedList directUpdate(AbstractUpdateRequest request, ClusterState clusterState) throws SolrServerException {
+    UpdateRequest updateRequest = (UpdateRequest) request;
+    ModifiableSolrParams params = (ModifiableSolrParams) request.getParams();
+    ModifiableSolrParams routableParams = new ModifiableSolrParams();
+    ModifiableSolrParams nonRoutableParams = new ModifiableSolrParams();
+
+    if(params != null) {
+      nonRoutableParams.add(params);
+      routableParams.add(params);
+      for(String param : NON_ROUTABLE_PARAMS) {
+        routableParams.remove(param);
+      }
+    }
+
+    String collection = nonRoutableParams.get("collection", defaultCollection);
+    if (collection == null) {
+      throw new SolrServerException("No collection param specified on request and no default collection has been set.");
+    }
+
+
+    //Check to see if the collection is an alias.
+    Aliases aliases = zkStateReader.getAliases();
+    if(aliases != null) {
+      Map<String, String> collectionAliases = aliases.getCollectionAliasMap();
+      if(collectionAliases != null && collectionAliases.containsKey(collection)) {
+        collection = collectionAliases.get(collection);
+      }
+    }
+
+    DocCollection col = clusterState.getCollection(collection);
+
+    DocRouter router = col.getRouter();
+    
+    if (router instanceof ImplicitDocRouter) {
+      // short circuit as optimization
+      return null;
+    }
+
+    //Create the URL map, which is keyed on slice name.
+    //The value is a list of URLs for each replica in the slice.
+    //The first value in the list is the leader for the slice.
+    Map<String,List<String>> urlMap = buildUrlMap(col);
+    if (urlMap == null) {
+      // we could not find a leader yet - use unoptimized general path
+      return null;
+    }
+
+    NamedList exceptions = new NamedList();
+    NamedList shardResponses = new NamedList();
+
+    Map<String, LBHttpSolrServer.Req> routes = updateRequest.getRoutes(router, col, urlMap, routableParams, this.idField);
+    if (routes == null) {
+      return null;
+    }
+
+    long start = System.nanoTime();
+
+    if (parallelUpdates) {
+      final Map<String, Future<NamedList<?>>> responseFutures = new HashMap<String, Future<NamedList<?>>>(routes.size());
+      for (final Map.Entry<String, LBHttpSolrServer.Req> entry : routes.entrySet()) {
+        final String url = entry.getKey();
+        final LBHttpSolrServer.Req lbRequest = entry.getValue();
+        responseFutures.put(url, threadPool.submit(new Callable<NamedList<?>>() {
+          @Override
+          public NamedList<?> call() throws Exception {
+            return lbServer.request(lbRequest).getResponse();
+          }
+        }));
+      }
+
+      for (final Map.Entry<String, Future<NamedList<?>>> entry: responseFutures.entrySet()) {
+        final String url = entry.getKey();
+        final Future<NamedList<?>> responseFuture = entry.getValue();
+        try {
+          shardResponses.add(url, responseFuture.get());
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+          exceptions.add(url, e.getCause());
+        }
+      }
+
+      if (exceptions.size() > 0) {
+        throw new RouteException(ErrorCode.SERVER_ERROR, exceptions, routes);
+      }
+    } else {
+      for (Map.Entry<String, LBHttpSolrServer.Req> entry : routes.entrySet()) {
+        String url = entry.getKey();
+        LBHttpSolrServer.Req lbRequest = entry.getValue();
+        try {
+          NamedList rsp = lbServer.request(lbRequest).getResponse();
+          shardResponses.add(url, rsp);
+        } catch (Exception e) {
+          throw new SolrServerException(e);
+        }
+      }
+    }
+
+    UpdateRequest nonRoutableRequest = null;
+    List<String> deleteQuery = updateRequest.getDeleteQuery();
+    if (deleteQuery != null && deleteQuery.size() > 0) {
+      UpdateRequest deleteQueryRequest = new UpdateRequest();
+      deleteQueryRequest.setDeleteQuery(deleteQuery);
+      nonRoutableRequest = deleteQueryRequest;
+    }
+    
+    Set<String> paramNames = nonRoutableParams.getParameterNames();
+    
+    Set<String> intersection = new HashSet<String>(paramNames);
+    intersection.retainAll(NON_ROUTABLE_PARAMS);
+    
+    if (nonRoutableRequest != null || intersection.size() > 0) {
+      if (nonRoutableRequest == null) {
+        nonRoutableRequest = new UpdateRequest();
+      }
+      nonRoutableRequest.setParams(nonRoutableParams);
+      List<String> urlList = new ArrayList<String>();
+      urlList.addAll(routes.keySet());
+      Collections.shuffle(urlList, rand);
+      LBHttpSolrServer.Req req = new LBHttpSolrServer.Req(nonRoutableRequest, urlList);
+      try {
+        LBHttpSolrServer.Rsp rsp = lbServer.request(req);
+        shardResponses.add(urlList.get(0), rsp.getResponse());
+      } catch (Exception e) {
+        throw new SolrException(ErrorCode.SERVER_ERROR, urlList.get(0), e);
+      }
+    }
+
+    long end = System.nanoTime();
+
+    RouteResponse rr =  condenseResponse(shardResponses, (long)((end - start)/1000000));
+    rr.setRouteResponses(shardResponses);
+    rr.setRoutes(routes);
+    return rr;
+  }
+
+  private Map<String,List<String>> buildUrlMap(DocCollection col) {
+    Map<String, List<String>> urlMap = new HashMap<String, List<String>>();
+    Collection<Slice> slices = col.getActiveSlices();
+    Iterator<Slice> sliceIterator = slices.iterator();
+    while (sliceIterator.hasNext()) {
+      Slice slice = sliceIterator.next();
+      String name = slice.getName();
+      List<String> urls = new ArrayList<String>();
+      Replica leader = slice.getLeader();
+      if (leader == null) {
+        // take unoptimized general path - we cannot find a leader yet
+        return null;
+      }
+      ZkCoreNodeProps zkProps = new ZkCoreNodeProps(leader);
+      String url = zkProps.getBaseUrl() + "/" + col.getName();
+      urls.add(url);
+      Collection<Replica> replicas = slice.getReplicas();
+      Iterator<Replica> replicaIterator = replicas.iterator();
+      while (replicaIterator.hasNext()) {
+        Replica replica = replicaIterator.next();
+        if (!replica.getNodeName().equals(leader.getNodeName()) &&
+            !replica.getName().equals(leader.getName())) {
+          ZkCoreNodeProps zkProps1 = new ZkCoreNodeProps(replica);
+          String url1 = zkProps1.getBaseUrl() + "/" + col.getName();
+          urls.add(url1);
+        }
+      }
+      urlMap.put(name, urls);
+    }
+    return urlMap;
+  }
+
+  public RouteResponse condenseResponse(NamedList response, long timeMillis) {
+    RouteResponse condensed = new RouteResponse();
+    int status = 0;
+    for(int i=0; i<response.size(); i++) {
+      NamedList shardResponse = (NamedList)response.getVal(i);
+      NamedList header = (NamedList)shardResponse.get("responseHeader");
+      Integer shardStatus = (Integer)header.get("status");
+      int s = shardStatus.intValue();
+      if(s > 0) {
+          status = s;
+      }
+    }
+
+    NamedList cheader = new NamedList();
+    cheader.add("status", status);
+    cheader.add("QTime", timeMillis);
+    condensed.add("responseHeader", cheader);
+    return condensed;
+  }
+
+  class RouteResponse extends NamedList {
+    private NamedList routeResponses;
+    private Map<String, LBHttpSolrServer.Req> routes;
+
+    public void setRouteResponses(NamedList routeResponses) {
+      this.routeResponses = routeResponses;
+    }
+
+    public NamedList getRouteResponses() {
+      return routeResponses;
+    }
+
+    public void setRoutes(Map<String, LBHttpSolrServer.Req> routes) {
+      this.routes = routes;
+    }
+
+    public Map<String, LBHttpSolrServer.Req> getRoutes() {
+      return routes;
+    }
+
+  }
+
+  class RouteException extends SolrException {
+
+    private NamedList exceptions;
+    private Map<String, LBHttpSolrServer.Req> routes;
+
+    public RouteException(ErrorCode errorCode, NamedList exceptions, Map<String, LBHttpSolrServer.Req> routes){
+      super(errorCode, ((Exception)exceptions.getVal(0)).getMessage(), (Exception)exceptions.getVal(0));
+      this.exceptions = exceptions;
+      this.routes = routes;
+    }
+
+    public NamedList getExceptions() {
+      return exceptions;
+    }
+
+    public Map<String, LBHttpSolrServer.Req> getRoutes() {
+      return this.routes;
+    }
+  }
+
   @Override
   public NamedList<Object> request(SolrRequest request)
       throws SolrServerException, IOException {
     connect();
     
-    // TODO: if you can hash here, you could favor the shard leader
-    
     ClusterState clusterState = zkStateReader.getClusterState();
+
     boolean sendToLeaders = false;
     List<String> replicas = null;
     
-    if (request instanceof IsUpdateRequest && updatesToLeaders) {
+    if (request instanceof IsUpdateRequest) {
+      if(request instanceof UpdateRequest) {
+        NamedList response = directUpdate((AbstractUpdateRequest)request,clusterState);
+        if(response != null) {
+          return response;
+        }
+      }
       sendToLeaders = true;
       replicas = new ArrayList<String>();
     }
@@ -352,8 +669,17 @@ public class CloudSolrServer extends SolrServer {
         zkStateReader = null;
       }
     }
+    
+    if (shutdownLBHttpSolrServer) {
+      lbServer.shutdown();
+    }
+    
     if (myClient!=null) {
       myClient.getConnectionManager().shutdown();
+    }
+
+    if(this.threadPool != null && !this.threadPool.isShutdown()) {
+      this.threadPool.shutdown();
     }
   }
 

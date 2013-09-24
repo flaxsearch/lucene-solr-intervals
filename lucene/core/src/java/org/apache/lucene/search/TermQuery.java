@@ -17,23 +17,22 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.Set;
-
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.similarities.Similarity.SimScorer;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.Similarity.SimScorer;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
+
+import java.io.IOException;
+import java.util.Set;
 
 /**
  * A Query that matches documents containing a term. This may be combined with
@@ -186,11 +185,10 @@ public class TermQuery extends Query {
   public Weight createWeight(IndexSearcher searcher) throws IOException {
     final IndexReaderContext context = searcher.getTopReaderContext();
     final TermContext termState;
-    if (perReaderTermState == null
-        || perReaderTermState.topReaderContext != context) {
-      // make TermQuery single-pass if we don't have a PRTS or if the context
-      // differs!
-      termState = TermContext.build(context, term, true); // cache term lookups!
+
+    if (perReaderTermState == null || perReaderTermState.topReaderContext != context) {
+      // make TermQuery single-pass if we don't have a PRTS or if the context differs!
+      termState = TermContext.build(context, term);
     } else {
       // PRTS was pre-build for this IS
       termState = this.perReaderTermState;

@@ -19,6 +19,7 @@ package org.apache.lucene.facet.range;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.lucene.facet.params.FacetSearchParams;
@@ -26,11 +27,10 @@ import org.apache.lucene.facet.search.FacetRequest;
 import org.apache.lucene.facet.search.FacetResult;
 import org.apache.lucene.facet.search.FacetResultNode;
 import org.apache.lucene.facet.search.FacetsAccumulator;
-import org.apache.lucene.facet.search.FacetsAggregator;
 import org.apache.lucene.facet.search.FacetsCollector.MatchingDocs;
 import org.apache.lucene.facet.taxonomy.CategoryPath;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.util.Bits;
 
 /** Uses a {@link NumericDocValues} and accumulates
  *  counts for provided ranges.  This is dynamic (does not
@@ -51,28 +51,24 @@ public class RangeAccumulator extends FacetsAccumulator {
 
   final List<RangeSet> requests = new ArrayList<RangeSet>();
 
-  public RangeAccumulator(FacetSearchParams fsp, IndexReader reader) {
-    super(fsp, reader, null, null);
-
-    for(FacetRequest fr : fsp.facetRequests) {
-
+  public RangeAccumulator(FacetRequest... facetRequests) {
+    this(Arrays.asList(facetRequests));
+  }
+  
+  public RangeAccumulator(List<FacetRequest> facetRequests) {
+    super(new FacetSearchParams(facetRequests));
+    for (FacetRequest fr : facetRequests) {
       if (!(fr instanceof RangeFacetRequest)) {
-        throw new IllegalArgumentException("only RangeFacetRequest is supported; got " + fsp.facetRequests.get(0).getClass());
+        throw new IllegalArgumentException("this accumulator only supports RangeFacetRequest; got " + fr);
       }
 
       if (fr.categoryPath.length != 1) {
         throw new IllegalArgumentException("only flat (dimension only) CategoryPath is allowed");
       }
-
+      
       RangeFacetRequest<?> rfr = (RangeFacetRequest<?>) fr;
-
-      requests.add(new RangeSet(rfr.ranges, rfr.categoryPath.components[0]));
+      requests.add(new RangeSet(rfr.ranges, fr.categoryPath.components[0]));
     }
-  }
-
-  @Override
-  public FacetsAggregator getAggregator() {
-    throw new UnsupportedOperationException();
   }
 
   @Override
@@ -82,7 +78,7 @@ public class RangeAccumulator extends FacetsAccumulator {
     // faster to do MachingDocs on the inside) ... see
     // patches on LUCENE-4965):
     List<FacetResult> results = new ArrayList<FacetResult>();
-    for(int i=0;i<requests.size();i++) {
+    for (int i = 0; i < requests.size(); i++) {
       RangeSet ranges = requests.get(i);
 
       int[] counts = new int[ranges.ranges.length];
@@ -91,16 +87,25 @@ public class RangeAccumulator extends FacetsAccumulator {
         if (ndv == null) {
           continue; // no numeric values for this field in this reader
         }
+        Bits docsWithField = hits.context.reader().getDocsWithField(ranges.field);
+
         final int length = hits.bits.length();
         int doc = 0;
         while (doc < length && (doc = hits.bits.nextSetBit(doc)) != -1) {
           long v = ndv.get(doc);
+
+          // Skip missing docs:
+          if (v == 0 && docsWithField.get(doc) == false) {
+            doc++;
+            continue;
+          }
+
           // TODO: if all ranges are non-overlapping, we
           // should instead do a bin-search up front
           // (really, a specialized case of the interval
           // tree)
           // TODO: use interval tree instead of linear search:
-          for(int j=0;j<ranges.ranges.length;j++) {
+          for (int j = 0; j < ranges.ranges.length; j++) {
             if (ranges.ranges[j].accept(v)) {
               counts[j]++;
             }

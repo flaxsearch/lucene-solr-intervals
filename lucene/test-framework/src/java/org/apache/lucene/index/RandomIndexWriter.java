@@ -308,7 +308,7 @@ public class RandomIndexWriter implements Closeable {
       }
       w.commit();
       if (r.nextBoolean()) {
-        return DirectoryReader.open(w.getDirectory(), _TestUtil.nextInt(r, 1, 10));
+        return DirectoryReader.open(w.getDirectory());
       } else {
         return w.getReader(applyDeletions);
       }
@@ -340,7 +340,7 @@ public class RandomIndexWriter implements Closeable {
     w.forceMerge(maxSegmentCount);
   }
   
-  private static final class TestPointInfoStream extends InfoStream {
+  static final class TestPointInfoStream extends InfoStream {
     private final InfoStream delegate;
     private final TestPoint testPoint;
     
