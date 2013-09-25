@@ -23,7 +23,7 @@
   <parent>
     <groupId>org.apache.solr</groupId>
     <artifactId>solr-parent</artifactId>
-    <version>5.0.0-intervals-1.0</version>
+    <version>5.0.0-intervals-1.1-SNAPSHOT</version>
     <relativePath>../../../pom.xml</relativePath>
   </parent>
   <groupId>org.apache.solr</groupId>
@@ -54,6 +54,12 @@
     <dependency>
       <groupId>org.easymock</groupId>
       <artifactId>easymock</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>dom4j</groupId>
+      <artifactId>dom4j</artifactId>
+      <version>1.6.1</version>
       <scope>test</scope>
     </dependency>
     <dependency>

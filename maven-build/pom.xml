@@ -28,9 +28,9 @@
   </parent>
   <groupId>uk.co.flax.lucene-solr-intervals</groupId>
   <artifactId>lucene-solr-grandparent</artifactId>
-  <version>5.0.0-intervals-1.0</version>
+  <version>5.0.0-intervals-1.1-SNAPSHOT</version>
   <packaging>pom</packaging>
-  <name>Grandparent POM for Flax Interals fork of Apache Lucene Core and Apache Solr</name>
+  <name>Grandparent POM for Flax Intervals fork of Apache Lucene Core and Apache Solr</name>
   <description>Grandparent POM for Flax Intervals fork of Apache Lucene Core and Apache Solr</description>
   <url>http://github.com/flaxsearch/lucene-intervals</url>
   <modules>
