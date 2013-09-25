@@ -21,6 +21,7 @@ import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.FieldedQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
@@ -62,7 +63,7 @@ import java.util.Set;
  * @lucene.experimental
  * @see BrouwerianIntervalIterator
  */
-public final class NonOverlappingQuery extends Query implements Cloneable {
+public final class NonOverlappingQuery extends FieldedQuery implements Cloneable {
   
   private Query minuend;
   private Query subtrahend;
@@ -73,9 +74,12 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
    * @param minuend the minuend Query
    * @param subtrahend the subtrahend Query
    */
-  public NonOverlappingQuery(Query minuend, Query subtrahend) {
+  public NonOverlappingQuery(FieldedQuery minuend, FieldedQuery subtrahend) {
+    super(minuend.getField());
     this.minuend = minuend;
     this.subtrahend = subtrahend;
+    if (minuend.getField() != subtrahend.getField())
+      throw new IllegalArgumentException("Minuend and Subtrahend must be on the same field");
   }
 
   @Override
@@ -86,21 +90,12 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
 
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
-    NonOverlappingQuery clone = null;
-
     Query rewritten =  minuend.rewrite(reader);
     Query subRewritten =  subtrahend.rewrite(reader);
     if (rewritten != minuend || subRewritten != subtrahend) {
-      clone = (NonOverlappingQuery) this.clone();
-      clone.minuend = rewritten;
-      clone.subtrahend = subRewritten;
+      return new NonOverlappingQuery((FieldedQuery) rewritten, (FieldedQuery) subRewritten);
     }
-
-    if (clone != null) {
-      return clone; // some clauses rewrote
-    } else {
-      return this; // no clauses rewrote
-    }
+    return this;
   }
 
   @Override
@@ -193,7 +188,7 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
       super(weight);
       this.minuend = minuend;
       this.subtracted = subtracted;
-      this.filter = new BrouwerianIntervalIterator(minuend, false, minuend.intervals(false), subtracted.intervals(false));
+      this.filter = new BrouwerianIntervalIterator(minuend, false, minuend.intervals(false), subtracted.intervals(false), field);
       this.factory = factory;
     }
 
@@ -207,7 +202,8 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
       if (collectIntervals) {
         final Scorer minuted  = factory.minutedScorer();
         final Scorer subtracted = factory.subtractedScorer();
-        final BrouwerianIntervalIterator brouwerianIntervalIterator = new BrouwerianIntervalIterator(subtracted, true, minuted.intervals(true), subtracted.intervals(true));
+        final BrouwerianIntervalIterator brouwerianIntervalIterator
+            = new BrouwerianIntervalIterator(subtracted, true, minuted.intervals(true), subtracted.intervals(true), field);
         return new IntervalIterator(this, collectIntervals) {
 
           @Override

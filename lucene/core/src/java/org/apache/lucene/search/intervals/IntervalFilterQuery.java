@@ -23,6 +23,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.FieldedQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
@@ -46,7 +47,7 @@ import java.util.TreeSet;
  *
  * @lucene.experimental
  */
-public class IntervalFilterQuery extends Query implements Cloneable {
+public class IntervalFilterQuery extends FieldedQuery implements Cloneable {
 
   private Query inner;
   private final IntervalFilter filter;
@@ -56,7 +57,8 @@ public class IntervalFilterQuery extends Query implements Cloneable {
    * @param inner the query to wrap
    * @param filter the filter to restrict results by
    */
-  public IntervalFilterQuery(Query inner, IntervalFilter filter) {
+  public IntervalFilterQuery(FieldedQuery inner, IntervalFilter filter) {
+    super(inner.getField());
     this.inner = inner;
     this.filter = filter;
   }
@@ -108,7 +110,7 @@ public class IntervalFilterQuery extends Query implements Cloneable {
       int i = 0;
       TermStatistics[] termStats = new TermStatistics[terms.size()];
       for (Term term : terms) {
-        TermContext state = TermContext.build(searcher.getTopReaderContext(), term, true);
+        TermContext state = TermContext.build(searcher.getTopReaderContext(), term);
         termStats[i] = searcher.termStatistics(term, state);
         i++;
       }
@@ -223,9 +225,13 @@ public class IntervalFilterQuery extends Query implements Cloneable {
 
           @Override
           public int scorerAdvanced(int docId) throws IOException {
+            //System.out.println("IntervalIterator: advancing from " + collectingScorer.docID() + " to " + docId);
+            if (collectingScorer.docID() >= docId) {
+              return collectingScorer.docID();
+            }
             int target = collectingScorer.advance(docId);
-            if (target > docId)
-              return target;
+            if (target == NO_MORE_DOCS)
+              return NO_MORE_DOCS;
             return filter.scorerAdvanced(target);
           }
 

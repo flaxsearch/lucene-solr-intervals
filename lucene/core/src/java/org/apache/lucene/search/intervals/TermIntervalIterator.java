@@ -31,6 +31,7 @@ public final class TermIntervalIterator extends IntervalIterator {
   int positionsPending;
   private final DocsAndPositionsEnum docsAndPos;
   private int docID = -1;
+  private final String field;
 
   /**
    * Constructs a new TermIntervalIterator
@@ -40,10 +41,11 @@ public final class TermIntervalIterator extends IntervalIterator {
    * @param collectIntervals true if positions will be collected
    */
   public TermIntervalIterator(Scorer scorer, DocsAndPositionsEnum docsAndPos,
-                              boolean doPayloads, boolean collectIntervals) {
+                              boolean doPayloads, boolean collectIntervals, String field) {
     super(scorer, collectIntervals);
     this.docsAndPos = docsAndPos;
-    this.interval = new Interval();
+    this.interval = new Interval(field);
+    this.field = field;
   }
 
   @Override

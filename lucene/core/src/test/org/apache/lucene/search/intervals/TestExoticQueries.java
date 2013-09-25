@@ -6,6 +6,7 @@ import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.MultiPhraseQuery;
 import org.apache.lucene.search.PhraseQuery;
+import org.junit.Ignore;
 
 import java.io.IOException;
 
@@ -48,6 +49,7 @@ public class TestExoticQueries extends IntervalTestBase {
     });
   }
 
+  @Ignore
   public void testSloppyPhraseQuery() throws IOException {
     PhraseQuery query = new PhraseQuery();
     query.add(new Term("field", "pease"));
@@ -58,6 +60,7 @@ public class TestExoticQueries extends IntervalTestBase {
     });
   }
 
+  @Ignore
   public void testManyTermSloppyPhraseQuery() throws IOException {
     PhraseQuery query = new PhraseQuery();
     query.add(new Term("field", "pease"));

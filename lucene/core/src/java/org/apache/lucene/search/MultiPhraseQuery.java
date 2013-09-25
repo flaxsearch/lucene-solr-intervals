@@ -258,14 +258,14 @@ public class MultiPhraseQuery extends Query {
       }
 
       if (slop == 0) {
-        ExactPhraseScorer s = new ExactPhraseScorer(this, postingsFreqs, similarity.simScorer(stats, context));
+        ExactPhraseScorer s = new ExactPhraseScorer(this, postingsFreqs, similarity.simScorer(stats, context), field);
         if (s.noDocs) {
           return null;
         } else {
           return s;
         }
       } else {
-        return new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.simScorer(stats, context));
+        return new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.simScorer(stats, context), field);
       }
     }
 

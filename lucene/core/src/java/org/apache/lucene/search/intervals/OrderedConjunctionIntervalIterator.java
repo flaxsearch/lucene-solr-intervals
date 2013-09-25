@@ -36,7 +36,7 @@ public final class OrderedConjunctionIntervalIterator extends
   private final IntervalIterator[] iterators;
   private final Interval[] intervals;
   private final int lastIter;
-  private final Interval interval = new Interval();
+  private final Interval interval;
 
   private int index = 1;
   private int matchDistance = 0;
@@ -49,13 +49,13 @@ public final class OrderedConjunctionIntervalIterator extends
    * @param collectIntervals true if intervals will be collected
    * @param other a composite IntervalIterator to wrap
    */
-  public OrderedConjunctionIntervalIterator(boolean collectIntervals, boolean collectLeaves, IntervalIterator other) {
-    this(other.scorer, collectIntervals, other.subs(true));
+  public OrderedConjunctionIntervalIterator(boolean collectIntervals, boolean collectLeaves, String field, IntervalIterator other) {
+    this(other.scorer, collectIntervals, field, other.subs(true));
     this.collectLeaves = collectLeaves;
   }
 
-  public OrderedConjunctionIntervalIterator(boolean collectIntervals, IntervalIterator other) {
-    this(collectIntervals, true, other);
+  public OrderedConjunctionIntervalIterator(boolean collectIntervals, String field, IntervalIterator other) {
+    this(collectIntervals, true, field, other);
   }
 
   /**
@@ -64,12 +64,13 @@ public final class OrderedConjunctionIntervalIterator extends
    * @param collectIntervals true if intervals will be collected
    * @param iterators the subintervals to wrap
    */
-  public OrderedConjunctionIntervalIterator(Scorer scorer, boolean collectIntervals, IntervalIterator... iterators) {
+  public OrderedConjunctionIntervalIterator(Scorer scorer, boolean collectIntervals, String field, IntervalIterator... iterators) {
     super(scorer, collectIntervals);
     this.iterators = iterators;
     assert iterators.length > 1;
     intervals = new Interval[iterators.length];
     lastIter = iterators.length - 1;
+    this.interval = new Interval(field);
   }
 
   @Override
@@ -148,7 +149,9 @@ public final class OrderedConjunctionIntervalIterator extends
   @Override
   public int scorerAdvanced(int docId) throws IOException {
     assert scorer.docID() == docId;
+    //System.out.println("OCI: scorerAdvanced start");
     for (int i = 0; i < iterators.length; i++) {
+      //System.out.println("OCI: advancing from " + iterators[i].docID() + " to " + docId);
       int advanceTo = iterators[i].scorerAdvanced(docId);
       assert advanceTo == docId;
       intervals[i] = Interval.INFINITE_INTERVAL;

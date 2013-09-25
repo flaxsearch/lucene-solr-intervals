@@ -19,9 +19,6 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.BooleanClause;
-import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.TermQuery;
 
 import java.io.IOException;
@@ -52,10 +49,11 @@ public class TestBlockIntervalIterator extends IntervalTestBase {
 
   public void testMatchingBlockIntervalFilter() throws IOException {
 
-    BooleanQuery query = new BooleanQuery();
-    query.add(new BooleanClause(new TermQuery(new Term("field", "pease")), Occur.MUST));
-    query.add(new BooleanClause(new TermQuery(new Term("field", "porridge")), Occur.MUST));
-    query.add(new BooleanClause(new TermQuery(new Term("field", "hot!")), Occur.MUST));
+    FieldedConjunctionQuery query = new FieldedConjunctionQuery(
+            new TermQuery(new Term("field", "pease")),
+            new TermQuery(new Term("field", "porridge")),
+            new TermQuery(new Term("field", "hot!"))
+    );
     IntervalFilterQuery filterQuery = new IntervalFilterQuery(query, new BlockIntervalFilter(false));
 
     checkIntervals(filterQuery, searcher, new int[][]{
@@ -67,13 +65,14 @@ public class TestBlockIntervalIterator extends IntervalTestBase {
 
   public void testPartialMatchingBlockIntervalFilter() throws IOException {
 
-    BooleanQuery query = new BooleanQuery();
-    query.add(new BooleanClause(new TermQuery(new Term("field", "pease")), Occur.MUST));
-    query.add(new BooleanClause(new TermQuery(new Term("field", "porridge")), Occur.MUST));
-    query.add(new BooleanClause(new TermQuery(new Term("field", "hot!")), Occur.MUST));
-    query.add(new BooleanClause(new TermQuery(new Term("field", "pease")), Occur.MUST));
-    query.add(new BooleanClause(new TermQuery(new Term("field", "porridge")), Occur.MUST));
-    query.add(new BooleanClause(new TermQuery(new Term("field", "cold!")), Occur.MUST));
+    FieldedConjunctionQuery query = new FieldedConjunctionQuery(
+          new TermQuery(new Term("field", "pease")),
+          new TermQuery(new Term("field", "porridge")),
+          new TermQuery(new Term("field", "hot!")),
+          new TermQuery(new Term("field", "pease")),
+          new TermQuery(new Term("field", "porridge")),
+          new TermQuery(new Term("field", "cold!"))
+    );
     IntervalFilterQuery filterQuery = new IntervalFilterQuery(query, new BlockIntervalFilter(false));
 
     checkIntervals(filterQuery, searcher, new int[][]{
@@ -85,9 +84,10 @@ public class TestBlockIntervalIterator extends IntervalTestBase {
 
   public void testNonMatchingBlockIntervalFilter() throws IOException {
 
-    BooleanQuery query = new BooleanQuery();
-    query.add(new BooleanClause(new TermQuery(new Term("field", "pease")), Occur.MUST));
-    query.add(new BooleanClause(new TermQuery(new Term("field", "hot!")), Occur.MUST));
+    FieldedConjunctionQuery query = new FieldedConjunctionQuery(
+            new TermQuery(new Term("field", "pease")),
+            new TermQuery(new Term("field", "hot!"))
+    );
     IntervalFilterQuery filterQuery = new IntervalFilterQuery(query, new BlockIntervalFilter());
 
     checkIntervals(filterQuery, searcher, new int[][]{});

@@ -30,8 +30,7 @@ abstract class IntervalQueue extends PriorityQueue<IntervalRef> {
   /**
    * The current interval spanning the queue
    */
-  final Interval currentCandidate = new Interval(
-      Integer.MIN_VALUE, Integer.MIN_VALUE, -1, -1);
+  final Interval currentCandidate;
   
   /**
    * Creates a new {@link IntervalQueue} with a fixed size
@@ -39,6 +38,7 @@ abstract class IntervalQueue extends PriorityQueue<IntervalRef> {
    */
   public IntervalQueue(int size) {
     super(size);
+    currentCandidate = new Interval();
   }
   
   /**

@@ -17,14 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -37,8 +29,8 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.Weight.PostingFeatures;
+import org.apache.lucene.search.intervals.FieldedConjunctionQuery;
 import org.apache.lucene.search.intervals.IntervalFilterQuery;
 import org.apache.lucene.search.intervals.RangeIntervalFilter;
 import org.apache.lucene.search.intervals.WithinIntervalFilter;
@@ -49,6 +41,14 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.NamedThreadFactory;
 import org.apache.lucene.util._TestUtil;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class TestBooleanQuery extends LuceneTestCase {
   
@@ -324,11 +324,13 @@ public class TestBooleanQuery extends LuceneTestCase {
      IndexReader reader = writer.getReader();
      IndexSearcher searcher = new IndexSearcher(reader);
      writer.close();
-     BooleanQuery query = new BooleanQuery();
-     query.add(new BooleanClause(new TermQuery(new Term("field", "porridge")), Occur.MUST));
-     query.add(new BooleanClause(new TermQuery(new Term("field", "pease")), Occur.MUST));
-     query.add(new BooleanClause(new TermQuery(new Term("field", "hot!")), Occur.MUST));
-     
+
+     FieldedQuery query = new FieldedConjunctionQuery(
+      new TermQuery(new Term("field", "porridge")),
+      new TermQuery(new Term("field", "pease")),
+      new TermQuery(new Term("field", "hot!"))
+     );
+
      {
        IntervalFilterQuery filter = new IntervalFilterQuery(query, new RangeIntervalFilter(0,3));
        TopDocs search = searcher.search(filter, 10);

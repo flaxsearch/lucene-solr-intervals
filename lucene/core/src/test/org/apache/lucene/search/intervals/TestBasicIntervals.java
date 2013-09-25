@@ -222,10 +222,10 @@ public class TestBasicIntervals extends IntervalTestBase {
     topq.add(makeTermQuery("xx"), Occur.MUST);
 
     checkIntervals(topq, searcher, new int[][]{
-        { 5, 1, 3, 1, 1, 2, 3 },
-        { 8, 1, 3, 1, 1, 2, 3 },
-        { 9, 0, 2, 0, 1, 2, 2 },
-        { 10, 0, 2, 0, 1, 2, 2 }
+        { 5, 1, 1, 2, 3 },
+        { 8, 1, 1, 2, 3 },
+        { 9, 0, 1, 2, 2 },
+        { 10, 0, 1, 2, 2 }
     });
 
   }

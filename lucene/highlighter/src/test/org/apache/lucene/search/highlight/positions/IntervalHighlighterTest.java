@@ -15,6 +15,7 @@ package org.apache.lucene.search.highlight.positions;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenFilter;
@@ -33,6 +34,7 @@ import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ConstantScoreQuery;
+import org.apache.lucene.search.FieldedQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MultiPhraseQuery;
 import org.apache.lucene.search.MultiTermQuery;
@@ -45,6 +47,7 @@ import org.apache.lucene.search.highlight.InvalidTokenOffsetsException;
 import org.apache.lucene.search.highlight.SimpleFragmenter;
 import org.apache.lucene.search.highlight.TextFragment;
 import org.apache.lucene.search.intervals.BlockIntervalIterator;
+import org.apache.lucene.search.intervals.FieldedConjunctionQuery;
 import org.apache.lucene.search.intervals.IntervalFilter;
 import org.apache.lucene.search.intervals.IntervalFilterQuery;
 import org.apache.lucene.search.intervals.IntervalIterator;
@@ -284,9 +287,10 @@ public class IntervalHighlighterTest extends LuceneTestCase {
   
   public void testPhrase() throws Exception {
     insertDocs(analyzer, "is it that this is a test, is it");
-    BooleanQuery bq = new BooleanQuery();
-    bq.add(new BooleanClause(new TermQuery(new Term(F, "is")), Occur.MUST));
-    bq.add(new BooleanClause(new TermQuery(new Term(F, "a")), Occur.MUST));
+    FieldedConjunctionQuery bq = new FieldedConjunctionQuery(
+      new TermQuery(new Term(F, "is")),
+      new TermQuery(new Term(F, "a"))
+    );
     IntervalFilterQuery pfq = new IntervalFilterQuery(bq,
         new BlockPositionIteratorFilter());
     String frags[] = doSearch(pfq);
@@ -395,17 +399,16 @@ public class IntervalHighlighterTest extends LuceneTestCase {
 
     insertDocs(analyzer, "the quick brown duck jumps over the lazy dog with the quick brown fox");
 
-    BooleanQuery query = new BooleanQuery();
-    query.add(new BooleanClause(new TermQuery(new Term(F, "the")), Occur.MUST));
-    query.add(new BooleanClause(new TermQuery(new Term(F, "quick")), Occur.MUST));
-    query.add(new BooleanClause(new TermQuery(new Term(F, "jumps")), Occur.MUST));
+    FieldedConjunctionQuery query = new FieldedConjunctionQuery(
+        new TermQuery(new Term(F, "the")),
+        new TermQuery(new Term(F, "quick")),
+        new TermQuery(new Term(F, "jumps"))
+    );
 
     assertEquals(getHighlight(query),
                  "<B>the</B> <B>quick</B> brown duck <B>jumps</B> over <B>the</B> lazy dog with the <B>quick</B> brown fox");
 
-    BooleanQuery sub = new BooleanQuery();
-    sub.add(new BooleanClause(new TermQuery(new Term(F, "duck")), Occur.MUST));
-    NonOverlappingQuery bq = new NonOverlappingQuery(query, sub);
+    NonOverlappingQuery bq = new NonOverlappingQuery(query, new TermQuery(new Term(F, "duck")));
 
     assertEquals(getHighlight(bq),
                  "the quick brown duck <B>jumps</B> over <B>the</B> lazy dog with the <B>quick</B> brown fox");
@@ -449,7 +452,7 @@ public class IntervalHighlighterTest extends LuceneTestCase {
 
     insertDocs(analyzer, "pease porridge rather hot and pease porridge fairly cold");
 
-    Query firstQ = new OrderedNearQuery(4, termQuery("pease"), termQuery("porridge"), termQuery("hot"));
+    FieldedQuery firstQ = new OrderedNearQuery(4, termQuery("pease"), termQuery("porridge"), termQuery("hot"));
     {
       String frags[] = doSearch(firstQ, Integer.MAX_VALUE);
       assertEquals("<B>pease</B> <B>porridge</B> rather <B>hot</B> and pease porridge fairly cold", frags[0]);

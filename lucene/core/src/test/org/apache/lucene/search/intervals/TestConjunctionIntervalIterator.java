@@ -50,10 +50,11 @@ public class TestConjunctionIntervalIterator extends IntervalTestBase {
   }
 
   public void testConjunctionRangeIntervalQuery() throws IOException {
-    BooleanQuery q = new BooleanQuery();
-    q.add(makeTermQuery("porridge"), Occur.MUST);
-    q.add(makeTermQuery("pease"), Occur.MUST);
-    q.add(makeTermQuery("hot!"), Occur.MUST);
+    FieldedConjunctionQuery q = new FieldedConjunctionQuery(
+        makeTermQuery("porridge"),
+        makeTermQuery("pease"),
+        makeTermQuery("hot!")
+    );
     Query rangeQuery = new IntervalFilterQuery(q, new RangeIntervalFilter(0, 2));
     checkIntervals(rangeQuery, searcher, new int[][]{
         { 0, 0, 2, 0, 0, 1, 1, 2, 2 }

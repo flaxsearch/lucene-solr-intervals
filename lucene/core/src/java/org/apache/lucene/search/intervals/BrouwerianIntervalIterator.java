@@ -38,6 +38,7 @@ public class BrouwerianIntervalIterator extends IntervalIterator {
   private final IntervalIterator subtracted;
   private Interval subtractedInterval;
   private Interval currentInterval;
+  private final String field;
 
   /**
    * Construct a new BrouwerianIntervalIterator over a minuend and a subtrahend
@@ -47,10 +48,12 @@ public class BrouwerianIntervalIterator extends IntervalIterator {
    * @param minuend the minuend IntervalIterator
    * @param subtracted the subtrahend IntervalIterator
    */
-  public BrouwerianIntervalIterator(Scorer scorer, boolean collectIntervals, IntervalIterator minuend, IntervalIterator subtracted) {
+  public BrouwerianIntervalIterator(Scorer scorer, boolean collectIntervals,
+                                    IntervalIterator minuend, IntervalIterator subtracted, String field) {
     super(scorer, collectIntervals);
     this.minuend = minuend;
     this.subtracted = subtracted;
+    this.field = field;
   }
 
   @Override
@@ -60,7 +63,7 @@ public class BrouwerianIntervalIterator extends IntervalIterator {
     minuend.scorerAdvanced(docId);
     if (subtracted.docID() <= docId)
       subtracted.scorerAdvanced(docId);
-    subtractedInterval = Interval.INFINITE_INTERVAL;
+    subtractedInterval = new Interval(field);
     return docId;
   }
   
@@ -77,7 +80,7 @@ public class BrouwerianIntervalIterator extends IntervalIterator {
     }
     while ((currentInterval = minuend.next()) != null) {
       //System.out.println("next() : advancing through minuend");
-      //System.out.println("Subtractend: " + subtracted.toString());
+      //System.out.println("Subtract intervals: " + subtractedInterval.toString());
       //System.out.println("Current interval: " + currentInterval.toString());
       while(subtractedInterval.lessThanExclusive(currentInterval) && (subtractedInterval = subtracted.next()) != null) {
         //System.out.println("next{} : advancing through subtrahend");

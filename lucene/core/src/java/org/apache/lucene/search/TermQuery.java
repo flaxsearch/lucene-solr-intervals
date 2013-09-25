@@ -38,7 +38,7 @@ import java.util.Set;
  * A Query that matches documents containing a term. This may be combined with
  * other terms with a {@link BooleanQuery}.
  */
-public class TermQuery extends Query {
+public class TermQuery extends FieldedQuery {
   private final Term term;
   private final int docFreq;
   private final TermContext perReaderTermState;
@@ -160,6 +160,7 @@ public class TermQuery extends Query {
    * of looking up the docFreq against the searcher.
    */
   public TermQuery(Term t, int docFreq) {
+    super(t.field());
     term = t;
     this.docFreq = docFreq;
     perReaderTermState = null;
@@ -170,6 +171,7 @@ public class TermQuery extends Query {
    * of looking up the docFreq against the searcher.
    */
   public TermQuery(Term t, TermContext states) {
+    super(t.field());
     assert states != null;
     term = t;
     docFreq = states.docFreq();

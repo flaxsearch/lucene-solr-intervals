@@ -34,11 +34,9 @@ import java.util.Arrays;
 public final class BlockIntervalIterator extends IntervalIterator {
   private final IntervalIterator[] iterators;
 
-  private static final Interval INFINITE_INTERVAL = new Interval(
-      Integer.MIN_VALUE, Integer.MIN_VALUE, -1, -1);
+  private static final Interval INFINITE_INTERVAL = new Interval();
   private final Interval[] intervals;
-  private final Interval interval = new Interval(
-      Integer.MIN_VALUE, Integer.MIN_VALUE, -1, -1);
+  private final Interval interval = new Interval();
   private final int[] gaps;
 
   private final int lastIter;
@@ -145,6 +143,7 @@ public final class BlockIntervalIterator extends IntervalIterator {
     interval.end = intervals[lastIter].end;
     interval.offsetBegin = intervals[0].offsetBegin;
     interval.offsetEnd = intervals[lastIter].offsetEnd;
+    interval.field = intervals[0].field;
     return interval;
   }
 

@@ -17,9 +17,7 @@ package org.apache.lucene.search.intervals;
  * limitations under the License.
  */
 
-import org.apache.lucene.search.BooleanClause;
-import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.Query;
+import org.apache.lucene.search.FieldedQuery;
 
 /**
  * A query that matches if a set of subqueries also match, and are within
@@ -43,8 +41,8 @@ public class OrderedNearQuery extends IntervalFilterQuery {
    * @param collectLeaves false if only the master interval should be collected
    * @param subqueries the subqueries to match.
    */
-  public OrderedNearQuery(int slop, boolean collectLeaves, Query... subqueries) {
-    super(buildBooleanQuery(subqueries), new WithinOrderedFilter(slop, collectLeaves));
+  public OrderedNearQuery(int slop, boolean collectLeaves, FieldedQuery... subqueries) {
+    this(slop, collectLeaves, new FieldedConjunctionQuery(subqueries));
   }
 
   /**
@@ -52,16 +50,12 @@ public class OrderedNearQuery extends IntervalFilterQuery {
    * @param slop the maximum distance between the subquery matches
    * @param subqueries the subqueries to match.
    */
-  public OrderedNearQuery(int slop, Query... subqueries) {
-    super(buildBooleanQuery(subqueries), new WithinOrderedFilter(slop, true));
+  public OrderedNearQuery(int slop, FieldedQuery... subqueries) {
+    this(slop, true, new FieldedConjunctionQuery(subqueries));
   }
 
-  private static BooleanQuery buildBooleanQuery(Query... queries) {
-    BooleanQuery bq = new BooleanQuery();
-    for (Query q : queries) {
-      bq.add(q, BooleanClause.Occur.MUST);
-    }
-    return bq;
+  public OrderedNearQuery(int slop, boolean collectLeaves, FieldedConjunctionQuery subqueries) {
+    super(subqueries, new WithinOrderedFilter(subqueries.getField(), slop, collectLeaves));
   }
 
 }

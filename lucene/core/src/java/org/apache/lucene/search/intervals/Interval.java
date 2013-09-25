@@ -33,6 +33,9 @@ public class Interval implements Cloneable {
   /** The offset of the end of this Interval */
   public int offsetEnd;
 
+  /** The field this interval is on */
+  public String field;
+
   /** An interval that will always compare as less than any other interval */
   public static final Interval INFINITE_INTERVAL = new Interval();
 
@@ -43,11 +46,12 @@ public class Interval implements Cloneable {
    * @param offsetBegin the start offset
    * @param offsetEnd the end offset
    */
-  public Interval(int begin, int end, int offsetBegin, int offsetEnd) {
+  public Interval(int begin, int end, int offsetBegin, int offsetEnd, String field) {
     this.begin = begin;
     this.end = end;
     this.offsetBegin = offsetBegin;
     this.offsetEnd = offsetEnd;
+    this.field = field;
   }
 
   /**
@@ -55,7 +59,11 @@ public class Interval implements Cloneable {
    * will always compare as less than any other Interval.
    */
   public Interval() {
-    this(Integer.MIN_VALUE, Integer.MIN_VALUE, -1, -1);
+    this(null);
+  }
+
+  public Interval(String field) {
+    this(Integer.MIN_VALUE, Integer.MIN_VALUE, -1, -1, field);
   }
 
   /**
@@ -64,6 +72,7 @@ public class Interval implements Cloneable {
    * @param end the second Interval
    */
   public void update(Interval start, Interval end) {
+    assert start.field == end.field;
     this.begin = start.begin;
     this.offsetBegin = start.offsetBegin;
     this.end = end.end;
@@ -77,6 +86,7 @@ public class Interval implements Cloneable {
    *              the comparator.
    */
   public boolean lessThanExclusive(Interval other) {
+    //assert field == other.field;
     return begin < other.begin && end < other.end;
   }
 
@@ -87,6 +97,7 @@ public class Interval implements Cloneable {
    *              or equal to the comparator's.
    */
   public boolean lessThan(Interval other) {
+    //assert field == other.field;
     return begin <= other.begin && end <= other.end;
   }
 
@@ -97,6 +108,7 @@ public class Interval implements Cloneable {
    *              the comparator's.
    */
   public boolean greaterThanExclusive(Interval other) {
+    assert field == other.field;
     return begin > other.begin && end > other.end;
   }
 
@@ -107,6 +119,7 @@ public class Interval implements Cloneable {
    *              of equal to the comparator's.
    */
   public boolean greaterThan(Interval other) {
+    assert field == other.field;
     return begin >= other.begin && end >= other.end;
   }
 
@@ -116,6 +129,7 @@ public class Interval implements Cloneable {
    * @return true if this Interval contains the comparator
    */
   public boolean contains(Interval other) {
+    assert field == other.field;
     return begin <= other.begin && other.end <= end;
   }
 
@@ -125,6 +139,7 @@ public class Interval implements Cloneable {
    * @return true if the two intervals overlap
    */
   public boolean overlaps(Interval other) {
+    //assert field == other.field;
     return this.contains(other) || other.contains(this);
   }
 
@@ -137,6 +152,7 @@ public class Interval implements Cloneable {
     end = other.end;
     offsetBegin = other.offsetBegin;
     offsetEnd = other.offsetEnd;
+    field = other.field;
   }
 
   /**
@@ -168,7 +184,7 @@ public class Interval implements Cloneable {
   
   @Override
   public String toString() {
-    return "Interval [begin=" + begin + "(" + offsetBegin + "), end="
+    return "Interval [field=" + field + " begin=" + begin + "(" + offsetBegin + "), end="
         + end + "(" + offsetEnd + ")]";
   }
 

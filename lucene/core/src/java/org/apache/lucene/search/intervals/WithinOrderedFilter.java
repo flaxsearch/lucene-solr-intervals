@@ -27,25 +27,27 @@ public class WithinOrderedFilter implements IntervalFilter {
 
   private final WithinIntervalFilter innerFilter;
   private final boolean collectLeaves;
+  private final String field;
 
   /**
    * Constructs a new WithinOrderedFilter with a given slop
    * @param slop The maximum distance allowed between subintervals
    * @param collectLeaves false if only the parent interval should be collected
    */
-  public WithinOrderedFilter(int slop, boolean collectLeaves) {
+  public WithinOrderedFilter(String field, int slop, boolean collectLeaves) {
     this.innerFilter = new WithinIntervalFilter(slop);
     this.collectLeaves = collectLeaves;
+    this.field = field;
   }
 
-  public WithinOrderedFilter(int slop) {
-    this(slop, true);
+  public WithinOrderedFilter(String field, int slop) {
+    this(field, slop, true);
   }
 
   @Override
   public IntervalIterator filter(boolean collectIntervals, IntervalIterator iter) {
     return innerFilter.filter(collectIntervals,
-                              new OrderedConjunctionIntervalIterator(collectIntervals, collectLeaves, iter));
+                              new OrderedConjunctionIntervalIterator(collectIntervals, collectLeaves, field, iter));
   }
 
   @Override

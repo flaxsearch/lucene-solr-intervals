@@ -22,6 +22,7 @@ import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.FieldedQuery;
 import org.apache.lucene.search.Query;
 
 import java.io.IOException;
@@ -99,8 +100,8 @@ public class TestNestedIntervalFilterQueries extends IntervalTestBase {
 
   // (a pre/2 b) pre/6 (c pre/2 d)
   public void testNearNearNearQuery() throws IOException {
-    Query near1 = new OrderedNearQuery(2, false, makeTermQuery("w1"), makeTermQuery("w4"));
-    Query near2 = new OrderedNearQuery(2, false, makeTermQuery("w10"), makeTermQuery("w12"));
+    FieldedQuery near1 = new OrderedNearQuery(2, false, makeTermQuery("w1"), makeTermQuery("w4"));
+    FieldedQuery near2 = new OrderedNearQuery(2, false, makeTermQuery("w10"), makeTermQuery("w12"));
     Query near3 = new OrderedNearQuery(6, near1, near2);
     checkIntervals(near3, searcher, new int[][]{
         { 0, 0, 11, 0, 3, 9, 11 }

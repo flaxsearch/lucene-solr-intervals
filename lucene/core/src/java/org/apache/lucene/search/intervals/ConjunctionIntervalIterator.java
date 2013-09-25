@@ -149,7 +149,7 @@ public final class ConjunctionIntervalIterator extends IntervalIterator {
   
   private void collectInternal(IntervalCollector collector) {
     assert collectIntervals;
-    collector.collectComposite(scorer, queue.currentCandidate, docID());
+    //collector.collectComposite(scorer, queue.currentCandidate, docID());
     for (IntervalIterator iter : iterators) {
       iter.collect(collector);
     }

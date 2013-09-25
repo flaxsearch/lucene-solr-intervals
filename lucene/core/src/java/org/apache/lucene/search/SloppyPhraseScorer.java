@@ -45,6 +45,7 @@ final class SloppyPhraseScorer extends Scorer {
 
   private final PhraseQuery.PostingsAndFreq[] postings;
   private final Similarity.SimScorer docScorer;
+  private final String field;
 
   private final int slop;
   private final int numPostings;
@@ -62,10 +63,11 @@ final class SloppyPhraseScorer extends Scorer {
   private final long cost;
   
   SloppyPhraseScorer(Weight weight, PhraseQuery.PostingsAndFreq[] postings,
-      int slop, Similarity.SimScorer docScorer) {
+      int slop, Similarity.SimScorer docScorer, String field) {
     super(weight);
     this.docScorer = docScorer;
     this.postings = postings;
+    this.field = field;
     this.slop = slop;
     this.numPostings = postings==null ? 0 : postings.length;
     pq = new PhraseQueue(postings.length);
@@ -625,7 +627,7 @@ final class SloppyPhraseScorer extends Scorer {
             .docsAndPositionsEnum();
         enums.add(docsAndPosEnum);
         iterAndOffset = new IterAndOffsets(new TermIntervalIterator(this, docsAndPosEnum, false,
-            collectIntervals));
+            collectIntervals, field));
         map.put(term, iterAndOffset);
       } else {
         iterAndOffset = map.get(term);

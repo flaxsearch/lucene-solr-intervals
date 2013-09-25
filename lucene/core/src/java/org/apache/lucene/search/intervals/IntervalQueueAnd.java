@@ -69,6 +69,7 @@ final class IntervalQueueAnd extends IntervalQueue {
     currentCandidate.offsetBegin = interval.offsetBegin;
     currentCandidate.end = rightExtreme;
     currentCandidate.offsetEnd = rightExtremeOffset;
+    currentCandidate.field = interval.field;
     currentTopEnd = interval.end;
         
   }

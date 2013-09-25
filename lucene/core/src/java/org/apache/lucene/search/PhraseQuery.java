@@ -33,6 +33,7 @@ import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.search.similarities.Similarity.SimScorer;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
@@ -285,7 +286,7 @@ public class PhraseQuery extends Query {
       }
 
       if (slop == 0) {  // optimize exact case
-        ExactPhraseScorer s = new ExactPhraseScorer(this, postingsFreqs, similarity.simScorer(stats, context));
+        ExactPhraseScorer s = new ExactPhraseScorer(this, postingsFreqs, similarity.simScorer(stats, context), field);
         if (s.noDocs) {
           return null;
         } else {
@@ -293,7 +294,7 @@ public class PhraseQuery extends Query {
         }
       } else {
         return
-          new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.simScorer(stats, context));
+          new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.simScorer(stats, context), field);
       }
     }
     

@@ -100,7 +100,8 @@ final class TermScorer extends Scorer {
   @Override
   public IntervalIterator intervals(boolean collectIntervals) throws IOException {
     assert docsEnum instanceof DocsAndPositionsEnum;
-    return new TermIntervalIterator(this, (DocsAndPositionsEnum) docsEnum, false, collectIntervals);
+    String field = ((TermQuery) weight.getQuery()).getTerm().field();
+    return new TermIntervalIterator(this, (DocsAndPositionsEnum) docsEnum, false, collectIntervals, field);
   }
 
 }

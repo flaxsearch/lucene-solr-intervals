@@ -17,16 +17,16 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
-import org.apache.lucene.index.FilteredTermsEnum; // javadocs
+import org.apache.lucene.index.FilteredTermsEnum;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.SingleTermsEnum;   // javadocs
+import org.apache.lucene.index.SingleTermsEnum;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.AttributeSource;
+
+import java.io.IOException;
 
 /**
  * An abstract {@link Query} that matches documents
@@ -61,8 +61,8 @@ import org.apache.lucene.util.AttributeSource;
  * MultiTermQueries using {@link
  * #CONSTANT_SCORE_AUTO_REWRITE_DEFAULT} by default.
  */
-public abstract class MultiTermQuery extends Query {
-  protected final String field;
+public abstract class MultiTermQuery extends FieldedQuery {
+
   protected RewriteMethod rewriteMethod = CONSTANT_SCORE_AUTO_REWRITE_DEFAULT;
 
   /** Abstract class that defines how the query is rewritten. */
@@ -248,10 +248,10 @@ public abstract class MultiTermQuery extends Query {
    * Term.
    */
   public MultiTermQuery(final String field) {
+    super(field);
     if (field == null) {
       throw new IllegalArgumentException("field must not be null");
     }
-    this.field = field;
   }
 
   /** Returns the field name for this query */

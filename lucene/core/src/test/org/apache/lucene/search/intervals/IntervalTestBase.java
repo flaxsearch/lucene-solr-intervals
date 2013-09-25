@@ -51,6 +51,30 @@ public abstract class IntervalTestBase extends LuceneTestCase {
   protected IndexReader reader;
   protected IndexSearcher searcher;
 
+  public static void checkFieldIntervals(Query q, IndexSearcher searcher, Object[][] expectedResults) throws IOException {
+
+    MatchCollector m = new MatchCollector();
+    searcher.search(q, m);
+
+    Assert.assertEquals("Incorrect number of hits", expectedResults.length, m.getHitCount());
+    Iterator<Match> matchIt = m.getMatches().iterator();
+    for (int i = 0; i < expectedResults.length; i++) {
+      Object docMatches[] = expectedResults[i];
+      int docid = (Integer) docMatches[0];
+      for (int j = 1; j < docMatches.length; j += 3) {
+        String expectation = "Expected match at docid " + docid + ", position " + docMatches[j];
+        Assert.assertTrue(expectation, matchIt.hasNext());
+        Match match = matchIt.next();
+        System.out.println(match);
+        Assert.assertEquals("Incorrect docid", docid, match.docid);
+        Assert.assertEquals("Incorrect field match", docMatches[j], match.field);
+        Assert.assertEquals("Incorrect match start position", docMatches[j + 1], match.start);
+        Assert.assertEquals("Incorrect match end position", docMatches[j + 2], match.end);
+      }
+    }
+
+  }
+
   /**
    * Run a query against a searcher, and check that the collected intervals from the query match
    * the expected results.
@@ -170,6 +194,7 @@ public abstract class IntervalTestBase extends LuceneTestCase {
     public final int end;
     public final int startOffset;
     public final int endOffset;
+    public final String field;
     public final boolean composite;
 
     public Match(int docid, Interval interval, boolean composite) {
@@ -178,6 +203,7 @@ public abstract class IntervalTestBase extends LuceneTestCase {
       this.end = interval.end;
       this.startOffset = interval.offsetBegin;
       this.endOffset = interval.offsetEnd;
+      this.field = interval.field;
       this.composite = composite;
     }
 
@@ -192,8 +218,8 @@ public abstract class IntervalTestBase extends LuceneTestCase {
 
     @Override
     public String toString() {
-      return String.format(Locale.ROOT, "%d:%d[%d]->%d[%d]%s",
-                            docid, start, startOffset, end, endOffset, composite ? "C" : "");
+      return String.format(Locale.ROOT, "%d::%s:%d[%d]->%d[%d]%s",
+                            docid, field, start, startOffset, end, endOffset, composite ? "C" : "");
     }
   }
 
