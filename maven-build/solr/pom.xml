@@ -41,39 +41,6 @@
     <tests.luceneMatchVersion>LUCENE_CURRENT</tests.luceneMatchVersion>
     <module-directory>solr</module-directory>
   </properties>
-  <scm>
-    <connection>scm:svn:${vc-anonymous-base-url}/${module-directory}</connection>
-    <developerConnection>scm:svn:${vc-dev-base-url}/${module-directory}</developerConnection>
-    <url>${vc-browse-base-url}/${module-directory}</url>
-  </scm>
-  <issueManagement>
-    <system>JIRA</system>
-    <url>https://issues.apache.org/jira/browse/SOLR</url>
-  </issueManagement>
-  <mailingLists>
-    <mailingList>
-      <name>Solr User List</name>
-      <subscribe>solr-user-subscribe@lucene.apache.org</subscribe>
-      <unsubscribe>solr-user-unsubscribe@lucene.apache.org</unsubscribe>
-      <archive>
-        http://mail-archives.apache.org/mod_mbox/solr-user/
-      </archive>
-    </mailingList>
-    <mailingList>
-      <name>Java Developer List</name>
-      <subscribe>dev-subscribe@lucene.apache.org</subscribe>
-      <unsubscribe>dev-unsubscribe@lucene.apache.org</unsubscribe>
-      <archive>http://mail-archives.apache.org/mod_mbox/lucene-dev/</archive>
-    </mailingList>
-    <mailingList>
-      <name>Java Commits List</name>
-      <subscribe>commits-subscribe@lucene.apache.org</subscribe>
-      <unsubscribe>commits-unsubscribe@lucene.apache.org</unsubscribe>
-      <archive>
-        http://mail-archives.apache.org/mod_mbox/lucene-java-commits/
-      </archive>
-    </mailingList>
-  </mailingLists>
   <inceptionYear>2006</inceptionYear>
   <repositories>
     <repository>

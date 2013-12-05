@@ -38,10 +38,6 @@
     <module>solr</module>
   </modules>
   <properties>
-    <!-- TODO Change these to github -->
-    <vc-anonymous-base-url>http://svn.apache.org/repos/asf/lucene/dev/trunk</vc-anonymous-base-url>
-    <vc-dev-base-url>https://svn.apache.org/repos/asf/lucene/dev/trunk</vc-dev-base-url>
-    <vc-browse-base-url>http://svn.apache.org/viewvc/lucene/dev/trunk</vc-browse-base-url>
     <base.specification.version>5.0.0</base.specification.version>
     <maven.build.timestamp.format>yyyy-MM-dd HH:mm:ss</maven.build.timestamp.format>
     <java.compat.version>1.7</java.compat.version>
@@ -75,50 +71,13 @@
     <tests.infostream>${tests.verbose}</tests.infostream>
   </properties>
   <issueManagement>
-    <system>JIRA</system>
-    <url>https://issues.apache.org/jira/browse/LUCENE</url>
+    <system>Github Issues</system>
+    <url>https://github.com/flaxsearch/lucene-solr-intervals/issues</url>
   </issueManagement>
-  <ciManagement>
-    <system>Jenkins</system>
-    <url>https://builds.apache.org/computer/lucene/</url>
-  </ciManagement>
-  <mailingLists>
-    <mailingList>
-      <name>General List</name>
-      <subscribe>general-subscribe@lucene.apache.org</subscribe>
-      <unsubscribe>general-unsubscribe@lucene.apache.org</unsubscribe>
-      <archive>
-        http://mail-archives.apache.org/mod_mbox/lucene-general/
-      </archive>
-    </mailingList>
-    <mailingList>
-      <name>Java User List</name>
-      <subscribe>java-user-subscribe@lucene.apache.org</subscribe>
-      <unsubscribe>java-user-unsubscribe@lucene.apache.org</unsubscribe>
-      <archive>
-        http://mail-archives.apache.org/mod_mbox/lucene-java-user/
-      </archive>
-    </mailingList>
-    <mailingList>
-      <name>Java Developer List</name>
-      <subscribe>dev-subscribe@lucene.apache.org</subscribe>
-      <unsubscribe>dev-unsubscribe@lucene.apache.org</unsubscribe>
-      <archive>http://mail-archives.apache.org/mod_mbox/lucene-dev/</archive>
-    </mailingList>
-    <mailingList>
-      <name>Java Commits List</name>
-      <subscribe>commits-subscribe@lucene.apache.org</subscribe>
-      <unsubscribe>commits-unsubscribe@lucene.apache.org</unsubscribe>
-      <archive>
-        http://mail-archives.apache.org/mod_mbox/lucene-java-commits/
-      </archive>
-    </mailingList>
-  </mailingLists>
-  <inceptionYear>2000</inceptionYear>
   <scm>
-    <connection>scm:svn:${vc-anonymous-base-url}</connection>
-    <developerConnection>scm:svn:${vc-dev-base-url}</developerConnection>
-    <url>${vc-browse-base-url}</url>
+    <connection>scm:git:git://github.com:flaxsearch/lucene-solr-intervals.git</connection>
+    <developerConnection>scm:git:git@github.com:flaxsearch/lucene-solr-intervals.git</developerConnection>
+    <url>https://github.com/flaxsearch/lucene-solr-intervals</url>
   </scm>
   <licenses>
     <license>
