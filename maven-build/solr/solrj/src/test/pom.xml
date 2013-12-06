@@ -1,6 +1,4 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <!--
     Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
@@ -23,7 +21,7 @@
   <parent>
     <groupId>uk.co.flax.lucene-solr-intervals</groupId>
     <artifactId>solr-parent</artifactId>
-    <version>5.0.0-intervals-1.2-SNAPSHOT</version>
+    <version>5.0.0-intervals-1.2</version>
     <relativePath>../../../pom.xml</relativePath>
   </parent>
   <groupId>uk.co.flax.lucene-solr-intervals</groupId>
@@ -53,7 +51,6 @@
     </dependency>
   </dependencies>
   <build>
-    <sourceDirectory/>
     <!-- Instead of depending on solr-solrj module, use its output directory -->
     <outputDirectory>../java/target/classes</outputDirectory>
     <testSourceDirectory>${module-path}</testSourceDirectory>
@@ -90,14 +87,6 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-install-plugin</artifactId>
-        <configuration>
-          <skip>true</skip>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.felix</groupId>
-        <artifactId>maven-bundle-plugin</artifactId>
-        <version>2.3.7</version>
         <configuration>
           <skip>true</skip>
         </configuration>

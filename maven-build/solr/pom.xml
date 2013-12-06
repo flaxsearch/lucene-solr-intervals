@@ -1,6 +1,4 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <!--
     Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
@@ -23,7 +21,7 @@
   <parent>
     <groupId>uk.co.flax.lucene-solr-intervals</groupId>
     <artifactId>lucene-solr-grandparent</artifactId>
-    <version>5.0.0-intervals-1.2-SNAPSHOT</version>
+    <version>5.0.0-intervals-1.2</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
   <groupId>uk.co.flax.lucene-solr-intervals</groupId>
@@ -83,7 +81,7 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-javadoc-plugin</artifactId>
           <configuration>
-            <overview/>
+            <overview />
             <windowtitle>${project.name} ${project.version} API (${now.version})</windowtitle>
             <doctitle>${project.name} ${project.version} API (${now.version})</doctitle>
           </configuration>

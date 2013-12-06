@@ -1,6 +1,4 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <!--
     Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
@@ -24,11 +22,11 @@
     <groupId>org.apache</groupId>
     <artifactId>apache</artifactId>
     <version>13</version>
-    <relativePath/>
+    <relativePath />
   </parent>
   <groupId>uk.co.flax.lucene-solr-intervals</groupId>
   <artifactId>lucene-solr-grandparent</artifactId>
-  <version>5.0.0-intervals-1.2-SNAPSHOT</version>
+  <version>5.0.0-intervals-1.2</version>
   <packaging>pom</packaging>
   <name>Grandparent POM for Flax Intervals fork of Apache Lucene Core and Apache Solr</name>
   <description>Grandparent POM for Flax Intervals fork of Apache Lucene Core and Apache Solr</description>
@@ -52,11 +50,11 @@
 
     <!-- RandomizedTesting library system properties -->
     <tests.iters>1</tests.iters>
-    <tests.seed/>
-    <tests.nightly/>
-    <tests.weekly/>
-    <tests.awaitsfix/>
-    <tests.slow/>
+    <tests.seed />
+    <tests.nightly />
+    <tests.weekly />
+    <tests.awaitsfix />
+    <tests.slow />
 
     <!-- Lucene/Solr-specific test system properties -->
     <tests.codec>random</tests.codec>
@@ -78,6 +76,7 @@
     <connection>scm:git:git://github.com:flaxsearch/lucene-solr-intervals.git</connection>
     <developerConnection>scm:git:git@github.com:flaxsearch/lucene-solr-intervals.git</developerConnection>
     <url>https://github.com/flaxsearch/lucene-solr-intervals</url>
+    <tag>lucene-solr-grandparent-5.0.0-intervals-1.2</tag>
   </scm>
   <licenses>
     <license>
@@ -764,7 +763,7 @@
                   <message>Maven 2.2.1+ is required.</message>
                   <version>[2.2.1,)</version>
                 </requireMavenVersion>
-                <requirePluginVersions/>
+                <requirePluginVersions />
               </rules>
             </configuration>
           </execution>

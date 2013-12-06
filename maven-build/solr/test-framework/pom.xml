@@ -1,6 +1,4 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <!--
     Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
@@ -23,7 +21,7 @@
   <parent>
     <groupId>uk.co.flax.lucene-solr-intervals</groupId>
     <artifactId>solr-parent</artifactId>
-    <version>5.0.0-intervals-1.2-SNAPSHOT</version>
+    <version>5.0.0-intervals-1.2</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
   <groupId>uk.co.flax.lucene-solr-intervals</groupId>
@@ -40,6 +38,7 @@
     <connection>scm:svn:${vc-anonymous-base-url}/${module-directory}</connection>
     <developerConnection>scm:svn:${vc-dev-base-url}/${module-directory}</developerConnection>
     <url>${vc-browse-base-url}/${module-directory}</url>
+    <tag>lucene-solr-grandparent-5.0.0-intervals-1.2</tag>
   </scm>
   <dependencies>
     <!-- These dependencies are compile scope because this is a test framework. -->
