@@ -38,7 +38,13 @@ final class IntervalQueueOr extends IntervalQueue {
   protected boolean lessThan(IntervalRef left, IntervalRef right) {
     final Interval a = left.interval;
     final Interval b = right.interval;
-    return a.begin < b.begin || (a.begin == b.begin && a.end < b.end);
+    if (a.field == null)
+      return true;
+    if (b.field == null)
+      return false;
+    if (a.field.equals(b.field))
+      return a.begin < b.begin || (a.begin == b.begin && a.end < b.end);
+    return (a.field.compareTo(b.field)) < 0;
     //return a.end < b.end || (a.end == b.end && a.begin >= b.begin);
   }
 

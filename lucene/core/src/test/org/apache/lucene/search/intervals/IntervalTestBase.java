@@ -211,6 +211,8 @@ public abstract class IntervalTestBase extends LuceneTestCase {
     public int compareTo(Match o) {
       if (this.docid != o.docid)
         return this.docid - o.docid;
+      if (this.field != o.field)
+        return this.field.compareTo(o.field);
       if (this.start != o.start)
         return this.start - o.start;
       return o.end - this.end;

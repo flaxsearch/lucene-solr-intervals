@@ -64,6 +64,7 @@ public final class DisjunctionIntervalIterator extends IntervalIterator {
   @Override
   public Interval next() throws IOException {
     while (queue.size() > 0 &&
+        (queue.top().interval.field.equals(queue.currentCandidate.field)) &&
         (queue.top().interval.begin < queue.currentCandidate.begin ||
          (queue.top().interval.begin == queue.currentCandidate.begin && queue.top().interval.end <= queue.currentCandidate.end))) {
       advance();

@@ -67,4 +67,27 @@ public class TestFieldedIntervals extends IntervalTestBase {
     });
   }
 
+  @Test
+  public void testEquivalentPositionsOnSeparateFieldsDisjunction() throws IOException {
+    BooleanQuery bq = new BooleanQuery();
+    bq.add(new TermQuery(new Term("field1", "pease")), BooleanClause.Occur.SHOULD);
+    bq.add(new TermQuery(new Term("field2", "some")), BooleanClause.Occur.SHOULD);
+    checkFieldIntervals(bq, searcher, new Object[][]{
+        { 0, "field1", 0, 0, "field1", 3, 3, "field2", 0, 0, "field2", 4, 4 },
+        { 1, "field1", 0, 0, "field1", 3, 3, "field2", 0, 0, "field2", 4, 4 },
+    });
+  }
+
+  @Test
+  public void testEquivalentPositionsOnSeparateFieldsConjunction() throws IOException {
+    BooleanQuery bq = new BooleanQuery();
+    bq.add(new TermQuery(new Term("field1", "pease")), BooleanClause.Occur.MUST);
+    bq.add(new TermQuery(new Term("field2", "some")), BooleanClause.Occur.MUST);
+    checkFieldIntervals(bq, searcher, new Object[][]{
+        { 0, "field1", 0, 0, "field1", 3, 3, "field2", 0, 0, "field2", 4, 4 },
+        { 1, "field1", 0, 0, "field1", 3, 3, "field2", 0, 0, "field2", 4, 4 },
+    });
+  }
+
+
 }
