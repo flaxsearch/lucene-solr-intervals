@@ -81,7 +81,7 @@ public class MatchAllDocsQuery extends Query {
 
     @Override
     public IntervalIterator intervals(boolean collectIntervals) throws IOException {
-      throw new UnsupportedOperationException("MatchAllDocsQuery doesn't support IntervalIterators");
+      return IntervalIterator.NO_MORE_INTERVALS;
     }
 
     public long cost() {
