@@ -62,7 +62,7 @@ import java.util.regex.Pattern;
 public class GenerateUTR30DataFiles {
   private static final String ICU_SVN_TAG_URL
       = "http://source.icu-project.org/repos/icu/icu/tags";
-  private static final String ICU_RELEASE_TAG = "release-49-1-2";
+  private static final String ICU_RELEASE_TAG = "release-52-1";
   private static final String ICU_DATA_NORM2_PATH = "source/data/unidata/norm2";
   private static final String NFC_TXT = "nfc.txt";
   private static final String NFKC_TXT = "nfkc.txt";
@@ -188,7 +188,7 @@ public class GenerateUTR30DataFiles {
         if (matcher.matches()) {
           final String leftHandSide = matcher.group(1);
           final String rightHandSide = matcher.group(2).trim();
-          List<String> diacritics = new ArrayList<String>();
+          List<String> diacritics = new ArrayList<>();
           for (String outputCodePoint : rightHandSide.split("\\s+")) {
             int ch = Integer.parseInt(outputCodePoint, 16);
             if (UCharacter.hasBinaryProperty(ch, UProperty.DIACRITIC)

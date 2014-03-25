@@ -32,6 +32,7 @@ import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.TermVectorsReader;
 import org.apache.lucene.index.SegmentReader.CoreClosedListener;
+import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
@@ -50,12 +51,9 @@ final class SegmentCoreReaders {
   // SegmentReaders:
   private final AtomicInteger ref = new AtomicInteger(1);
   
-  final FieldInfos fieldInfos;
   final FieldsProducer fields;
   final DocValuesProducer normsProducer;
 
-  private final SegmentReader owner;
-  
   final StoredFieldsReader fieldsReaderOrig;
   final TermVectorsReader termVectorsReaderOrig;
   final CompoundFileDirectory cfsReader;
@@ -81,15 +79,15 @@ final class SegmentCoreReaders {
   final CloseableThreadLocal<Map<String,Object>> normsLocal = new CloseableThreadLocal<Map<String,Object>>() {
     @Override
     protected Map<String,Object> initialValue() {
-      return new HashMap<String,Object>();
+      return new HashMap<>();
     }
   };
 
   private final Set<CoreClosedListener> coreClosedListeners = 
       Collections.synchronizedSet(new LinkedHashSet<CoreClosedListener>());
   
-  SegmentCoreReaders(SegmentReader owner, Directory dir, SegmentInfoPerCommit si, IOContext context) throws IOException {
-    
+  SegmentCoreReaders(SegmentReader owner, Directory dir, SegmentCommitInfo si, IOContext context) throws IOException {
+
     final Codec codec = si.info.getCodec();
     final Directory cfsDir; // confusing name: if (cfs) its the cfsdir, otherwise its the segment's directory.
 
@@ -103,10 +101,10 @@ final class SegmentCoreReaders {
         cfsDir = dir;
       }
 
-      fieldInfos = codec.fieldInfosFormat().getFieldInfosReader().read(cfsDir, si.info.name, IOContext.READONCE);
+      final FieldInfos fieldInfos = owner.fieldInfos;
       
-      final PostingsFormat format = codec.postingsFormat();
       final SegmentReadState segmentReadState = new SegmentReadState(cfsDir, si.info, fieldInfos, context);
+      final PostingsFormat format = codec.postingsFormat();
       // Ask codec for its Fields
       fields = format.fieldsProducer(segmentReadState);
       assert fields != null;
@@ -135,12 +133,6 @@ final class SegmentCoreReaders {
         decRef();
       }
     }
-    
-    // Must assign this at the end -- if we hit an
-    // exception above core, we don't want to attempt to
-    // purge the FieldCache (will hit NPE because core is
-    // not assigned yet).
-    this.owner = owner;
   }
   
   int getRefCount() {
@@ -148,27 +140,24 @@ final class SegmentCoreReaders {
   }
   
   void incRef() {
-    ref.incrementAndGet();
+    int count;
+    while ((count = ref.get()) > 0) {
+      if (ref.compareAndSet(count, count+1)) {
+        return;
+      }
+    }
+    throw new AlreadyClosedException("SegmentCoreReaders is already closed");
   }
 
-  NumericDocValues getNormValues(String field) throws IOException {
-    FieldInfo fi = fieldInfos.fieldInfo(field);
-    if (fi == null) {
-      // Field does not exist
-      return null;
-    }
-    if (!fi.hasNorms()) {
-      return null;
-    }
-   
+  NumericDocValues getNormValues(FieldInfo fi) throws IOException {
     assert normsProducer != null;
 
     Map<String,Object> normFields = normsLocal.get();
 
-    NumericDocValues norms = (NumericDocValues) normFields.get(field);
+    NumericDocValues norms = (NumericDocValues) normFields.get(fi.name);
     if (norms == null) {
       norms = normsProducer.getNumeric(fi);
-      normFields.put(field, norms);
+      normFields.put(fi.name, norms);
     }
 
     return norms;
@@ -186,7 +175,9 @@ final class SegmentCoreReaders {
   private void notifyCoreClosedListeners() {
     synchronized(coreClosedListeners) {
       for (CoreClosedListener listener : coreClosedListeners) {
-        listener.onClose(owner);
+        // SegmentReader uses our instance as its
+        // coreCacheKey:
+        listener.onClose(this);
       }
     }
   }
@@ -205,10 +196,5 @@ final class SegmentCoreReaders {
         ((fields!=null) ? fields.ramBytesUsed() : 0) + 
         ((fieldsReaderOrig!=null)? fieldsReaderOrig.ramBytesUsed() : 0) + 
         ((termVectorsReaderOrig!=null) ? termVectorsReaderOrig.ramBytesUsed() : 0);
-  }
-  
-  @Override
-  public String toString() {
-    return "SegmentCoreReader(owner=" + owner + ")";
   }
 }

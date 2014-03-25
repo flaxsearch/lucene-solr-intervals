@@ -25,6 +25,27 @@
   
   <import file="lucene/common-build.xml"/>
 
+  <target name="-run-test">
+    <mkdir dir="lucene/build" />
+    <tempfile property="tests.totals.tmpfile"
+          destdir="lucene/build"
+          prefix=".test-totals-"
+          suffix=".tmp"
+          deleteonexit="true"
+          createfile="true" />
+
+    <subant target="test" inheritall="false" failonerror="true">
+      <fileset dir="lucene" includes="build.xml" />
+      <fileset dir="solr" includes="build.xml" />
+      <propertyset>
+        <propertyref name="tests.totals.tmpfile" />
+      </propertyset>      
+    </subant>
+
+    <property name="tests.totals.toplevel" value="true" />
+    <antcall target="-check-totals" />
+  </target>
+
   <!--
    Run after Junit tests.
    
@@ -70,11 +91,13 @@
   <target name="-check-after-regeneration" depends="ivy-availability-check,ivy-fail,ivy-configure,resolve-groovy">
     <svn-checker failonmodifications="true"/>
   </target>
+  
+  <property name="svnkit.version" value="1.8.4"/>
 
   <macrodef xmlns:ivy="antlib:org.apache.ivy.ant" name="svn-checker">
     <attribute name="failonmodifications" default="true"/> <!-- false if file modifications are allowed -->
     <sequential>
-    <ivy:cachepath organisation="org.tmatesoft.svnkit" module="svnkit" revision="1.7.8"
+    <ivy:cachepath organisation="org.tmatesoft.svnkit" module="svnkit" revision="${svnkit.version}"
       inline="true" conf="default" transitive="true" pathid="svnkit.classpath"/>
     <local name="svn.checkprops.failed"/>
     <local name="svn.unversioned.failed"/>
@@ -82,6 +105,7 @@
     <groovy taskname="svn" classpathref="svnkit.classpath"><![CDATA[
       import org.tmatesoft.svn.core.*;
       import org.tmatesoft.svn.core.wc.*;
+      import org.apache.tools.ant.Project;
       
       SVNClientManager manager = SVNClientManager.newInstance();
       SVNStatusClient statusClient = manager.getStatusClient();
@@ -89,10 +113,30 @@
       
       File basedir = new File(project.getProperty('basedir')).getAbsoluteFile();
       int baseLen = basedir.toString().length();
+
+      // do some fake check, to verify if this is valid SVN working copy. If this fails ignore checks but log some useful message.
+      task.log('Initializing working copy...');
+      try {
+        wcClient.doInfo(basedir, SVNRevision.WORKING);
+      } catch (SVNException ex) {
+        def ec = ex.getErrorMessage().getErrorCode();
+        int code = ec.getCode();
+        int category = ec.getCategory();
+        if (code == SVNErrorCode.WC_NOT_DIRECTORY.getCode() || code == SVNErrorCode.WC_NOT_FILE.getCode()) {
+          task.log('WARNING: Development directory is not an SVN checkout! Disabling checks...', Project.MSG_WARN);
+          return;
+        } else if (category == SVNErrorCode.WC_CATEGORY) {
+          task.log('WARNING: Development directory is not a valid SVN checkout (' + ex.getErrorMessage() + '). Disabling checks...', Project.MSG_WARN);
+          return;
+        } else {
+          throw ex;
+        }
+      }
+      
       def convertRelative = {
         file -> '.' + file.getAbsolutePath().substring(baseLen).replace(File.separatorChar, (char)'/');
       }
-      
+
       Set missingProps = new TreeSet(), unversioned = new TreeSet(), changed = new TreeSet();
 
       task.log('Getting all versioned and unversioned files...');

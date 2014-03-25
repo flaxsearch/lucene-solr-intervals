@@ -69,4 +69,5 @@ public class Lucene41RWCodec extends Lucene41Codec {
   public NormsFormat normsFormat() {
     return norms;
   }
+  
 }

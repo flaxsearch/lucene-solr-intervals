@@ -21,7 +21,7 @@ import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.TestUtil;
 
 import java.io.IOException;
 import java.util.List;
@@ -66,23 +66,6 @@ public class AssertingIndexSearcher extends IndexSearcher {
       }
 
       @Override
-      public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
-          boolean topScorer, PostingFeatures flags, Bits acceptDocs) throws IOException {
-        Scorer scorer = w.scorer(context, scoreDocsInOrder, topScorer, flags, acceptDocs);
-        if (scorer != null) {
-          // check that scorer obeys disi contract for docID() before next()/advance
-          try {
-            int docid = scorer.docID();
-            assert docid == -1 || docid == DocIdSetIterator.NO_MORE_DOCS;
-          } catch (UnsupportedOperationException ignored) {
-            // from a top-level BS1
-            assert topScorer;
-          }
-        }
-        return scorer;
-      }
-
-      @Override
       public float getValueForNormalization() {
         throw new IllegalStateException("Weight already normalized.");
       }
@@ -103,11 +86,12 @@ public class AssertingIndexSearcher extends IndexSearcher {
   protected Query wrapFilter(Query query, Filter filter) {
     if (random.nextBoolean())
       return super.wrapFilter(query, filter);
-    return (filter == null) ? query : new FilteredQuery(query, filter, _TestUtil.randomFilterStrategy(random));
+    return (filter == null) ? query : new FilteredQuery(query, filter, TestUtil.randomFilterStrategy(random));
   }
 
   @Override
   protected void search(List<AtomicReaderContext> leaves, Weight weight, Collector collector) throws IOException {
+    // TODO: shouldn't we AssertingCollector.wrap(collector) here?
     super.search(leaves, AssertingWeight.wrap(random, weight), collector);
   }
 

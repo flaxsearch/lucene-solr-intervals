@@ -118,10 +118,10 @@ public class HdfsDirectoryTest extends SolrTestCaseJ4 {
     assertEquals(12345, input1.readInt());
     input1.close();
 
-    assertFalse(directory.fileExists("testing.test.other"));
-    assertTrue(directory.fileExists("testing.test"));
+    assertFalse(slowFileExists(directory, "testing.test.other"));
+    assertTrue(slowFileExists(directory, "testing.test"));
     directory.deleteFile("testing.test");
-    assertFalse(directory.fileExists("testing.test"));
+    assertFalse(slowFileExists(directory, "testing.test"));
   }
   
   @Test
@@ -150,7 +150,7 @@ public class HdfsDirectoryTest extends SolrTestCaseJ4 {
   public void testRandomAccessWrites() throws IOException {
     int i = 0;
     try {
-      Set<String> names = new HashSet<String>();
+      Set<String> names = new HashSet<>();
       for (; i< 10; i++) {
         Directory fsDir = new RAMDirectory();
         String name = getName();

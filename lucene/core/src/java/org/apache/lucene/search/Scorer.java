@@ -17,13 +17,12 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.search.intervals.IntervalIterator;
 
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
-
-import org.apache.lucene.index.DocsEnum;
 
 /**
  * Expert: Common scoring functionality for different types of queries.
@@ -54,18 +53,6 @@ public abstract class Scorer extends DocsEnum {
    */
   protected Scorer(Weight weight) {
     this.weight = weight;
-  }
-
-  /** Scores and collects all matching documents.
-   * @param collector The collector to which all matching documents are passed.
-   */
-  public void score(Collector collector) throws IOException {
-    assert docID() == -1; // not started
-    collector.setScorer(this);
-    int doc;
-    while ((doc = nextDoc()) != NO_MORE_DOCS) {
-      collector.collect(doc);
-    }
   }
   
   /**
@@ -112,30 +99,6 @@ public abstract class Scorer extends DocsEnum {
     return iterators;
   }
 
-  /**
-   * Expert: Collects matching documents in a range. Hook for optimization.
-   * Note, <code>firstDocID</code> is added to ensure that {@link #nextDoc()}
-   * was called before this method.
-   * 
-   * @param collector
-   *          The collector to which all matching documents are passed.
-   * @param max
-   *          Do not score documents past this.
-   * @param firstDocID
-   *          The first document ID (ensures {@link #nextDoc()} is called before
-   *          this method.
-   * @return true if more matching documents may remain.
-   */
-  public boolean score(Collector collector, int max, int firstDocID) throws IOException {
-    assert docID() == firstDocID;
-    collector.setScorer(this);
-    int doc;
-    for (doc = firstDocID; doc < max; doc = nextDoc()) {
-      collector.collect(doc);
-    }
-    return doc != NO_MORE_DOCS;
-  }
-  
   /** Returns the score of the current document matching the query.
    * Initially invalid, until {@link #nextDoc()} or {@link #advance(int)}
    * is called the first time, or when called from within

@@ -28,9 +28,15 @@ import java.net.URL;
 
 public abstract class QParserPlugin implements NamedListInitializedPlugin, SolrInfoMBean {
   /** internal use - name of the default parser */
-  public static String DEFAULT_QTYPE = LuceneQParserPlugin.NAME;
+  public static final String DEFAULT_QTYPE = LuceneQParserPlugin.NAME;
 
-  /** internal use - name to class mappings of builtin parsers */
+  /**
+   * Internal use - name to class mappings of builtin parsers.
+   * Each query parser plugin extending {@link QParserPlugin} has own instance of standardPlugins.
+   * This leads to cyclic dependencies of static fields and to case when NAME field is not yet initialized.
+   * This result to NPE during initialization.
+   * For every plugin, listed here, NAME field has to be final and static.
+   */
   public static final Object[] standardPlugins = {
     LuceneQParserPlugin.NAME, LuceneQParserPlugin.class,
     OldLuceneQParserPlugin.NAME, OldLuceneQParserPlugin.class,
@@ -51,7 +57,10 @@ public abstract class QParserPlugin implements NamedListInitializedPlugin, SolrI
     SwitchQParserPlugin.NAME, SwitchQParserPlugin.class,
     MaxScoreQParserPlugin.NAME, MaxScoreQParserPlugin.class,
     BlockJoinParentQParserPlugin.NAME, BlockJoinParentQParserPlugin.class,
-    BlockJoinChildQParserPlugin.NAME, BlockJoinChildQParserPlugin.class
+    BlockJoinChildQParserPlugin.NAME, BlockJoinChildQParserPlugin.class,
+    CollapsingQParserPlugin.NAME, CollapsingQParserPlugin.class,
+    SimpleQParserPlugin.NAME, SimpleQParserPlugin.class,
+    ComplexPhraseQParserPlugin.NAME, ComplexPhraseQParserPlugin.class
   };
 
   /** return a {@link QParser} */

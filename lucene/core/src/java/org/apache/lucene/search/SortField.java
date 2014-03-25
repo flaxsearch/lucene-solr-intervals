@@ -23,10 +23,6 @@ import java.util.Comparator;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.StringHelper;
 
-// TODO(simonw) -- for cleaner transition, maybe we should make
-// a new SortField that subclasses this one and always uses
-// index values?
-
 /**
  * Stores information about how to sort documents by terms in an individual
  * field.  Fields must be indexed in order to sort by them.
@@ -165,13 +161,34 @@ public class SortField {
     this.reverse = reverse;
     this.parser = parser;
   }
+
+  /** Pass this to {@link #setMissingValue} to have missing
+   *  string values sort first. */
+  public final static Object STRING_FIRST = new Object() {
+      @Override
+      public String toString() {
+        return "SortField.STRING_FIRST";
+      }
+    };
   
-  public SortField setMissingValue(Object missingValue) {
-    if (type != Type.INT && type != Type.FLOAT && type != Type.LONG && type != Type.DOUBLE) {
-      throw new IllegalArgumentException( "Missing value only works for numeric types" );
+  /** Pass this to {@link #setMissingValue} to have missing
+   *  string values sort last. */
+  public final static Object STRING_LAST = new Object() {
+      @Override
+      public String toString() {
+        return "SortField.STRING_LAST";
+      }
+    };
+
+  public void setMissingValue(Object missingValue) {
+    if (type == Type.STRING) {
+      if (missingValue != STRING_FIRST && missingValue != STRING_LAST) {
+        throw new IllegalArgumentException("For STRING type, missing value must be either STRING_FIRST or STRING_LAST");
+      }
+    } else if (type != Type.INT && type != Type.FLOAT && type != Type.LONG && type != Type.DOUBLE) {
+      throw new IllegalArgumentException("Missing value only works for numeric or STRING types");
     }
     this.missingValue = missingValue;
-    return this;
   }
 
   /** Creates a sort with a custom comparison function.
@@ -294,6 +311,10 @@ public class SortField {
     }
 
     if (reverse) buffer.append('!');
+    if (missingValue != null) {
+      buffer.append(" missingValue=");
+      buffer.append(missingValue);
+    }
 
     return buffer.toString();
   }
@@ -376,9 +397,10 @@ public class SortField {
       return comparatorSource.newComparator(field, numHits, sortPos, reverse);
 
     case STRING:
-      return new FieldComparator.TermOrdValComparator(numHits, field);
+      return new FieldComparator.TermOrdValComparator(numHits, field, missingValue == STRING_LAST);
 
     case STRING_VAL:
+      // TODO: should we remove this?  who really uses it?
       return new FieldComparator.TermValComparator(numHits, field);
 
     case REWRITEABLE:

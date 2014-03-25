@@ -1,20 +1,17 @@
-# hdfs
-/solr/example/hdfs
-*.jar
-
 # .
 /eclipse-build
 /classes
-/build
+**/build
 /idea-build
-/dist
+**/dist
+**/lib
 /*~
 /velocity.log
 /build.properties
 /.idea
-*.iml
-/*.ipr
-/*.iws
+**/*.iml
+**/*.ipr
+**/*.iws
 /.project
 /.classpath
 /.settings
@@ -22,158 +19,29 @@
 /prj.el
 /bin
 /bin.*
-/pom.xml
+**/pom.xml
+/nbproject
+/nb-build
 
-
-# ./lucene
-/lucene/build
-/lucene/dist
-/lucene/*~
-/lucene/velocity.log
-/lucene/build.properties
-/lucene/.idea
-/lucene/*.iml
-/lucene/*.ipr
-/lucene/*.iws
-/lucene/.project
-/lucene/.classpath
-/lucene/.settings
-/lucene/prj.el
-/lucene/pom.xml
-
-
-# ./lucene/core
-/lucene/core/*.iml
-/lucene/core/pom.xml
-
-
-# ./lucene/core/src/java/org/apache/lucene/util/automaton
-/lucene/core/src/java/org/apache/lucene/util/automaton/moman
-
-
-# ./lucene/test-framework
-/lucene/test-framework/*.iml
-/lucene/test-framework/pom.xml
-
-
-# ./lucene/contrib
-/lucene/contrib/build
-/lucene/contrib/dist
-/lucene/contrib/pom.xml
-
-
-# ./lucene/contrib/misc
-/lucene/contrib/misc/*.iml
-/lucene/contrib/misc/pom.xml
-
-
-# ./lucene/contrib/memory
-/lucene/contrib/memory/*.iml
-/lucene/contrib/memory/pom.xml
-
-
-# ./lucene/contrib/spatial
-/lucene/contrib/spatial/*.iml
-/lucene/contrib/spatial/pom.xml
-
-
-# ./lucene/contrib/sandbox
-/lucene/contrib/sandbox/pom.xml
-/lucene/contrib/sandbox/*.iml
-
-
-# ./lucene/contrib/highlighter
-/lucene/contrib/highlighter/*.iml
-/lucene/contrib/highlighter/pom.xml
-
-
-# ./lucene/contrib/demo
-/lucene/contrib/demo/*.iml
-/lucene/contrib/demo/pom.xml
-
-
-# ./solr
-/solr/build
-/solr/dist
-/solr/.project
-/solr/.classpath
-/solr/.settings
-/solr/bin
-/solr/target
-/solr/luke
-/solr/lucene-libs
-/solr/build.properties
-/solr/*.iml
-/solr/pom.xml
 /solr/package
 
-
-# ./solr/solrj
-/solr/solrj/pom.xml
-
-
-# ./solr/solrj/src/java
-/solr/solrj/src/java/pom.xml
-
-
-# ./solr/core
-/solr/core/pom.xml
-
-
-# ./solr/core/src/test-files/solr
-/solr/core/src/test-files/solr/data
-
-
-# ./solr/example/webapps
+# can this be minimized?
+/solr/example/start.jar
 /solr/example/webapps/*
-
-
-# ./solr/example/logs
 /solr/example/logs/*.log
-
-
-# ./solr/example/solr
-/solr/example/solr/data
+/solr/example/**/data
 /solr/example/solr/lib
 /solr/example/solr/logs
 /solr/example/solr/zoo_data
-
-
-# ./solr/example/solr/bin
-/solr/example/solr/bin/*
-
-
-# ./solr/example/work
 /solr/example/work/*
-
-
-# ./solr/example/exampledocs
 /solr/example/exampledocs/post.jar
 
-
-# ./solr/example/multicore/core1
-/solr/example/multicore/core1/data
-
-
-# ./solr/example/multicore/core0
-/solr/example/multicore/core0/data
-
-
-# ./solr/example/example-DIH/solr/rss
-/solr/example/example-DIH/solr/rss/data
-
-
-# ./solr/example/example-DIH/solr/rss/conf
-/solr/example/example-DIH/solr/rss/conf/dataimport.properties
-
-
-# ./solr/example/example-DIH/solr/mail
-/solr/example/example-DIH/solr/mail/data
-
-
-# ./solr/example/example-DIH/solr/mail/lib
+/solr/example/example-DIH/**/data
+/solr/example/example-DIH/**/dataimport.properties
 /solr/example/example-DIH/solr/mail/lib/*.jar
 
+solr/contrib/dataimporthandler/test-lib/
+solr/contrib/morphlines-core/test-lib/
 
 # ./solr/example/example-DIH/solr/db
 /solr/example/example-DIH/solr/db/data
@@ -390,3 +258,4 @@
 
 # maven-build
 target/
+solr/core/test-lib/

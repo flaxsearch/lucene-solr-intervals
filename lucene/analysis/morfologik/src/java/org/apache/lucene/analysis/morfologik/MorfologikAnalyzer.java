@@ -31,16 +31,30 @@ import org.apache.lucene.util.Version;
  * @see <a href="http://morfologik.blogspot.com/">Morfologik project page</a>
  */
 public class MorfologikAnalyzer extends Analyzer {
+  private final String dictionary;
   private final Version version;
 
   /**
-   * Builds an analyzer with the default Morfologik's dictionary (polimorf).
+   * Builds an analyzer with an explicit dictionary resource.
    * 
-   * @param version
-   *          Lucene compatibility version
+   * @param version Lucene compatibility version
+   * @param dictionaryResource A constant specifying which dictionary to choose. The
+   * dictionary resource must be named <code>morfologik/dictionaries/{dictionaryResource}.dict</code>
+   * and have an associated <code>.info</code> metadata file. See the Morfologik project
+   * for details.
+   * 
+   * @see "http://morfologik.blogspot.com/"
+   */
+  public MorfologikAnalyzer(final Version version, final String dictionaryResource) {
+    this.version = version;
+      this.dictionary = dictionaryResource;
+  }
+  
+  /**
+   * Builds an analyzer with the default Morfologik's Polish dictionary.
    */
   public MorfologikAnalyzer(final Version version) {
-    this.version = version;
+    this(version, MorfologikFilterFactory.DEFAULT_DICTIONARY_RESOURCE);
   }
 
   /**
@@ -49,19 +63,16 @@ public class MorfologikAnalyzer extends Analyzer {
    * which tokenizes all the text in the provided {@link Reader}.
    * 
    * @param field ignored field name
-   * @param reader source of tokens
-   * 
-   * @return A
-   *         {@link org.apache.lucene.analysis.Analyzer.TokenStreamComponents}
+   * @return A {@link org.apache.lucene.analysis.Analyzer.TokenStreamComponents}
    *         built from an {@link StandardTokenizer} filtered with
    *         {@link StandardFilter} and {@link MorfologikFilter}.
    */
   @Override
-  protected TokenStreamComponents createComponents(final String field, final Reader reader) {
-    final Tokenizer src = new StandardTokenizer(this.version, reader);
+  protected TokenStreamComponents createComponents(final String field) {
+    final Tokenizer src = new StandardTokenizer(this.version);
     
     return new TokenStreamComponents(
         src, 
-        new MorfologikFilter(new StandardFilter(this.version, src), this.version));
+        new MorfologikFilter(new StandardFilter(this.version, src), dictionary, this.version));
   }
 }

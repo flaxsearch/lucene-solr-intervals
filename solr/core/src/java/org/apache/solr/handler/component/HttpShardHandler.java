@@ -53,6 +53,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 public class HttpShardHandler extends ShardHandler {
 
@@ -67,12 +68,12 @@ public class HttpShardHandler extends ShardHandler {
     this.httpClient = httpClient;
     this.httpShardHandlerFactory = httpShardHandlerFactory;
     completionService = httpShardHandlerFactory.newCompletionService();
-    pending = new HashSet<Future<ShardResponse>>();
+    pending = new HashSet<>();
 
     // maps "localhost:8983|localhost:7574" to a shuffled List("http://localhost:8983","http://localhost:7574")
     // This is primarily to keep track of what order we should use to query the replicas of a shard
     // so that we use the same replica for all phases of a distributed request.
-    shardToURLs = new HashMap<String,List<String>>();
+    shardToURLs = new HashMap<>();
 
   }
 
@@ -127,7 +128,7 @@ public class HttpShardHandler extends ShardHandler {
         srsp.setShard(shard);
         SimpleSolrResponse ssr = new SimpleSolrResponse();
         srsp.setSolrResponse(ssr);
-        long startTime = System.currentTimeMillis();
+        long startTime = System.nanoTime();
 
         try {
           params.remove(CommonParams.WT); // use default (currently javabin)
@@ -152,7 +153,11 @@ public class HttpShardHandler extends ShardHandler {
             String url = urls.get(0);
             srsp.setShardAddress(url);
             SolrServer server = new HttpSolrServer(url, httpClient);
-            ssr.nl = server.request(req);
+            try {
+              ssr.nl = server.request(req);
+            } finally {
+              server.shutdown();
+            }
           } else {
             LBHttpSolrServer.Rsp rsp = httpShardHandlerFactory.makeLoadBalancedRequest(req, urls);
             ssr.nl = rsp.getResponse();
@@ -161,7 +166,7 @@ public class HttpShardHandler extends ShardHandler {
         }
         catch( ConnectException cex ) {
           srsp.setException(cex); //????
-        } catch (Throwable th) {
+        } catch (Exception th) {
           srsp.setException(th);
           if (th instanceof SolrException) {
             srsp.setResponseCode(((SolrException)th).code());
@@ -170,7 +175,7 @@ public class HttpShardHandler extends ShardHandler {
           }
         }
 
-        ssr.elapsedTime = System.currentTimeMillis() - startTime;
+        ssr.elapsedTime = TimeUnit.MILLISECONDS.convert(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
 
         return srsp;
       }
@@ -280,7 +285,7 @@ public class HttpShardHandler extends ShardHandler {
         if(shardKeys == null) shardKeys = params.get(ShardParams.SHARD_KEYS);//eprecated
 
         // This will be the complete list of slices we need to query for this request.
-        slices = new HashMap<String,Slice>();
+        slices = new HashMap<>();
 
         // we need to find out what collections this request is for.
 
@@ -335,6 +340,7 @@ public class HttpShardHandler extends ShardHandler {
 
           if (shortCircuit) {
             rb.isDistrib = false;
+            rb.shortCircuitedURL = ZkCoreNodeProps.getCoreUrl(zkController.getBaseUrl(), coreDescriptor.getName());
             return;
           }
           // We shouldn't need to do anything to handle "shard.rows" since it was previously meant to be an optimization?
@@ -374,8 +380,6 @@ public class HttpShardHandler extends ShardHandler {
                 sliceShardsStr.append('|');
               }
               String url = ZkCoreNodeProps.getCoreUrl(replica);
-              if (url.startsWith("http://"))
-                url = url.substring(7);
               sliceShardsStr.append(url);
             }
 

@@ -69,13 +69,13 @@ public class TestSubScorerFreqs extends LuceneTestCase {
     private final Collector other;
     private int docBase;
 
-    public final Map<Integer, Map<Query, Float>> docCounts = new HashMap<Integer, Map<Query, Float>>();
+    public final Map<Integer, Map<Query, Float>> docCounts = new HashMap<>();
 
-    private final Map<Query, Scorer> subScorers = new HashMap<Query, Scorer>();
+    private final Map<Query, Scorer> subScorers = new HashMap<>();
     private final Set<String> relationships;
 
     public CountingCollector(Collector other) {
-      this(other, new HashSet<String>(Arrays.asList("MUST", "SHOULD", "MUST_NOT")));
+      this(other, new HashSet<>(Arrays.asList("MUST", "SHOULD", "MUST_NOT")));
     }
 
     public CountingCollector(Collector other, Set<String> relationships) {
@@ -92,7 +92,7 @@ public class TestSubScorerFreqs extends LuceneTestCase {
     
     public void setSubScorers(Scorer scorer, String relationship) {
       for (ChildScorer child : scorer.getChildren()) {
-        if (relationships.contains(child.relationship)) {
+        if (scorer instanceof AssertingScorer || relationships.contains(child.relationship)) {
           setSubScorers(child.child, child.relationship);
         }
       }
@@ -101,7 +101,7 @@ public class TestSubScorerFreqs extends LuceneTestCase {
 
     @Override
     public void collect(int doc) throws IOException {
-      final Map<Query, Float> freqs = new HashMap<Query, Float>();
+      final Map<Query, Float> freqs = new HashMap<>();
       for (Map.Entry<Query, Scorer> ent : subScorers.entrySet()) {
         Scorer value = ent.getValue();
         int matchId = value.docID();
@@ -165,7 +165,7 @@ public class TestSubScorerFreqs extends LuceneTestCase {
     // see http://docs.oracle.com/javase/7/docs/api/java/lang/SafeVarargs.html
     @SuppressWarnings("unchecked") final Iterable<Set<String>> occurList = Arrays.asList(
         Collections.singleton("MUST"), 
-        new HashSet<String>(Arrays.asList("MUST", "SHOULD"))
+        new HashSet<>(Arrays.asList("MUST", "SHOULD"))
     );
     
     for (final Set<String> occur : occurList) {
@@ -180,16 +180,17 @@ public class TestSubScorerFreqs extends LuceneTestCase {
         assertEquals(includeOptional ? 5 : 4, doc0.size());
         assertEquals(1.0F, doc0.get(aQuery), FLOAT_TOLERANCE);
         assertEquals(4.0F, doc0.get(dQuery), FLOAT_TOLERANCE);
-        if (includeOptional)
+        if (includeOptional) {
           assertEquals(3.0F, doc0.get(cQuery), FLOAT_TOLERANCE);
+        }
 
         Map<Query, Float> doc1 = c.docCounts.get(++i);
         assertEquals(includeOptional ? 5 : 4, doc1.size());
         assertEquals(1.0F, doc1.get(aQuery), FLOAT_TOLERANCE);
         assertEquals(1.0F, doc1.get(dQuery), FLOAT_TOLERANCE);
-        if (includeOptional)
+        if (includeOptional) {
           assertEquals(1.0F, doc1.get(cQuery), FLOAT_TOLERANCE);
-
+        }
       }
     }
   }

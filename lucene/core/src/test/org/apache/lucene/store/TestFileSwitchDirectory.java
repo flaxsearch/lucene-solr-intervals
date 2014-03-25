@@ -33,14 +33,14 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.TestIndexWriterReader;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.TestUtil;
 
 public class TestFileSwitchDirectory extends LuceneTestCase {
   /**
    * Test if writing doc stores to disk and everything else to ram works.
    */
   public void testBasic() throws IOException {
-    Set<String> fileExtensions = new HashSet<String>();
+    Set<String> fileExtensions = new HashSet<>();
     fileExtensions.add(Lucene40StoredFieldsWriter.FIELDS_EXTENSION);
     fileExtensions.add(Lucene40StoredFieldsWriter.FIELDS_INDEX_EXTENSION);
     
@@ -51,6 +51,8 @@ public class TestFileSwitchDirectory extends LuceneTestCase {
     
     FileSwitchDirectory fsd = new FileSwitchDirectory(fileExtensions, primaryDir, secondaryDir, true);
     // for now we wire Lucene40Codec because we rely upon its specific impl
+    boolean oldValue = OLD_FORMAT_IMPERSONATION_IS_ACTIVE;
+    OLD_FORMAT_IMPERSONATION_IS_ACTIVE = true;
     IndexWriter writer = new IndexWriter(
         fsd,
         new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
@@ -82,11 +84,12 @@ public class TestFileSwitchDirectory extends LuceneTestCase {
       assertNotNull(files[i]);
     }
     fsd.close();
+    OLD_FORMAT_IMPERSONATION_IS_ACTIVE = oldValue;
   }
   
   private Directory newFSSwitchDirectory(Set<String> primaryExtensions) throws IOException {
-    File primDir = _TestUtil.getTempDir("foo");
-    File secondDir = _TestUtil.getTempDir("bar");
+    File primDir = TestUtil.getTempDir("foo");
+    File secondDir = TestUtil.getTempDir("bar");
     return newFSSwitchDirectory(primDir, secondDir, primaryExtensions);
   }
 
@@ -99,10 +102,10 @@ public class TestFileSwitchDirectory extends LuceneTestCase {
   
   // LUCENE-3380 -- make sure we get exception if the directory really does not exist.
   public void testNoDir() throws Throwable {
-    File primDir = _TestUtil.getTempDir("foo");
-    File secondDir = _TestUtil.getTempDir("bar");
-    _TestUtil.rmDir(primDir);
-    _TestUtil.rmDir(secondDir);
+    File primDir = TestUtil.getTempDir("foo");
+    File secondDir = TestUtil.getTempDir("bar");
+    TestUtil.rmDir(primDir);
+    TestUtil.rmDir(secondDir);
     Directory dir = newFSSwitchDirectory(primDir, secondDir, Collections.<String>emptySet());
     try {
       DirectoryReader.open(dir);
@@ -119,7 +122,7 @@ public class TestFileSwitchDirectory extends LuceneTestCase {
     String name = "file";
     try {
       dir.createOutput(name, newIOContext(random())).close();
-      assertTrue(dir.fileExists(name));
+      assertTrue(slowFileExists(dir, name));
       assertTrue(Arrays.asList(dir.listAll()).contains(name));
     } finally {
       dir.close();
@@ -133,12 +136,6 @@ public class TestFileSwitchDirectory extends LuceneTestCase {
     createSequenceFile(newDir, "d1", (byte) 0, 15);
     IndexOutput out = csw.createOutput("d.xyz", newIOContext(random()));
     out.writeInt(0);
-    try {
-      newDir.copy(csw, "d1", "d1", newIOContext(random()));
-      fail("file does already exist");
-    } catch (IllegalArgumentException e) {
-      //
-    }
     out.close();
     assertEquals(1, csw.listAll().length);
     assertEquals("d.xyz", csw.listAll()[0]);

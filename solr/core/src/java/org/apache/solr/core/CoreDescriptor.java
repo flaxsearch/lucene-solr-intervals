@@ -19,9 +19,11 @@ package org.apache.solr.core;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.solr.cloud.CloudDescriptor;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.util.IOUtils;
 import org.apache.solr.util.PropertiesUtil;
 
@@ -56,6 +58,8 @@ public class CoreDescriptor {
   public static final String CORE_LOADONSTARTUP = "loadOnStartup";
   public static final String CORE_TRANSIENT = "transient";
   public static final String CORE_NODE_NAME = "coreNodeName";
+  public static final String CORE_CONFIGSET = "configSet";
+  public static final String SOLR_CORE_PROP_PREFIX = "solr.core.";
 
   public static final String DEFAULT_EXTERNAL_PROPERTIES_FILE = "conf" + File.separator + "solrcore.properties";
 
@@ -97,13 +101,13 @@ public class CoreDescriptor {
       CORE_PROPERTIES,
       CORE_LOADONSTARTUP,
       CORE_TRANSIENT,
+      CORE_CONFIGSET,
       // cloud props
       CORE_SHARD,
       CORE_COLLECTION,
       CORE_ROLES,
       CORE_NODE_NAME,
-      CloudDescriptor.NUM_SHARDS,
-      CloudDescriptor.SHARD_STATE
+      CloudDescriptor.NUM_SHARDS
   );
 
   private final CoreContainer coreContainer;
@@ -131,6 +135,19 @@ public class CoreDescriptor {
    */
   public CoreDescriptor(CoreContainer container, String name, String instanceDir,
                         Properties coreProps) {
+    this(container, name, instanceDir, coreProps, null);
+  }
+  
+  /**
+   * Create a new CoreDescriptor.
+   * @param container       the CoreDescriptor's container
+   * @param name            the CoreDescriptor's name
+   * @param instanceDir     a String containing the instanceDir
+   * @param coreProps       a Properties object of the properties for this core
+   * @param params          additional params
+   */
+  public CoreDescriptor(CoreContainer container, String name, String instanceDir,
+                        Properties coreProps, SolrParams params) {
 
     this.coreContainer = container;
 
@@ -146,7 +163,7 @@ public class CoreDescriptor {
     coreProperties.putAll(defaultProperties);
     coreProperties.put(CORE_NAME, name);
     coreProperties.put(CORE_INSTDIR, instanceDir);
-    coreProperties.put(CORE_ABS_INSTDIR, convertToAbsolute(instanceDir, container.getSolrHome()));
+    coreProperties.put(CORE_ABS_INSTDIR, convertToAbsolute(instanceDir, container.getCoreRootDirectory()));
 
     for (String propname : coreProps.stringPropertyNames()) {
 
@@ -167,7 +184,10 @@ public class CoreDescriptor {
 
     // TODO maybe make this a CloudCoreDescriptor subclass?
     if (container.isZooKeeperAware()) {
-      cloudDesc = new CloudDescriptor(name, coreProperties);
+      cloudDesc = new CloudDescriptor(name, coreProperties, this);
+      if (params != null) {
+        cloudDesc.setParams(params);
+      }
     }
     else {
       cloudDesc = null;
@@ -214,7 +234,7 @@ public class CoreDescriptor {
     for (String propName : coreProperties.stringPropertyNames()) {
       String propValue = coreProperties.getProperty(propName);
       if (!isUserDefinedProperty(propName))
-        propName = "solr.core." + propName;
+        propName = SOLR_CORE_PROP_PREFIX + propName;
       substitutableProperties.setProperty(propName, propValue);
     }
   }
@@ -261,12 +281,14 @@ public class CoreDescriptor {
    */
   public CoreDescriptor(String coreName, CoreDescriptor other) {
     this.coreContainer = other.coreContainer;
+    this.cloudDesc = other.cloudDesc;
     this.originalExtraProperties.putAll(other.originalExtraProperties);
     this.originalCoreProperties.putAll(other.originalCoreProperties);
     this.coreProperties.putAll(other.coreProperties);
+    this.substitutableProperties.putAll(other.substitutableProperties);
     this.coreProperties.setProperty(CORE_NAME, coreName);
     this.originalCoreProperties.setProperty(CORE_NAME, coreName);
-    this.cloudDesc = other.cloudDesc;
+    this.substitutableProperties.setProperty(SOLR_CORE_PROP_PREFIX + CORE_NAME, coreName);
   }
 
   public String getPropertiesName() {
@@ -369,5 +391,9 @@ public class CoreDescriptor {
         .append(this.getInstanceDir())
         .append("]")
         .toString();
+  }
+
+  public String getConfigSet() {
+    return coreProperties.getProperty(CORE_CONFIGSET);
   }
 }

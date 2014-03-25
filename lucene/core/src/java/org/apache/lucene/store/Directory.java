@@ -53,10 +53,6 @@ public abstract class Directory implements Closeable {
    */
   public abstract String[] listAll() throws IOException;
 
-  /** Returns true iff a file with the given name exists. */
-  public abstract boolean fileExists(String name)
-       throws IOException;
-
   /** Removes an existing file in the directory. */
   public abstract void deleteFile(String name)
        throws IOException;
@@ -152,12 +148,12 @@ public abstract class Directory implements Closeable {
    * "scopes" to the right index.
    */
   public String getLockID() {
-      return this.toString();
+    return this.toString();
   }
 
   @Override
   public String toString() {
-    return super.toString() + " lockFactory=" + getLockFactory();
+    return getClass().getSimpleName() + '@' + Integer.toHexString(hashCode()) + " lockFactory=" + getLockFactory();
   }
 
   /**

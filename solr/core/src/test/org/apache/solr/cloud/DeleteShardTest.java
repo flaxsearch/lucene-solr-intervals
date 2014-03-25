@@ -138,14 +138,15 @@ public class DeleteShardTest extends AbstractFullDistribZkTestBase {
 
     HttpSolrServer baseServer = new HttpSolrServer(baseUrl);
     baseServer.setConnectionTimeout(15000);
-    baseServer.setSoTimeout((int) (CollectionsHandler.DEFAULT_ZK_TIMEOUT));
+    baseServer.setSoTimeout(60000);
     baseServer.request(request);
+    baseServer.shutdown();
   }
 
   protected void setSliceAsInactive(String slice) throws SolrServerException, IOException,
       KeeperException, InterruptedException {
     DistributedQueue inQueue = Overseer.getInQueue(cloudClient.getZkStateReader().getZkClient());
-    Map<String, Object> propMap = new HashMap<String, Object>();
+    Map<String, Object> propMap = new HashMap<>();
     propMap.put(Overseer.QUEUE_OPERATION, "updateshardstate");
     propMap.put(slice, Slice.INACTIVE);
     propMap.put(ZkStateReader.COLLECTION_PROP, "collection1");

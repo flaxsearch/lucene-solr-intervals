@@ -43,7 +43,7 @@ import org.apache.lucene.store.TrackingDirectoryWrapper;
 import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.TestUtil;
 
 
 /** JUnit adaptation of an older test case DocTest. */
@@ -62,16 +62,16 @@ public class TestDoc extends LuceneTestCase {
         if (VERBOSE) {
           System.out.println("TEST: setUp");
         }
-        workDir = _TestUtil.getTempDir("TestDoc");
+        workDir = TestUtil.getTempDir("TestDoc");
         workDir.mkdirs();
 
-        indexDir = _TestUtil.getTempDir("testIndex");
+        indexDir = TestUtil.getTempDir("testIndex");
         indexDir.mkdirs();
 
         Directory directory = newFSDirectory(indexDir);
         directory.close();
 
-        files = new LinkedList<File>();
+        files = new LinkedList<>();
         files.add(createOutput("test.txt",
             "This is the first test file"
         ));
@@ -129,27 +129,27 @@ public class TestDoc extends LuceneTestCase {
               setMergePolicy(newLogMergePolicy(10))
       );
 
-      SegmentInfoPerCommit si1 = indexDoc(writer, "test.txt");
+      SegmentCommitInfo si1 = indexDoc(writer, "test.txt");
       printSegment(out, si1);
 
-      SegmentInfoPerCommit si2 = indexDoc(writer, "test2.txt");
+      SegmentCommitInfo si2 = indexDoc(writer, "test2.txt");
       printSegment(out, si2);
       writer.close();
 
-      SegmentInfoPerCommit siMerge = merge(directory, si1, si2, "_merge", false);
+      SegmentCommitInfo siMerge = merge(directory, si1, si2, "_merge", false);
       printSegment(out, siMerge);
 
-      SegmentInfoPerCommit siMerge2 = merge(directory, si1, si2, "_merge2", false);
+      SegmentCommitInfo siMerge2 = merge(directory, si1, si2, "_merge2", false);
       printSegment(out, siMerge2);
 
-      SegmentInfoPerCommit siMerge3 = merge(directory, siMerge, siMerge2, "_merge3", false);
+      SegmentCommitInfo siMerge3 = merge(directory, siMerge, siMerge2, "_merge3", false);
       printSegment(out, siMerge3);
       
       directory.close();
       out.close();
       sw.close();
 
-      String multiFileOutput = sw.getBuffer().toString();
+      String multiFileOutput = sw.toString();
       //System.out.println(multiFileOutput);
 
       sw = new StringWriter();
@@ -190,12 +190,12 @@ public class TestDoc extends LuceneTestCase {
       directory.close();
       out.close();
       sw.close();
-      String singleFileOutput = sw.getBuffer().toString();
+      String singleFileOutput = sw.toString();
 
       assertEquals(multiFileOutput, singleFileOutput);
    }
 
-   private SegmentInfoPerCommit indexDoc(IndexWriter writer, String fileName)
+   private SegmentCommitInfo indexDoc(IndexWriter writer, String fileName)
    throws Exception
    {
       File file = new File(workDir, fileName);
@@ -209,7 +209,7 @@ public class TestDoc extends LuceneTestCase {
    }
 
 
-   private SegmentInfoPerCommit merge(Directory dir, SegmentInfoPerCommit si1, SegmentInfoPerCommit si2, String merged, boolean useCompoundFile)
+   private SegmentCommitInfo merge(Directory dir, SegmentCommitInfo si1, SegmentCommitInfo si2, String merged, boolean useCompoundFile)
    throws Exception {
       IOContext context = newIOContext(random());
       SegmentReader r1 = new SegmentReader(si1, context);
@@ -217,7 +217,7 @@ public class TestDoc extends LuceneTestCase {
 
       final Codec codec = Codec.getDefault();
       TrackingDirectoryWrapper trackingDir = new TrackingDirectoryWrapper(si1.info.dir);
-      final SegmentInfo si = new SegmentInfo(si1.info.dir, Constants.LUCENE_MAIN_VERSION, merged, -1, false, codec, null, null);
+      final SegmentInfo si = new SegmentInfo(si1.info.dir, Constants.LUCENE_MAIN_VERSION, merged, -1, false, codec, null);
 
       SegmentMerger merger = new SegmentMerger(Arrays.<AtomicReader>asList(r1, r2),
           si, InfoStream.getDefault(), trackingDir,
@@ -228,8 +228,8 @@ public class TestDoc extends LuceneTestCase {
       r2.close();
       final SegmentInfo info = new SegmentInfo(si1.info.dir, Constants.LUCENE_MAIN_VERSION, merged,
                                                si1.info.getDocCount() + si2.info.getDocCount(),
-                                               false, codec, null, null);
-      info.setFiles(new HashSet<String>(trackingDir.getCreatedFiles()));
+                                               false, codec, null);
+      info.setFiles(new HashSet<>(trackingDir.getCreatedFiles()));
       
       if (useCompoundFile) {
         Collection<String> filesToDelete = IndexWriter.createCompoundFile(InfoStream.getDefault(), dir, MergeState.CheckAbort.NONE, info, newIOContext(random()));
@@ -239,11 +239,11 @@ public class TestDoc extends LuceneTestCase {
         }
       }
 
-      return new SegmentInfoPerCommit(info, 0, -1L, -1L);
+      return new SegmentCommitInfo(info, 0, -1L, -1L);
    }
 
 
-   private void printSegment(PrintWriter out, SegmentInfoPerCommit si)
+   private void printSegment(PrintWriter out, SegmentCommitInfo si)
    throws Exception {
       SegmentReader reader = new SegmentReader(si, newIOContext(random()));
 

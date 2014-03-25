@@ -168,22 +168,22 @@ public abstract class AbstractTestCase extends LuceneTestCase {
   }
 
   protected List<BytesRef> analyze(String text, String field, Analyzer analyzer) throws IOException {
-    List<BytesRef> bytesRefs = new ArrayList<BytesRef>();
+    List<BytesRef> bytesRefs = new ArrayList<>();
 
-    TokenStream tokenStream = analyzer.tokenStream(field, text);
-    TermToBytesRefAttribute termAttribute = tokenStream.getAttribute(TermToBytesRefAttribute.class);
+    try (TokenStream tokenStream = analyzer.tokenStream(field, text)) {
+      TermToBytesRefAttribute termAttribute = tokenStream.getAttribute(TermToBytesRefAttribute.class);
 
-    BytesRef bytesRef = termAttribute.getBytesRef();
+      BytesRef bytesRef = termAttribute.getBytesRef();
 
-    tokenStream.reset();
+      tokenStream.reset();
     
-    while (tokenStream.incrementToken()) {
-      termAttribute.fillBytesRef();
-      bytesRefs.add(BytesRef.deepCopyOf(bytesRef));
-    }
+      while (tokenStream.incrementToken()) {
+        termAttribute.fillBytesRef();
+        bytesRefs.add(BytesRef.deepCopyOf(bytesRef));
+      }
 
-    tokenStream.end();
-    tokenStream.close();
+      tokenStream.end();
+    }
 
     return bytesRefs;
   }
@@ -198,8 +198,8 @@ public abstract class AbstractTestCase extends LuceneTestCase {
 
   static final class BigramAnalyzer extends Analyzer {
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      return new TokenStreamComponents(new BasicNGramTokenizer(reader));
+    public TokenStreamComponents createComponents(String fieldName) {
+      return new TokenStreamComponents(new BasicNGramTokenizer());
     }
   }
   
@@ -221,20 +221,20 @@ public abstract class AbstractTestCase extends LuceneTestCase {
     private int charBufferIndex;
     private int charBufferLen;
     
-    public BasicNGramTokenizer( Reader in ){
-      this( in, DEFAULT_N_SIZE );
+    public BasicNGramTokenizer( ){
+      this( DEFAULT_N_SIZE );
     }
     
-    public BasicNGramTokenizer( Reader in, int n ){
-      this( in, n, DEFAULT_DELIMITERS );
+    public BasicNGramTokenizer( int n ){
+      this( n, DEFAULT_DELIMITERS );
     }
     
-    public BasicNGramTokenizer( Reader in, String delimiters ){
-      this( in, DEFAULT_N_SIZE, delimiters );
+    public BasicNGramTokenizer( String delimiters ){
+      this( DEFAULT_N_SIZE, delimiters );
     }
     
-    public BasicNGramTokenizer( Reader in, int n, String delimiters ){
-      super(in);
+    public BasicNGramTokenizer(int n, String delimiters ){
+      super();
       this.n = n;
       this.delimiters = delimiters;
       startTerm = 0;

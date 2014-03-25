@@ -47,7 +47,7 @@ public class SolrLogFormatter extends Formatter {
 
   long startTime = System.currentTimeMillis();
   long lastTime = startTime;
-  Map<Method, String> methodAlias = new HashMap<Method, String>();
+  Map<Method, String> methodAlias = new HashMap<>();
   
   public static class Method {
     public String className;
@@ -106,17 +106,17 @@ public class SolrLogFormatter extends Formatter {
     Map<String, Object> coreProps;
   }
 
-  Map<SolrCore, CoreInfo> coreInfoMap = new WeakHashMap<SolrCore, CoreInfo>();    // TODO: use something that survives across a core reload?
+  Map<SolrCore, CoreInfo> coreInfoMap = new WeakHashMap<>();    // TODO: use something that survives across a core reload?
 
-  public Map<String,String> classAliases = new HashMap<String, String>();
+  public Map<String,String> classAliases = new HashMap<>();
 
   @Override
   public String format(LogRecord record) {
     try {
       return _format(record);
-    } catch (Throwable th) {
+    } catch (Exception e) {
       // logging swallows exceptions, so if we hit an exception we need to convert it to a string to see it
-      return "ERROR IN SolrLogFormatter! original message:" + record.getMessage() + "\n\tException: " + SolrException.toStr(th);
+      return "ERROR IN SolrLogFormatter! original message:" + record.getMessage() + "\n\tException: " + SolrException.toStr(e);
     }
   }
 
@@ -379,7 +379,7 @@ sb.append("(group_name=").append(tg.getName()).append(")");
 
 
 
-  static ThreadLocal<String> threadLocal = new ThreadLocal<String>();
+  static ThreadLocal<String> threadLocal = new ThreadLocal<>();
   
   public static void main(String[] args) throws Exception {
 
@@ -415,7 +415,7 @@ sb.append("(group_name=").append(tg.getName()).append(")");
       public void run() {
         try {
           go();
-        } catch (Throwable e) {
+        } catch (Exception e) {
           e.printStackTrace();
         }
       }

@@ -81,34 +81,12 @@
       <name>Public online Restlet repository</name>
       <url>http://maven.restlet.org</url>
     </repository>
+    <repository>
+      <id>releases.cloudera.com</id>
+      <name>Cloudera Releases</name>
+      <url>https://repository.cloudera.com/artifactory/libs-release</url>
+    </repository>
   </repositories>
-  <dependencies>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>jcl-over-slf4j</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>jul-to-slf4j</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
-      <optional>true</optional>
-    </dependency>
-  </dependencies>
   <build>
     <pluginManagement>
       <plugins>
@@ -149,6 +127,7 @@
               </bundledSignatures>
               <signaturesFiles>
                 <signaturesFile>${top-level}/lucene/tools/forbiddenApis/base.txt</signaturesFile>
+                <signaturesFile>${top-level}/lucene/tools/forbiddenApis/rue.txt</signaturesFile>
               </signaturesFiles>
             </configuration>
             <goals>
@@ -164,7 +143,7 @@
                 <bundledSignature>jdk-unsafe</bundledSignature>
                 <bundledSignature>jdk-deprecated</bundledSignature>
                 <!-- Include commons-io-unsafe only in those modules with commons-io on their classpath -->
-                <!-- <bundledSignature>commons-io-unsafe-${commons-io.version}</bundledSignature>       -->
+                <!-- <bundledSignature>commons-io-unsafe-@commons-io:commons-io.version@</bundledSignature>       -->
               </bundledSignatures>
               <signaturesFiles>
                 <signaturesFile>${top-level}/lucene/tools/forbiddenApis/tests.txt</signaturesFile>

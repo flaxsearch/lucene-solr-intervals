@@ -86,8 +86,8 @@ public class IgnoreAcceptDocsQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder, boolean topScorer, PostingFeatures flags, Bits acceptDocs) throws IOException {
-      return w.scorer(context, scoreDocsInOrder, topScorer, flags, null);
+    public Scorer scorer(AtomicReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
+      return w.scorer(context, flags, null);
     }
   }
 

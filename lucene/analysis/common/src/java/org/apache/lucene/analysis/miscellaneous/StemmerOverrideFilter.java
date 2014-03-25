@@ -44,7 +44,7 @@ public final class StemmerOverrideFilter extends TokenFilter {
   private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
   private final KeywordAttribute keywordAtt = addAttribute(KeywordAttribute.class);
   private final BytesReader fstReader;
-  private final Arc<BytesRef> scratchArc = new FST.Arc<BytesRef>();
+  private final Arc<BytesRef> scratchArc = new FST.Arc<>();
   private final CharsRef spare = new CharsRef();
   
   /**
@@ -106,7 +106,7 @@ public final class StemmerOverrideFilter extends TokenFilter {
     }
     
     /**
-     * Returns a {@link BytesReader} to pass to the #get method.
+     * Returns a {@link BytesReader} to pass to the {@link #get(char[], int, FST.Arc, FST.BytesReader)} method.
      */
     public BytesReader getBytesReader() {
       if (fst == null) {
@@ -151,7 +151,7 @@ public final class StemmerOverrideFilter extends TokenFilter {
   public static class Builder {
     private final BytesRefHash hash = new BytesRefHash();
     private final BytesRef spare = new BytesRef();
-    private final ArrayList<CharSequence> outputValues = new ArrayList<CharSequence>();
+    private final ArrayList<CharSequence> outputValues = new ArrayList<>();
     private final boolean ignoreCase;
     private final CharsRef charsSpare = new CharsRef();
     
@@ -206,7 +206,7 @@ public final class StemmerOverrideFilter extends TokenFilter {
      */
     public StemmerOverrideMap build() throws IOException {
       ByteSequenceOutputs outputs = ByteSequenceOutputs.getSingleton();
-      org.apache.lucene.util.fst.Builder<BytesRef> builder = new org.apache.lucene.util.fst.Builder<BytesRef>(
+      org.apache.lucene.util.fst.Builder<BytesRef> builder = new org.apache.lucene.util.fst.Builder<>(
           FST.INPUT_TYPE.BYTE4, outputs);
       final int[] sort = hash.sort(BytesRef.getUTF8SortedAsUnicodeComparator());
       IntsRef intsSpare = new IntsRef();

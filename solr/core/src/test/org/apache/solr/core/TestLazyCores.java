@@ -27,11 +27,9 @@ import org.apache.solr.handler.admin.CoreAdminHandler;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.update.AddUpdateCommand;
 import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.update.UpdateHandler;
-import org.apache.solr.util.RefCounted;
 import org.apache.solr.util.TestHarness;
 import org.junit.After;
 import org.junit.BeforeClass;
@@ -251,7 +249,7 @@ public class TestLazyCores extends SolrTestCaseJ4 {
 
   @Test
   public void testRace() throws Exception {
-    final List<SolrCore> theCores = new ArrayList<SolrCore>();
+    final List<SolrCore> theCores = new ArrayList<>();
     final CoreContainer cc = init();
     try {
 
@@ -337,6 +335,84 @@ public class TestLazyCores extends SolrTestCaseJ4 {
       cc.shutdown();
     }
   }
+
+  private void createViaAdmin(CoreContainer cc, String name, String instanceDir, boolean isTransient,
+                              boolean loadOnStartup) throws Exception {
+
+    final CoreAdminHandler admin = new CoreAdminHandler(cc);
+    SolrQueryResponse resp = new SolrQueryResponse();
+    admin.handleRequestBody
+        (req(CoreAdminParams.ACTION,
+            CoreAdminParams.CoreAdminAction.CREATE.toString(),
+            CoreAdminParams.INSTANCE_DIR, instanceDir,
+            CoreAdminParams.NAME, name,
+            CoreAdminParams.TRANSIENT, Boolean.toString(isTransient),
+            CoreAdminParams.LOAD_ON_STARTUP, Boolean.toString(loadOnStartup)),
+            resp);
+
+  }
+
+  private void unloadViaAdmin(CoreContainer cc, String name) throws Exception {
+
+    final CoreAdminHandler admin = new CoreAdminHandler(cc);
+    SolrQueryResponse resp = new SolrQueryResponse();
+    admin.handleRequestBody
+        (req(CoreAdminParams.ACTION,
+            CoreAdminParams.CoreAdminAction.UNLOAD.toString(),
+            CoreAdminParams.CORE, name),
+            resp);
+
+  }
+
+
+  // Make sure that creating a transient core from the admin handler correctly respects the transient limits etc.
+  @Test
+  public void testCreateTransientFromAdmin() throws Exception {
+    final CoreContainer cc = init();
+    try {
+      copyMinConf(new File(solrHomeDirectory, "core1"));
+      copyMinConf(new File(solrHomeDirectory, "core2"));
+      copyMinConf(new File(solrHomeDirectory, "core3"));
+      copyMinConf(new File(solrHomeDirectory, "core4"));
+      copyMinConf(new File(solrHomeDirectory, "core5"));
+
+      createViaAdmin(cc, "core1", "./core1", true, true);
+      createViaAdmin(cc, "core2", "./core2", true, false);
+      createViaAdmin(cc, "core3", "./core3", true, true);
+      createViaAdmin(cc, "core4", "./core4", true, false);
+      createViaAdmin(cc, "core5", "./core5", true, false);
+
+      SolrCore c1 = cc.getCore("core1");
+      SolrCore c2 = cc.getCore("core2");
+      SolrCore c3 = cc.getCore("core3");
+      SolrCore c4 = cc.getCore("core4");
+      SolrCore c5 = cc.getCore("core5");
+
+      checkNotInCores(cc, "core1", "collectionLazy2", "collectionLazy3", "collectionLazy4", "collectionLazy6"
+          , "collectionLazy7", "collectionLazy8", "collectionLazy9");
+
+      checkInCores(cc, "collection1", "collectionLazy5", "core2", "core3", "core4", "core5");
+
+      // While we're at it, a test for SOLR-5366, unloading transient core that's been unloaded b/c it's
+      // transient generates a "too many closes" errorl
+
+      unloadViaAdmin(cc, "core1");
+      unloadViaAdmin(cc, "core2");
+      unloadViaAdmin(cc, "core3");
+      unloadViaAdmin(cc, "core4");
+      unloadViaAdmin(cc, "core5");
+
+      c1.close();
+      c2.close();
+      c3.close();
+      c4.close();
+      c5.close();
+
+    } finally {
+      cc.shutdown();
+    }
+  }
+
 
   //Make sure persisting not-loaded lazy cores is done. See SOLR-4347
 
@@ -482,10 +558,13 @@ public class TestLazyCores extends SolrTestCaseJ4 {
 
   // See fi the message you expect is in the list of failures
   private void testMessage(Map<String, Exception> failures, String lookFor) {
+    List<String> messages = new ArrayList<>();
     for (Exception e : failures.values()) {
-      if (e.getMessage().indexOf(lookFor) != -1) return;
+      String message = e.getCause().getMessage();
+      messages.add(message);
+      if (message.contains(lookFor)) return;
     }
-    fail("Should have found message containing these tokens " + lookFor + " in the failure messages");
+    fail("Should have found message containing these tokens " + lookFor + " in the failure messages: " + messages);
   }
 
   // Just localizes writing a configuration rather than repeating it for good and bad files.
@@ -501,7 +580,7 @@ public class TestLazyCores extends SolrTestCaseJ4 {
         System.getProperty("line.separator") + "transient=true" +
         System.getProperty("line.separator") + "loadOnStartup=true", Charsets.UTF_8.toString());
 
-    FileUtils.writeStringToFile(new File(subHome, "solrconfig.snippet.randomindexconfig.xml"), rand_snip);
+    FileUtils.writeStringToFile(new File(subHome, "solrconfig.snippet.randomindexconfig.xml"), rand_snip, Charsets.UTF_8.toString());
 
     FileUtils.writeStringToFile(new File(subHome, "solrconfig.xml"), config, Charsets.UTF_8.toString());
 
@@ -621,7 +700,7 @@ public class TestLazyCores extends SolrTestCaseJ4 {
   private void addLazy(SolrCore core, String... fieldValues) throws IOException {
     UpdateHandler updater = core.getUpdateHandler();
     AddUpdateCommand cmd = new AddUpdateCommand(makeReq(core));
-    cmd.solrDoc = sdoc(fieldValues);
+    cmd.solrDoc = sdoc((Object[])fieldValues);
     updater.addDoc(cmd);
   }
 
@@ -635,9 +714,9 @@ public class TestLazyCores extends SolrTestCaseJ4 {
     }
     NamedList.NamedListEntry[] entries = new NamedList.NamedListEntry[q.length / 2];
     for (int i = 0; i < q.length; i += 2) {
-      entries[i / 2] = new NamedList.NamedListEntry<String>(q[i], q[i + 1]);
+      entries[i / 2] = new NamedList.NamedListEntry<>(q[i], q[i + 1]);
     }
-    return new LocalSolrQueryRequest(core, new NamedList<Object>(entries));
+    return new LocalSolrQueryRequest(core, new NamedList<>(entries));
   }
 
   private final static String LOTS_SOLR_XML = " <solr persistent=\"false\"> " +

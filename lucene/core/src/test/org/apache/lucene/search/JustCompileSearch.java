@@ -147,6 +147,11 @@ final class JustCompileSearch {
     }
 
     @Override
+    public void setTopValue(Object value) {
+      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
+    }
+
+    @Override
     public FieldComparator<Object> setNextReader(AtomicReaderContext context) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
@@ -157,7 +162,7 @@ final class JustCompileSearch {
     }
 
     @Override
-    public int compareDocToValue(int doc, Object value) {
+    public int compareTop(int doc) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
   }
@@ -227,11 +232,6 @@ final class JustCompileSearch {
       super(weight);
     }
 
-    @Override
-    public boolean score(Collector collector, int max, int firstDocID) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-    
     @Override
     public float score() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
@@ -352,8 +352,7 @@ final class JustCompileSearch {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
-        boolean topScorer, PostingFeatures flags, Bits acceptDocs) {
+    public Scorer scorer(AtomicReaderContext context, PostingFeatures flags, Bits acceptDocs) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
     

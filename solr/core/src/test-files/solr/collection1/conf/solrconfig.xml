@@ -45,6 +45,9 @@
     <double name="maxWriteMBPerSecFlush">2000000</double>
     <double name="maxWriteMBPerSecMerge">3000000</double>
     <double name="maxWriteMBPerSecRead">4000000</double>
+    <str name="solr.hdfs.home">${solr.hdfs.home:}</str>
+    <bool name="solr.hdfs.blockcache.enabled">${solr.hdfs.blockcache.enabled:true}</bool> 
+    <str name="solr.hdfs.blockcache.global">${solr.hdfs.blockcache.global:false}</str>
   </directoryFactory>
 
   <luceneMatchVersion>${tests.luceneMatchVersion:LUCENE_CURRENT}</luceneMatchVersion>
@@ -232,6 +235,18 @@
 
   <requestHandler name="/admin/" class="org.apache.solr.handler.admin.AdminHandlers" />
 
+  <requestHandler name="/admin/file" class="solr.admin.ShowFileRequestHandler" >
+    <lst name="invariants">
+      <str name="hidden">bogus.txt</str>
+    </lst>
+  </requestHandler>
+
+  <requestHandler name="/admin/fileedit" class="solr.admin.EditFileRequestHandler" >
+    <lst name="invariants">
+      <str name="hidden">bogus.txt</str>
+    </lst>
+  </requestHandler>
+
   <!-- test query parameter defaults -->
   <requestHandler name="defaults" class="solr.StandardRequestHandler">
     <lst name="defaults">
@@ -332,6 +347,8 @@
       <str>termsComp</str>
     </arr>
   </requestHandler>
+  
+  
   <!--
   The SpellingQueryConverter to convert raw (CommonParams.Q) queries into tokens.  Uses a simple regular expression
    to strip off field markup, boosts, ranges, etc. but it is not guaranteed to match an exact parse from the query parser.
@@ -557,6 +574,14 @@
     </processor>
     <processor class="solr.RunUpdateProcessorFactory" />
   </updateRequestProcessorChain>  
+
+  <restManager>
+    <!-- 
+    IMPORTANT: Due to the Lucene SecurityManager, tests can only write to their runtime directory or below.
+    But its easier to just keep everything in memory for testing so no remnants are left behind.
+    -->
+    <str name="storageIO">org.apache.solr.rest.ManagedResourceStorage$InMemoryStorageIO</str>
+  </restManager>
 
 </config>
 

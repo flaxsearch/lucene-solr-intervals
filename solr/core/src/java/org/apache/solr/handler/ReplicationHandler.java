@@ -18,6 +18,7 @@ package org.apache.solr.handler;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -25,6 +26,7 @@ import java.io.OutputStream;
 import java.io.Writer;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -35,6 +37,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.Adler32;
@@ -42,16 +45,16 @@ import java.util.zip.Checksum;
 import java.util.zip.DeflaterOutputStream;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexDeletionPolicy;
-import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
-import static org.apache.lucene.util.IOUtils.CHARSET_UTF_8;
-import org.apache.solr.common.SolrException;
+import org.apache.solr.client.solrj.impl.BinaryResponseParser;
 import org.apache.solr.common.SolrException.ErrorCode;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
@@ -60,12 +63,12 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.core.CloseHook;
+import org.apache.solr.core.DirectoryFactory.DirContext;
 import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.IndexDeletionPolicyWrapper;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrDeletionPolicy;
 import org.apache.solr.core.SolrEventListener;
-import org.apache.solr.core.DirectoryFactory.DirContext;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.BinaryQueryResponseWriter;
 import org.apache.solr.response.SolrQueryResponse;
@@ -77,6 +80,8 @@ import org.apache.solr.util.RefCounted;
 import org.apache.solr.util.plugin.SolrCoreAware;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.lucene.util.IOUtils.CHARSET_UTF_8;
 
 /**
  * <p> A Handler which provides a REST API for replication and serves replication requests from Slaves. <p/> </p>
@@ -136,7 +141,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
   private String includeConfFiles;
 
-  private NamedList<String> confFileNameAlias = new NamedList<String>();
+  private NamedList<String> confFileNameAlias = new NamedList<>();
 
   private boolean isMaster = false;
 
@@ -152,7 +157,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
   private int numTimesReplicated = 0;
 
-  private final Map<String, FileInfo> confFileInfoCache = new HashMap<String, FileInfo>();
+  private final Map<String, FileInfo> confFileInfoCache = new HashMap<>();
 
   private Integer reserveCommitDuration = SnapPuller.readInterval("00:00:10");
 
@@ -266,14 +271,14 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
   private List<NamedList<Object>> getCommits() {
     Map<Long, IndexCommit> commits = core.getDeletionPolicy().getCommits();
-    List<NamedList<Object>> l = new ArrayList<NamedList<Object>>();
+    List<NamedList<Object>> l = new ArrayList<>();
 
     for (IndexCommit c : commits.values()) {
       try {
-        NamedList<Object> nl = new NamedList<Object>();
+        NamedList<Object> nl = new NamedList<>();
         nl.add("indexVersion", IndexDeletionPolicyWrapper.getCommitTimestamp(c));
         nl.add(GENERATION, c.getGeneration());
-        List<String> commitList = new ArrayList<String>(c.getFileNames().size());
+        List<String> commitList = new ArrayList<>(c.getFileNames().size());
         commitList.addAll(c.getFileNames());
         Collections.sort(commitList);
         nl.add(CMD_GET_FILE_LIST, commitList);
@@ -400,19 +405,19 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     }
     // reserve the indexcommit for sometime
     core.getDeletionPolicy().setReserveDuration(gen, reserveCommitDuration);
-    List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+    List<Map<String, Object>> result = new ArrayList<>();
     Directory dir = null;
     try {
       // get all the files in the commit
       // use a set to workaround possible Lucene bug which returns same file
       // name multiple times
-      Collection<String> files = new HashSet<String>(commit.getFileNames());
+      Collection<String> files = new HashSet<>(commit.getFileNames());
       dir = core.getDirectoryFactory().get(core.getNewIndexDir(), DirContext.DEFAULT, core.getSolrConfig().indexConfig.lockType);
       try {
         
         for (String fileName : files) {
           if (fileName.endsWith(".lock")) continue;
-          Map<String,Object> fileMeta = new HashMap<String,Object>();
+          Map<String,Object> fileMeta = new HashMap<>();
           fileMeta.put(NAME, fileName);
           fileMeta.put(SIZE, dir.fileLength(fileName));
           result.add(fileMeta);
@@ -442,7 +447,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
    */
   List<Map<String, Object>> getConfFileInfoFromCache(NamedList<String> nameAndAlias,
                                                      final Map<String, FileInfo> confFileInfoCache) {
-    List<Map<String, Object>> confFiles = new ArrayList<Map<String, Object>>();
+    List<Map<String, Object>> confFiles = new ArrayList<>();
     synchronized (confFileInfoCache) {
       File confDir = new File(core.getResourceLoader().getConfigDir());
       Checksum checksum = null;
@@ -478,7 +483,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     }
 
     Map<String, Object> getAsMap() {
-      Map<String, Object> map = new HashMap<String, Object>();
+      Map<String, Object> map = new HashMap<>();
       map.put(NAME, name);
       map.put(SIZE, size);
       map.put(CHECKSUM, checksum);
@@ -604,9 +609,9 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
    * Used for showing statistics and progress information.
    */
   private NamedList<Object> getReplicationDetails(boolean showSlaveDetails) {
-    NamedList<Object> details = new SimpleOrderedMap<Object>();
-    NamedList<Object> master = new SimpleOrderedMap<Object>();
-    NamedList<Object> slave = new SimpleOrderedMap<Object>();
+    NamedList<Object> details = new SimpleOrderedMap<>();
+    NamedList<Object> master = new SimpleOrderedMap<>();
+    NamedList<Object> slave = new SimpleOrderedMap<>();
 
     details.add("indexSize", NumberUtils.readableSize(getIndexSize()));
     details.add("indexPath", core.getIndexDir());
@@ -673,7 +678,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
       if (isReplicating) {
         try {
           long bytesToDownload = 0;
-          List<String> filesToDownload = new ArrayList<String>();
+          List<String> filesToDownload = new ArrayList<>();
           for (Map<String, Object> file : snapPuller.getFilesToDownload()) {
             filesToDownload.add((String) file.get(NAME));
             bytesToDownload += (Long) file.get(SIZE);
@@ -690,7 +695,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
           slave.add("bytesToDownload", NumberUtils.readableSize(bytesToDownload));
 
           long bytesDownloaded = 0;
-          List<String> filesDownloaded = new ArrayList<String>();
+          List<String> filesDownloaded = new ArrayList<>();
           for (Map<String, Object> file : snapPuller.getFilesDownloaded()) {
             filesDownloaded.add((String) file.get(NAME));
             bytesDownloaded += (Long) file.get(SIZE);
@@ -772,7 +777,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
       } catch (NumberFormatException e) {/*no op*/ }
     } else if (clzz == List.class) {
       String ss[] = s.split(",");
-      List<String> l = new ArrayList<String>();
+      List<String> l = new ArrayList<>();
       for (int i = 0; i < ss.length; i++) {
         l.add(new Date(Long.valueOf(ss[i])).toString());
       }
@@ -784,7 +789,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
   }
 
   private List<String> getReplicateAfterStrings() {
-    List<String> replicateAfter = new ArrayList<String>();
+    List<String> replicateAfter = new ArrayList<>();
     if (replicateOnCommit)
       replicateAfter.add("commit");
     if (replicateOnOptimize)
@@ -797,7 +802,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
   private long getTimeElapsed(SnapPuller snapPuller) {
     long timeElapsed = 0;
     if (snapPuller.getReplicationStartTime() > 0)
-      timeElapsed = (System.currentTimeMillis() - snapPuller.getReplicationStartTime()) / 1000;
+      timeElapsed = TimeUnit.SECONDS.convert(System.currentTimeMillis() - snapPuller.getReplicationStartTime(), TimeUnit.MILLISECONDS);
     return timeElapsed;
   }
 
@@ -807,11 +812,14 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
       try {
         dir = core.getDirectoryFactory().get(core.getDataDir(),
             DirContext.META_DATA, core.getSolrConfig().indexConfig.lockType);
-        if (!dir.fileExists(SnapPuller.REPLICATION_PROPERTIES)) {
+        IndexInput input;
+        try {
+          input = dir.openInput(
+            SnapPuller.REPLICATION_PROPERTIES, IOContext.DEFAULT);
+        } catch (FileNotFoundException | NoSuchFileException e) {
           return new Properties();
         }
-        final IndexInput input = dir.openInput(
-            SnapPuller.REPLICATION_PROPERTIES, IOContext.DEFAULT);
+
         try {
           final InputStream is = new PropertiesInputStream(input);
           Properties props = new Properties();
@@ -858,10 +866,18 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     }
     NamedList master = (NamedList) initArgs.get("master");
     boolean enableMaster = isEnabled( master );
+
+    if (enableMaster || enableSlave) {
+      if (core.getCoreDescriptor().getCoreContainer().getZkController() != null) {
+        LOG.warn("SolrCloud is enabled for core " + core.getName() + " but so is old-style replication. Make sure you" +
+            " intend this behavior, it usually indicates a mis-configuration. Master setting is " +
+            Boolean.toString(enableMaster) + " and slave setting is " + Boolean.toString(enableSlave));
+      }
+    }
     
     if (!enableSlave && !enableMaster) {
       enableMaster = true;
-      master = new NamedList<Object>();
+      master = new NamedList<>();
     }
     
     if (enableMaster) {
@@ -1002,7 +1018,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
       @Override
       public String getContentType(SolrQueryRequest request, SolrQueryResponse response) {
-        return "application/octet-stream";
+        return BinaryResponseParser.BINARY_CONTENT_TYPE;
       }
 
       @Override

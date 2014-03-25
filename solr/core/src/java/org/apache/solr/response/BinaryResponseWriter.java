@@ -19,11 +19,10 @@ package org.apache.solr.response;
 import java.io.*;
 import java.util.*;
 
-import org.apache.lucene.document.Document;
-import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.StorableField;
 import org.apache.lucene.index.StoredDocument;
 import org.apache.lucene.util.BytesRef;
+import org.apache.solr.client.solrj.impl.BinaryResponseParser;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.util.JavaBinCodec;
@@ -41,7 +40,7 @@ import org.slf4j.LoggerFactory;
 
 public class BinaryResponseWriter implements BinaryQueryResponseWriter {
   private static final Logger LOG = LoggerFactory.getLogger(BinaryResponseWriter.class);
-  public static final Set<Class> KNOWN_TYPES = new HashSet<Class>();
+  public static final Set<Class> KNOWN_TYPES = new HashSet<>();
 
   @Override
   public void write(OutputStream out, SolrQueryRequest req, SolrQueryResponse response) throws IOException {
@@ -59,7 +58,7 @@ public class BinaryResponseWriter implements BinaryQueryResponseWriter {
 
   @Override
   public String getContentType(SolrQueryRequest request, SolrQueryResponse response) {
-    return "application/octet-stream";
+    return BinaryResponseParser.BINARY_CONTENT_TYPE;
   }
 
   @Override

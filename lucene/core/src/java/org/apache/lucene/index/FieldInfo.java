@@ -47,6 +47,8 @@ public final class FieldInfo {
 
   private Map<String,String> attributes;
 
+  private long dvGen = -1; // the DocValues generation of this field
+  
   /**
    * Controls how much information is stored in the postings lists.
    * @lucene.experimental
@@ -117,8 +119,9 @@ public final class FieldInfo {
    *
    * @lucene.experimental
    */
-  public FieldInfo(String name, boolean indexed, int number, boolean storeTermVector, 
-            boolean omitNorms, boolean storePayloads, IndexOptions indexOptions, DocValuesType docValues, DocValuesType normsType, Map<String,String> attributes) {
+  public FieldInfo(String name, boolean indexed, int number, boolean storeTermVector, boolean omitNorms, 
+      boolean storePayloads, IndexOptions indexOptions, DocValuesType docValues, DocValuesType normsType, 
+      Map<String,String> attributes) {
     this.name = name;
     this.indexed = indexed;
     this.number = number;
@@ -223,6 +226,19 @@ public final class FieldInfo {
     return docValueType;
   }
   
+  /** Sets the docValues generation of this field. */
+  public void setDocValuesGen(long dvGen) {
+    this.dvGen = dvGen;
+  }
+  
+  /**
+   * Returns the docValues generation of this field, or -1 if no docValues
+   * updates exist for it.
+   */
+  public long getDocValuesGen() {
+    return dvGen;
+  }
+  
   /**
    * Returns {@link DocValuesType} of the norm. this may be null if the field has no norms.
    */
@@ -308,7 +324,7 @@ public final class FieldInfo {
    */
   public String putAttribute(String key, String value) {
     if (attributes == null) {
-      attributes = new HashMap<String,String>();
+      attributes = new HashMap<>();
     }
     return attributes.put(key, value);
   }

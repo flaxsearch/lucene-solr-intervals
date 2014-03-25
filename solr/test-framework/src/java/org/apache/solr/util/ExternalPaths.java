@@ -37,11 +37,13 @@ public class ExternalPaths {
    * home, and if it is null, those paths will just be relative to 'null' and may not be 
    * meaningful.
    */
-  public static final String SOURCE_HOME = determineSourceHome();
+  private static final String SOURCE_HOME = determineSourceHome();
   /* @see #SOURCE_HOME */
   public static String WEBAPP_HOME = new File(SOURCE_HOME, "webapp/web").getAbsolutePath();
   /* @see #SOURCE_HOME */
   public static String EXAMPLE_HOME = new File(SOURCE_HOME, "example/solr").getAbsolutePath();
+  /* @see #SOURCE_HOME */
+  public static String EXAMPLE_SCHEMALESS_HOME = new File(SOURCE_HOME, "example/example-schemaless/solr").getAbsolutePath();
   /* @see #SOURCE_HOME */
   public static String EXAMPLE_MULTICORE_HOME = new File(SOURCE_HOME, "example/multicore").getAbsolutePath();
   /* @see #SOURCE_HOME */

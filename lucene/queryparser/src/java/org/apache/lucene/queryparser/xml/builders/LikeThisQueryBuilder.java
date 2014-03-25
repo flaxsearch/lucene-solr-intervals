@@ -71,10 +71,9 @@ public class LikeThisQueryBuilder implements QueryBuilder {
     String stopWords = e.getAttribute("stopWords");
     Set<String> stopWordsSet = null;
     if ((stopWords != null) && (fields != null)) {
-      stopWordsSet = new HashSet<String>();
+      stopWordsSet = new HashSet<>();
       for (String field : fields) {
-        try {
-          TokenStream ts = analyzer.tokenStream(field, stopWords);
+        try (TokenStream ts = analyzer.tokenStream(field, stopWords)) {
           CharTermAttribute termAtt = ts.addAttribute(CharTermAttribute.class);
           ts.reset();
           while (ts.incrementToken()) {

@@ -6,6 +6,7 @@ import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.FieldInfosFormat;
 import org.apache.lucene.codecs.FieldInfosWriter;
 import org.apache.lucene.codecs.NormsFormat;
+import org.apache.lucene.codecs.SegmentInfoFormat;
 import org.apache.lucene.util.LuceneTestCase;
 
 /*
@@ -57,4 +58,5 @@ public final class Lucene40RWCodec extends Lucene40Codec {
   public NormsFormat normsFormat() {
     return norms;
   }
+  
 }

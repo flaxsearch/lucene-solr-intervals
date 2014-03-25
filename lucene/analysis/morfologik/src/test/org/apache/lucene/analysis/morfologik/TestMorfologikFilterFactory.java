@@ -22,7 +22,6 @@ import java.util.Collections;
 import java.util.HashMap;
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 
 /**
@@ -32,7 +31,7 @@ public class TestMorfologikFilterFactory extends BaseTokenStreamTestCase {
   public void testCreateDictionary() throws Exception {
     StringReader reader = new StringReader("rowery bilety");
     MorfologikFilterFactory factory = new MorfologikFilterFactory(Collections.<String,String>emptyMap());
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer(reader);
     stream = factory.create(stream);
     assertTokenStreamContents(stream, new String[] {"rower", "bilet"});
   }
@@ -40,9 +39,9 @@ public class TestMorfologikFilterFactory extends BaseTokenStreamTestCase {
   /** Test that bogus arguments result in exception */
   public void testBogusArguments() throws Exception {
     try {
-      new MorfologikFilterFactory(new HashMap<String,String>() {{
-        put("bogusArg", "bogusValue");
-      }});
+      HashMap<String,String> map = new HashMap<String,String>();
+      map.put("bogusArg", "bogusValue");
+      new MorfologikFilterFactory(map);
       fail();
     } catch (IllegalArgumentException expected) {
       assertTrue(expected.getMessage().contains("Unknown parameters"));

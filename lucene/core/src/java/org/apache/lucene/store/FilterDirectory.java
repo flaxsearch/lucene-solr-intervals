@@ -49,11 +49,6 @@ public class FilterDirectory extends Directory {
   }
 
   @Override
-  public boolean fileExists(String name) throws IOException {
-    return in.fileExists(name);
-  }
-
-  @Override
   public void deleteFile(String name) throws IOException {
     in.deleteFile(name);
   }
@@ -100,6 +95,11 @@ public class FilterDirectory extends Directory {
     in.setLockFactory(lockFactory);
   }
 
+  @Override
+  public String getLockID() {
+    return in.getLockID();
+  }
+  
   @Override
   public LockFactory getLockFactory() {
     return in.getLockFactory();

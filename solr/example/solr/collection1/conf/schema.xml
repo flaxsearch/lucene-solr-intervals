@@ -63,7 +63,7 @@
             (int, float, boolean, string...)
      -->
 
- <fields>
+
    <!-- Valid attributes for fields:
      name: mandatory - the name for the field
      type: mandatory - the name of a field type from the 
@@ -105,13 +105,23 @@
       and back compatibility is not guaranteed.  Names with both leading and
       trailing underscores (e.g. _version_) are reserved.
    -->
-        
-   <field name="id" type="string" indexed="true" stored="true" required="true" multiValued="false" /> 
 
-   <!-- points to the root document of a block of nested documents -->
+   <!-- If you remove this field, you must _also_ disable the update log in solrconfig.xml
+      or Solr won't start. _version_ and update log are required for SolrCloud
+   --> 
+   <field name="_version_" type="long" indexed="true" stored="true"/>
+   
+   <!-- points to the root document of a block of nested documents. Required for nested
+      document support, may be removed otherwise
+   -->
    <field name="_root_" type="string" indexed="true" stored="false"/>
 
-
+   <!-- Only remove the "id" field if you have a very good reason to. While not strictly
+     required, it is highly recommended. A <uniqueKey> is present in almost all Solr 
+     installations. See the <uniqueKey> declaration below where <uniqueKey> is set to "id".
+   -->   
+   <field name="id" type="string" indexed="true" stored="true" required="true" multiValued="false" /> 
+        
    <field name="sku" type="text_en_splitting_tight" indexed="true" stored="true" omitNorms="true"/>
    <field name="name" type="text_general" indexed="true" stored="true"/>
    <field name="manu" type="text_general" indexed="true" stored="true" omitNorms="true"/>
@@ -168,7 +178,6 @@
 
    <field name="payloads" type="payloads" indexed="true" stored="true"/>
 
-   <field name="_version_" type="long" indexed="true" stored="true"/>
 
    <!--
      Some fields such as popularity and manu_exact could be modified to
@@ -233,7 +242,7 @@
         unknown fields indexed and/or stored by default --> 
    <!--dynamicField name="*" type="ignored" multiValued="true" /-->
    
- </fields>
+
 
 
  <!-- Field to use to determine and enforce document uniqueness. 
@@ -293,7 +302,7 @@
    <!-- copy name to alphaNameSort, a field designed for sorting by name -->
    <!-- <copyField source="name" dest="alphaNameSort"/> -->
  
-  <types>
+  
     <!-- field type definitions. The "name" attribute is
        just a label to be used by field definitions.  The "class"
        attribute and any other attributes determine the real
@@ -436,6 +445,14 @@
     <fieldType name="text_ws" class="solr.TextField" positionIncrementGap="100">
       <analyzer>
         <tokenizer class="solr.WhitespaceTokenizerFactory"/>
+      </analyzer>
+    </fieldType>
+
+    <!-- A text type for English text where stopwords and synonyms are managed using the REST API -->
+    <fieldType name="managed_en" class="solr.TextField" positionIncrementGap="100">
+      <analyzer>
+        <tokenizer class="solr.StandardTokenizerFactory"/>
+        <filter class="solr.ManagedStopFilterFactory" managed="english" />
       </analyzer>
     </fieldType>
 
@@ -767,6 +784,18 @@
         <!-- for any non-CJK -->
         <filter class="solr.LowerCaseFilterFactory"/>
         <filter class="solr.CJKBigramFilterFactory"/>
+      </analyzer>
+    </fieldType>
+
+    <!-- Kurdish -->
+    <fieldType name="text_ckb" class="solr.TextField" positionIncrementGap="100">
+      <analyzer>
+        <tokenizer class="solr.StandardTokenizerFactory"/>
+        <filter class="solr.SoraniNormalizationFilterFactory"/>
+        <!-- for any latin text -->
+        <filter class="solr.LowerCaseFilterFactory"/>
+        <filter class="solr.StopFilterFactory" ignoreCase="true" words="lang/stopwords_ckb.txt"/>
+        <filter class="solr.SoraniStemFilterFactory"/>
       </analyzer>
     </fieldType>
 
@@ -1103,13 +1132,12 @@
     <fieldType name="text_tr" class="solr.TextField" positionIncrementGap="100">
       <analyzer> 
         <tokenizer class="solr.StandardTokenizerFactory"/>
+        <filter class="solr.ApostropheFilterFactory"/>
         <filter class="solr.TurkishLowerCaseFilterFactory"/>
         <filter class="solr.StopFilterFactory" ignoreCase="false" words="lang/stopwords_tr.txt" />
         <filter class="solr.SnowballPorterFilterFactory" language="Turkish"/>
       </analyzer>
     </fieldType>
-
- </types>
   
   <!-- Similarity is the scoring routine for each document vs. a query.
        A custom Similarity or SimilarityFactory may be specified here, but 

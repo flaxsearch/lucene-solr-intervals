@@ -30,6 +30,7 @@ import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.core.Diagnostics;
+import org.apache.solr.core.MockDirectoryFactory;
 import org.apache.solr.servlet.SolrDispatchFilter;
 import org.apache.zookeeper.KeeperException;
 import org.junit.After;
@@ -38,6 +39,10 @@ import org.junit.BeforeClass;
 
 public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTestCase {
   
+  private static final String REMOVE_VERSION_FIELD = "remove.version.field";
+  private static final String ENABLE_UPDATE_LOG = "enable.update.log";
+  private static final String ZK_HOST = "zkHost";
+  private static final String ZOOKEEPER_FORCE_SYNC = "zookeeper.forceSync";
   protected static final String DEFAULT_COLLECTION = "collection1";
   private static final boolean DEBUG = false;
   protected ZkTestServer zkServer;
@@ -61,9 +66,11 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
     zkServer = new ZkTestServer(zkDir);
     zkServer.run();
     
-    System.setProperty("zkHost", zkServer.getZkAddress());
-    System.setProperty("enable.update.log", "true");
-    System.setProperty("remove.version.field", "true");
+    System.setProperty(ZK_HOST, zkServer.getZkAddress());
+    System.setProperty(ENABLE_UPDATE_LOG, "true");
+    System.setProperty(REMOVE_VERSION_FIELD, "true");
+    System.setProperty(ZOOKEEPER_FORCE_SYNC, "false");
+    System.setProperty(MockDirectoryFactory.SOLR_TESTS_ALLOW_READING_FILES_STILL_OPEN_FOR_WRITE, "true");
 
     String schema = getSchemaFile();
     if (schema == null) schema = "schema.xml";
@@ -107,7 +114,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
       JettySolrRunner j = createJetty(jettyHome, null, "shard" + (i + 2));
       jettys.add(j);
       clients.add(createNewSolrServer(j.getLocalPort()));
-      sb.append("127.0.0.1:").append(j.getLocalPort()).append(context);
+      sb.append(buildUrl(j.getLocalPort()));
     }
 
     shards = sb.toString();
@@ -148,7 +155,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
       for (Map.Entry<String,Slice> entry : slices.entrySet()) {
         Map<String,Replica> shards = entry.getValue().getReplicasMap();
         for (Map.Entry<String,Replica> shard : shards.entrySet()) {
-          if (verbose) System.out.println("rstate:"
+          if (verbose) System.out.println("replica:" + shard.getValue().getName() + " rstate:"
               + shard.getValue().getStr(ZkStateReader.STATE_PROP)
               + " live:"
               + clusterState.liveNodesContain(shard.getValue().getNodeName()));
@@ -211,13 +218,16 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
     if (DEBUG) {
       printLayout();
     }
-    System.clearProperty("zkHost");
+    System.clearProperty(ZK_HOST);
     System.clearProperty("collection");
-    System.clearProperty("enable.update.log");
-    System.clearProperty("remove.version.field");
+    System.clearProperty(ENABLE_UPDATE_LOG);
+    System.clearProperty(REMOVE_VERSION_FIELD);
     System.clearProperty("solr.directoryFactory");
     System.clearProperty("solr.test.sys.prop1");
     System.clearProperty("solr.test.sys.prop2");
+    System.clearProperty(ZOOKEEPER_FORCE_SYNC);
+    System.clearProperty(MockDirectoryFactory.SOLR_TESTS_ALLOW_READING_FILES_STILL_OPEN_FOR_WRITE);
+    
     resetExceptionIgnores();
     super.tearDown();
     zkServer.shutdown();

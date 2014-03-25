@@ -117,7 +117,7 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
         continue;
       }
       
-      Map<String,String> args = new HashMap<String,String>();
+      Map<String,String> args = new HashMap<>();
       args.put("luceneMatchVersion", TEST_VERSION_CURRENT.toString());
       
       if (Tokenizer.class.isAssignableFrom(c)) {
@@ -131,7 +131,7 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
           if (instance instanceof ResourceLoaderAware) {
             ((ResourceLoaderAware) instance).inform(loader);
           }
-          assertSame(c, instance.create(new StringReader("")).getClass());
+          assertSame(c, instance.create().getClass());
         } catch (IllegalArgumentException e) {
           if (!e.getMessage().contains("SPI")) {
             throw e;
@@ -149,7 +149,7 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
           if (instance instanceof ResourceLoaderAware) {
             ((ResourceLoaderAware) instance).inform(loader);
           }
-          Class<? extends TokenStream> createdClazz = instance.create(new KeywordTokenizer(new StringReader(""))).getClass();
+          Class<? extends TokenStream> createdClazz = instance.create(new KeywordTokenizer()).getClass();
           // only check instance if factory have wrapped at all!
           if (KeywordTokenizer.class != createdClazz) {
             assertSame(c, createdClazz);

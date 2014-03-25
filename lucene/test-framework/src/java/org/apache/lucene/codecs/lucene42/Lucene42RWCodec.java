@@ -17,15 +17,33 @@ package org.apache.lucene.codecs.lucene42;
  * limitations under the License.
  */
 
+import java.io.IOException;
+
 import org.apache.lucene.codecs.DocValuesFormat;
+import org.apache.lucene.codecs.FieldInfosFormat;
+import org.apache.lucene.codecs.FieldInfosWriter;
 import org.apache.lucene.codecs.NormsFormat;
+import org.apache.lucene.util.LuceneTestCase;
 
 /**
  * Read-write version of {@link Lucene42Codec} for testing.
  */
+@SuppressWarnings("deprecation")
 public class Lucene42RWCodec extends Lucene42Codec {
+
   private static final DocValuesFormat dv = new Lucene42RWDocValuesFormat();
   private static final NormsFormat norms = new Lucene42NormsFormat();
+
+  private final FieldInfosFormat fieldInfosFormat = new Lucene42FieldInfosFormat() {
+    @Override
+    public FieldInfosWriter getFieldInfosWriter() throws IOException {
+      if (!LuceneTestCase.OLD_FORMAT_IMPERSONATION_IS_ACTIVE) {
+        return super.getFieldInfosWriter();
+      } else {
+        return new Lucene42FieldInfosWriter();
+      }
+    }
+  };
 
   @Override
   public DocValuesFormat getDocValuesFormatForField(String field) {
@@ -36,4 +54,9 @@ public class Lucene42RWCodec extends Lucene42Codec {
   public NormsFormat normsFormat() {
     return norms;
   }
+  
+  @Override
+  public FieldInfosFormat fieldInfosFormat() {
+    return fieldInfosFormat;
+  }  
 }

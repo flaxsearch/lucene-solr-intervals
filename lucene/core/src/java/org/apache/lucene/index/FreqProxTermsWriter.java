@@ -34,9 +34,9 @@ final class FreqProxTermsWriter extends TermsHashConsumer {
   private void applyDeletes(SegmentWriteState state, Fields fields) throws IOException {
     // Process any pending Term deletes for this newly
     // flushed segment:
-    if (state.segDeletes != null && state.segDeletes.terms.size() > 0) {
-      Map<Term,Integer> segDeletes = state.segDeletes.terms;
-      List<Term> deleteTerms = new ArrayList<Term>(segDeletes.keySet());
+    if (state.segUpdates != null && state.segUpdates.terms.size() > 0) {
+      Map<Term,Integer> segDeletes = state.segUpdates.terms;
+      List<Term> deleteTerms = new ArrayList<>(segDeletes.keySet());
       Collections.sort(deleteTerms);
       String lastField = null;
       TermsEnum termsEnum = null;
@@ -47,6 +47,8 @@ final class FreqProxTermsWriter extends TermsHashConsumer {
           Terms terms = fields.terms(lastField);
           if (terms != null) {
             termsEnum = terms.iterator(termsEnum);
+          } else {
+            termsEnum = null;
           }
         }
 
@@ -85,7 +87,7 @@ final class FreqProxTermsWriter extends TermsHashConsumer {
 
     // Gather all FieldData's that have postings, across all
     // ThreadStates
-    List<FreqProxTermsWriterPerField> allFields = new ArrayList<FreqProxTermsWriterPerField>();
+    List<FreqProxTermsWriterPerField> allFields = new ArrayList<>();
 
     for (TermsHashConsumerPerField f : fieldsToFlush.values()) {
       final FreqProxTermsWriterPerField perField = (FreqProxTermsWriterPerField) f;

@@ -348,7 +348,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
       init("schema12.xml");
       SolrCore core = h.getCore();
 
-      NamedList<String> args = new NamedList<String>();
+      NamedList<String> args = new NamedList<>();
       args.add(QueryElevationComponent.FIELD_TYPE, "string");
       args.add(QueryElevationComponent.CONFIG_FILE, "elevate.xml");
 
@@ -371,7 +371,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
       assertEquals(null, map.get("zzzz"));
 
       // Now test the same thing with a lowercase filter: 'lowerfilt'
-      args = new NamedList<String>();
+      args = new NamedList<>();
       args.add(QueryElevationComponent.FIELD_TYPE, "lowerfilt");
       args.add(QueryElevationComponent.CONFIG_FILE, "elevate.xml");
 
@@ -535,7 +535,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
 
       String query = "title:ipod";
 
-      Map<String, String> args = new HashMap<String, String>();
+      Map<String, String> args = new HashMap<>();
       args.put(CommonParams.Q, query);
       args.put(CommonParams.QT, "/elevate");
       args.put(CommonParams.FL, "id,score");
@@ -641,6 +641,32 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
       );
 
 
+      // Test setting ids and excludes from http parameters
+
+      booster.elevationCache.clear();
+      args.put(QueryElevationParams.IDS, "x,y,z");
+      args.put(QueryElevationParams.EXCLUDE, "b");
+
+      assertQ("All five should make it", req
+          , "//*[@numFound='5']"
+          , "//result/doc[1]/str[@name='id'][.='x']"
+          , "//result/doc[2]/str[@name='id'][.='y']"
+          , "//result/doc[3]/str[@name='id'][.='z']"
+          , "//result/doc[4]/str[@name='id'][.='a']"
+          , "//result/doc[5]/str[@name='id'][.='c']"
+      );
+
+      args.put(QueryElevationParams.IDS, "x,z,y");
+      args.put(QueryElevationParams.EXCLUDE, "b,c");
+
+      assertQ("All four should make it", req
+          , "//*[@numFound='4']"
+          , "//result/doc[1]/str[@name='id'][.='x']"
+          , "//result/doc[2]/str[@name='id'][.='z']"
+          , "//result/doc[3]/str[@name='id'][.='y']"
+          , "//result/doc[4]/str[@name='id'][.='a']"
+      );
+
       req.close();
     } finally {
       delete();
@@ -673,7 +699,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
       writeFile(f, "aaa", "A");
 
       QueryElevationComponent comp = (QueryElevationComponent) h.getCore().getSearchComponent("elevate");
-      NamedList<String> args = new NamedList<String>();
+      NamedList<String> args = new NamedList<>();
       args.add(QueryElevationComponent.CONFIG_FILE, testfile);
       comp.init(args);
       comp.inform(h.getCore());

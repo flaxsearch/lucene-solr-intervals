@@ -62,15 +62,20 @@ import java.util.Set;
  */
 public class MultiPhraseQuery extends Query {
   private String field;
-  private ArrayList<Term[]> termArrays = new ArrayList<Term[]>();
-  private ArrayList<Integer> positions = new ArrayList<Integer>();
+  private ArrayList<Term[]> termArrays = new ArrayList<>();
+  private ArrayList<Integer> positions = new ArrayList<>();
 
   private int slop = 0;
 
   /** Sets the phrase slop for this query.
    * @see PhraseQuery#setSlop(int)
    */
-  public void setSlop(int s) { slop = s; }
+  public void setSlop(int s) {
+    if (s < 0) {
+      throw new IllegalArgumentException("slop value cannot be negative");
+    }
+    slop = s; 
+  }
 
   /** Sets the phrase slop for this query.
    * @see PhraseQuery#getSlop()
@@ -148,7 +153,7 @@ public class MultiPhraseQuery extends Query {
   private class MultiPhraseWeight extends Weight {
     private final Similarity similarity;
     private final Similarity.SimWeight stats;
-    private final Map<Term,TermContext> termContexts = new HashMap<Term,TermContext>();
+    private final Map<Term,TermContext> termContexts = new HashMap<>();
 
     public MultiPhraseWeight(IndexSearcher searcher)
       throws IOException {
@@ -156,7 +161,7 @@ public class MultiPhraseQuery extends Query {
       final IndexReaderContext context = searcher.getTopReaderContext();
       
       // compute idf
-      ArrayList<TermStatistics> allTermStats = new ArrayList<TermStatistics>();
+      ArrayList<TermStatistics> allTermStats = new ArrayList<>();
       for(final Term[] terms: termArrays) {
         for (Term term: terms) {
           TermContext termContext = termContexts.get(term);
@@ -186,8 +191,7 @@ public class MultiPhraseQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
-        boolean topScorer, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(AtomicReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
       assert !termArrays.isEmpty();
       final AtomicReader reader = context.reader();
       final Bits liveDocs = acceptDocs;
@@ -249,7 +253,7 @@ public class MultiPhraseQuery extends Query {
           factory = new TermDocsEnumFactory(term.bytes(), termState, termsEnum, flags, acceptDocs);
         }
         
-        postingsFreqs[pos] = new PhraseQuery.PostingsAndFreq(postingsEnum, factory, termsEnum.docFreq() , positions.get(pos).intValue(), terms);
+        postingsFreqs[pos] = new PhraseQuery.PostingsAndFreq(postingsEnum, factory, termsEnum.docFreq() , positions.get(pos), terms);
       }
 
       // sort by increasing docFreq order
@@ -271,7 +275,7 @@ public class MultiPhraseQuery extends Query {
 
     @Override
     public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      Scorer scorer = scorer(context, true, false, PostingFeatures.POSITIONS, context.reader().getLiveDocs());
+      Scorer scorer = scorer(context, PostingFeatures.POSITIONS, context.reader().getLiveDocs());
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {
@@ -498,7 +502,7 @@ class UnionDocsAndPositionsEnum extends DocsAndPositionsEnum {
 
     final void sort() {
       //Arrays.sort(_array, _index, _lastIndex);
-      sorter.sort(_index, _lastIndex - 1);
+      sorter.sort(_index, _lastIndex);
     }
 
     final void clear() {
@@ -561,9 +565,9 @@ class UnionDocsAndPositionsEnum extends DocsAndPositionsEnum {
     this(liveDocs, context, terms, termContexts, termsEnum, PostingFeatures.POSITIONS);
   }
 
-  public UnionDocsAndPositionsEnum(Bits liveDocs, AtomicReaderContext context, Term[] terms,
-                                     Map<Term,TermContext> termContexts, TermsEnum termsEnum, PostingFeatures flags) throws IOException {
-    List<DocsAndPositionsEnum> docsEnums = new LinkedList<DocsAndPositionsEnum>();
+  public UnionDocsAndPositionsEnum(Bits liveDocs, AtomicReaderContext context, Term[] terms, Map<Term,TermContext> termContexts, TermsEnum termsEnum, PostingFeatures flags) throws IOException {
+    List<DocsAndPositionsEnum> docsEnums = new LinkedList<>();
+
     for (int i = 0; i < terms.length; i++) {
       final Term term = terms[i];
       TermState termState = termContexts.get(term).get(context.ord);

@@ -284,6 +284,7 @@ public class ToParentBlockJoinCollector extends Collector {
   }
 
   private void enroll(ToParentBlockJoinQuery query, ToParentBlockJoinQuery.BlockJoinScorer scorer) {
+    scorer.trackPendingChildHits();
     final Integer slot = joinQueryID.get(query);
     if (slot == null) {
       joinQueryID.put(query, joinScorers.length);
@@ -309,7 +310,7 @@ public class ToParentBlockJoinCollector extends Collector {
     }
     Arrays.fill(joinScorers, null);
 
-    Queue<Scorer> queue = new LinkedList<Scorer>();
+    Queue<Scorer> queue = new LinkedList<>();
     //System.out.println("\nqueue: add top scorer=" + scorer);
     queue.add(scorer);
     while ((scorer = queue.poll()) != null) {
@@ -322,50 +323,6 @@ public class ToParentBlockJoinCollector extends Collector {
         //System.out.println("  add sub: " + sub.child + "; " + sub.child.getWeight().getQuery());
         queue.add(sub.child);
       }
-    }
-  }
-
-  private final static class FakeScorer extends Scorer {
-
-    float score;
-    int doc;
-
-    public FakeScorer() {
-      super((Weight) null);
-    }
-
-    @Override
-    public float score() {
-      return score;
-    }
-    
-    @Override
-    public int freq() {
-      return 1; // TODO: does anything else make sense?... duplicate of grouping's FakeScorer btw?
-    }
-
-    @Override
-    public int docID() {
-      return doc;
-    }
-
-    @Override
-    public int advance(int target) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public int nextDoc() {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    public long cost() {
-      return 1;
     }
   }
 

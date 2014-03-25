@@ -40,9 +40,7 @@ public class ConfigSolrXml extends ConfigSolr {
       checkForIllegalConfig();
       fillPropMap();
       config.substituteProperties();
-      log.info("Config-defined core root directory: {}", get(CfgProp.SOLR_COREROOTDIRECTORY, ""));
-      String coreRoot = get(CfgProp.SOLR_COREROOTDIRECTORY, config.getResourceLoader().getInstanceDir());
-      coresLocator = new CorePropertiesLocator(coreRoot);
+      coresLocator = new CorePropertiesLocator(getCoreRootDirectory());
     }
     catch (IOException e) {
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
@@ -69,6 +67,7 @@ public class ConfigSolrXml extends ConfigSolr {
     failIfFound("solr/cores/@hostContext");
     failIfFound("solr/cores/@hostPort");
     failIfFound("solr/cores/@leaderVoteWait");
+    failIfFound("solr/cores/@leaderConflictResolveWait");
     failIfFound("solr/cores/@genericCoreNodeNames");
     failIfFound("solr/cores/@managementPath");
     failIfFound("solr/cores/@shareSchema");
@@ -103,14 +102,19 @@ public class ConfigSolrXml extends ConfigSolr {
   
   private void fillPropMap() {
     propMap.put(CfgProp.SOLR_ADMINHANDLER, doSub("solr/str[@name='adminHandler']"));
+    propMap.put(CfgProp.SOLR_COLLECTIONSHANDLER, doSub("solr/str[@name='collectionsHandler']"));
+    propMap.put(CfgProp.SOLR_INFOHANDLER, doSub("solr/str[@name='infoHandler']"));
     propMap.put(CfgProp.SOLR_CORELOADTHREADS, doSub("solr/int[@name='coreLoadThreads']"));
     propMap.put(CfgProp.SOLR_COREROOTDIRECTORY, doSub("solr/str[@name='coreRootDirectory']"));
     propMap.put(CfgProp.SOLR_DISTRIBUPDATECONNTIMEOUT, doSub("solr/solrcloud/int[@name='distribUpdateConnTimeout']"));
     propMap.put(CfgProp.SOLR_DISTRIBUPDATESOTIMEOUT, doSub("solr/solrcloud/int[@name='distribUpdateSoTimeout']"));
+    propMap.put(CfgProp.SOLR_MAXUPDATECONNECTIONS, doSub("solr/solrcloud/int[@name='maxUpdateConnections']"));
+    propMap.put(CfgProp.SOLR_MAXUPDATECONNECTIONSPERHOST, doSub("solr/solrcloud/int[@name='maxUpdateConnectionsPerHost']"));
     propMap.put(CfgProp.SOLR_HOST, doSub("solr/solrcloud/str[@name='host']"));
     propMap.put(CfgProp.SOLR_HOSTCONTEXT, doSub("solr/solrcloud/str[@name='hostContext']"));
     propMap.put(CfgProp.SOLR_HOSTPORT, doSub("solr/solrcloud/int[@name='hostPort']"));
     propMap.put(CfgProp.SOLR_LEADERVOTEWAIT, doSub("solr/solrcloud/int[@name='leaderVoteWait']"));
+    propMap.put(CfgProp.SOLR_LEADERCONFLICTRESOLVEWAIT, doSub("solr/solrcloud/int[@name='leaderConflictResolveWait']"));
     propMap.put(CfgProp.SOLR_GENERICCORENODENAMES, doSub("solr/solrcloud/bool[@name='genericCoreNodeNames']"));
     propMap.put(CfgProp.SOLR_MANAGEMENTPATH, doSub("solr/str[@name='managementPath']"));
     propMap.put(CfgProp.SOLR_SHAREDLIB, doSub("solr/str[@name='sharedLib']"));
@@ -118,6 +122,7 @@ public class ConfigSolrXml extends ConfigSolr {
     propMap.put(CfgProp.SOLR_TRANSIENTCACHESIZE, doSub("solr/int[@name='transientCacheSize']"));
     propMap.put(CfgProp.SOLR_ZKCLIENTTIMEOUT, doSub("solr/solrcloud/int[@name='zkClientTimeout']"));
     propMap.put(CfgProp.SOLR_ZKHOST, doSub("solr/solrcloud/str[@name='zkHost']"));
+    propMap.put(CfgProp.SOLR_CONFIGSETBASEDIR, doSub("solr/str[@name='configSetBaseDir']"));
 
     propMap.put(CfgProp.SOLR_LOGGING_CLASS, doSub("solr/logging/str[@name='class']"));
     propMap.put(CfgProp.SOLR_LOGGING_ENABLED, doSub("solr/logging/str[@name='enabled']"));

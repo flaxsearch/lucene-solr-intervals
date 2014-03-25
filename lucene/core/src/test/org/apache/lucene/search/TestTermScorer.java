@@ -79,10 +79,10 @@ public class TestTermScorer extends LuceneTestCase {
     Weight weight = indexSearcher.createNormalizedWeight(termQuery);
     assertTrue(indexSearcher.getTopReaderContext() instanceof AtomicReaderContext);
     AtomicReaderContext context = (AtomicReaderContext)indexSearcher.getTopReaderContext();
-    Scorer ts = weight.scorer(context, true, true, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
+    BulkScorer ts = weight.bulkScorer(context, true, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
     // we have 2 documents with the term all in them, one document for all the
     // other values
-    final List<TestHit> docs = new ArrayList<TestHit>();
+    final List<TestHit> docs = new ArrayList<>();
     // must call next first
     
     ts.score(new Collector() {
@@ -141,7 +141,7 @@ public class TestTermScorer extends LuceneTestCase {
     Weight weight = indexSearcher.createNormalizedWeight(termQuery);
     assertTrue(indexSearcher.getTopReaderContext() instanceof AtomicReaderContext);
     AtomicReaderContext context = (AtomicReaderContext) indexSearcher.getTopReaderContext();
-    Scorer ts = weight.scorer(context, true, false, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
+    Scorer ts = weight.scorer(context, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
     assertTrue("next did not return a doc",
         ts.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertTrue("score is not correct", ts.score() == 1.6931472f);
@@ -160,7 +160,7 @@ public class TestTermScorer extends LuceneTestCase {
     Weight weight = indexSearcher.createNormalizedWeight(termQuery);
     assertTrue(indexSearcher.getTopReaderContext() instanceof AtomicReaderContext);
     AtomicReaderContext context = (AtomicReaderContext) indexSearcher.getTopReaderContext();
-    Scorer ts = weight.scorer(context, true, false, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
+    Scorer ts = weight.scorer(context, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
     assertTrue("Didn't skip", ts.advance(3) != DocIdSetIterator.NO_MORE_DOCS);
     // The next doc should be doc 5
     assertTrue("doc should be number 5", ts.docID() == 5);

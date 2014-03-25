@@ -18,6 +18,9 @@ package org.apache.lucene.search.grouping;
  */
 
 
+import java.io.IOException;
+import java.util.Collection;
+
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.search.Collector;
@@ -35,8 +38,6 @@ import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.PriorityQueue;
-
-import java.io.IOException;
 
 // TODO: this sentence is too long for the class summary.
 /** BlockGroupingCollector performs grouping with a
@@ -102,7 +103,7 @@ public class BlockGroupingCollector extends Collector {
     int doc;
 
     public FakeScorer() {
-      super((Weight) null);
+      super(null);
     }
 
     @Override
@@ -137,6 +138,16 @@ public class BlockGroupingCollector extends Collector {
 
     public long cost() {
       return 1;
+    }
+
+    @Override
+    public Weight getWeight() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Collection<ChildScorer> getChildren() {
+      throw new UnsupportedOperationException();
     }
   }
 

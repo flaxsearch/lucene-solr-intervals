@@ -287,9 +287,10 @@ public class CoreContainerCoreInitFailuresTest extends SolrTestCaseJ4 {
       cc.reload("col_bad");
       fail("corrupt solrconfig.xml failed to trigger exception from reload");
     } catch (SolrException e) {
+      Throwable rootException = getWrappedException(e);
       assertTrue("We're supposed to have a wrapped SAXParserException here, but we don't",
-          e.getCause().getCause() instanceof SAXParseException);
-      SAXParseException se = (SAXParseException)e.getCause().getCause();
+          rootException instanceof SAXParseException);
+      SAXParseException se = (SAXParseException) rootException;
       assertTrue("reload exception doesn't refer to slrconfig.xml " + se.getSystemId(),
           0 < se.getSystemId().indexOf("solrconfig.xml"));
 
@@ -310,12 +311,12 @@ public class CoreContainerCoreInitFailuresTest extends SolrTestCaseJ4 {
     failures = cc.getCoreInitFailures();
     assertNotNull("core failures is a null map", failures);
     assertEquals("wrong number of core failures", 1, failures.size());
-    fail = failures.get("col_bad");
-    assertNotNull("null failure for test core", fail);
+    Throwable ex = getWrappedException(failures.get("col_bad"));
+    assertNotNull("null failure for test core", ex);
     assertTrue("init failure isn't SAXParseException",
-               fail.getCause() instanceof SAXParseException);
-    assertTrue("init failure doesn't mention problem: " + fail.toString(),
-               0 < ((SAXParseException)fail.getCause()).getSystemId().indexOf("solrconfig.xml"));
+               ex instanceof SAXParseException);
+    SAXParseException saxEx = (SAXParseException) ex;
+    assertTrue("init failure doesn't mention problem: " + saxEx.toString(), saxEx.getSystemId().contains("solrconfig.xml"));
 
     // ----
     // fix col_bad's config (again) and RELOAD to fix failure
@@ -342,16 +343,12 @@ public class CoreContainerCoreInitFailuresTest extends SolrTestCaseJ4 {
 
   }
 
-  private final long getCoreStartTime(final CoreContainer cc, 
-                                      final String name) {
-    SolrCore tmp = cc.getCore(name);
-    try {
+  private long getCoreStartTime(final CoreContainer cc, final String name) {
+    try (SolrCore tmp = cc.getCore(name)) {
       return tmp.getStartTime();
-    } finally {
-      tmp.close();
     }
   }
-  
+
   private static final String EMPTY_SOLR_XML ="<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n" +
       "<solr persistent=\"false\">\n" +
       "  <cores adminPath=\"/admin/cores\">\n" +

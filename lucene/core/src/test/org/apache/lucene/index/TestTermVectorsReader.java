@@ -18,7 +18,6 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.Arrays;
 
 import org.apache.lucene.analysis.*;
@@ -35,7 +34,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.TestUtil;
 
 public class TestTermVectorsReader extends LuceneTestCase {
   //Must be lexicographically sorted, will do in setup, versus trying to maintain here
@@ -45,7 +44,7 @@ public class TestTermVectorsReader extends LuceneTestCase {
   private String[] testTerms = {"this", "is", "a", "test"};
   private int[][] positions = new int[testTerms.length][];
   private Directory dir;
-  private SegmentInfoPerCommit seg;
+  private SegmentCommitInfo seg;
   private FieldInfos fieldInfos = new FieldInfos(new FieldInfo[0]);
   private static int TERM_FREQ = 3;
 
@@ -127,7 +126,7 @@ public class TestTermVectorsReader extends LuceneTestCase {
     seg = writer.newestSegment();
     writer.close();
 
-    fieldInfos = _TestUtil.getFieldInfos(seg.info);
+    fieldInfos = SegmentReader.readFieldInfos(seg);
   }
   
   @Override
@@ -143,8 +142,8 @@ public class TestTermVectorsReader extends LuceneTestCase {
     private final PositionIncrementAttribute posIncrAtt;
     private final OffsetAttribute offsetAtt;
     
-    public MyTokenizer(Reader reader) {
-      super(reader);
+    public MyTokenizer() {
+      super();
       termAtt = addAttribute(CharTermAttribute.class);
       posIncrAtt = addAttribute(PositionIncrementAttribute.class);
       offsetAtt = addAttribute(OffsetAttribute.class);
@@ -177,8 +176,8 @@ public class TestTermVectorsReader extends LuceneTestCase {
 
   private class MyAnalyzer extends Analyzer {
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      return new TokenStreamComponents(new MyTokenizer(reader));
+    public TokenStreamComponents createComponents(String fieldName) {
+      return new TokenStreamComponents(new MyTokenizer());
     }
   }
 
@@ -226,7 +225,7 @@ public class TestTermVectorsReader extends LuceneTestCase {
         //System.out.println("Term: " + term);
         assertEquals(testTerms[i], term);
         
-        docsEnum = _TestUtil.docs(random(), termsEnum, null, docsEnum, DocsEnum.FLAG_NONE);
+        docsEnum = TestUtil.docs(random(), termsEnum, null, docsEnum, DocsEnum.FLAG_NONE);
         assertNotNull(docsEnum);
         int doc = docsEnum.docID();
         assertEquals(-1, doc);

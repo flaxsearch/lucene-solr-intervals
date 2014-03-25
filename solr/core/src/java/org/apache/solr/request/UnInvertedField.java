@@ -27,12 +27,11 @@ import org.apache.lucene.index.DocTermOrds;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
-import org.apache.lucene.util.OpenBitSet;
+import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.FacetParams;
@@ -44,7 +43,11 @@ import org.apache.solr.handler.component.StatsValuesFactory;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.schema.TrieField;
-import org.apache.solr.search.*;
+import org.apache.solr.search.BitDocSet;
+import org.apache.solr.search.DocIterator;
+import org.apache.solr.search.DocSet;
+import org.apache.solr.search.SolrCache;
+import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.LongPriorityQueue;
 import org.apache.solr.util.PrimUtils;
 
@@ -97,7 +100,7 @@ public class UnInvertedField extends DocTermOrds {
 
   int[] maxTermCounts = new int[1024];
 
-  final Map<Integer,TopTerm> bigTerms = new LinkedHashMap<Integer,TopTerm>();
+  final Map<Integer,TopTerm> bigTerms = new LinkedHashMap<>();
 
   private SolrIndexSearcher.DocsEnumState deState;
   private final SolrIndexSearcher searcher;
@@ -217,7 +220,7 @@ public class UnInvertedField extends DocTermOrds {
 
     FieldType ft = searcher.getSchema().getFieldType(field);
 
-    NamedList<Integer> res = new NamedList<Integer>();  // order is important
+    NamedList<Integer> res = new NamedList<>();  // order is important
 
     DocSet docs = baseDocs;
     int baseSize = docs.size();
@@ -269,7 +272,7 @@ public class UnInvertedField extends DocTermOrds {
               && docs instanceof BitDocSet;
 
       if (doNegative) {
-        OpenBitSet bs = (OpenBitSet)((BitDocSet)docs).getBits().clone();
+        FixedBitSet bs = ((BitDocSet)docs).getBits().clone();
         bs.flip(0, maxDoc);
         // TODO: when iterator across negative elements is available, use that
         // instead of creating a new bitset and inverting.
@@ -464,11 +467,12 @@ public class UnInvertedField extends DocTermOrds {
    *
    * @param searcher The Searcher to use to gather the statistics
    * @param baseDocs The {@link org.apache.solr.search.DocSet} to gather the stats on
+   * @param calcDistinct whether distinct values should be collected and counted
    * @param facet One or more fields to facet on.
    * @return The {@link org.apache.solr.handler.component.StatsValues} collected
    * @throws IOException If there is a low-level I/O error.
    */
-  public StatsValues getStats(SolrIndexSearcher searcher, DocSet baseDocs, String[] facet) throws IOException {
+  public StatsValues getStats(SolrIndexSearcher searcher, DocSet baseDocs, boolean calcDistinct, String[] facet) throws IOException {
     //this function is ripped off nearly wholesale from the getCounts function to use
     //for multiValued fields within the StatsComponent.  may be useful to find common
     //functionality between the two and refactor code somewhat
@@ -477,7 +481,7 @@ public class UnInvertedField extends DocTermOrds {
     SchemaField sf = searcher.getSchema().getField(field);
    // FieldType ft = sf.getType();
 
-    StatsValues allstats = StatsValuesFactory.createStatsValues(sf);
+    StatsValues allstats = StatsValuesFactory.createStatsValues(sf, calcDistinct);
 
 
     DocSet docs = baseDocs;
@@ -494,7 +498,7 @@ public class UnInvertedField extends DocTermOrds {
     SortedDocValues si;
     for (String f : facet) {
       SchemaField facet_sf = searcher.getSchema().getField(f);
-      finfo[i] = new FieldFacetStats(searcher, f, sf, facet_sf);
+      finfo[i] = new FieldFacetStats(searcher, f, sf, facet_sf, calcDistinct);
       i++;
     }
 
@@ -511,7 +515,7 @@ public class UnInvertedField extends DocTermOrds {
     }
 
     if (doNegative) {
-      OpenBitSet bs = (OpenBitSet) ((BitDocSet) docs).getBits().clone();
+      FixedBitSet bs = ((BitDocSet) docs).getBits().clone();
       bs.flip(0, maxDoc);
       // TODO: when iterator across negative elements is available, use that
       // instead of creating a new bitset and inverting.

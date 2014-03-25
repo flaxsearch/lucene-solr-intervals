@@ -28,6 +28,7 @@ import org.apache.solr.handler.dataimport.config.EntityField;
 import static org.apache.solr.handler.dataimport.SolrWriter.LAST_INDEX_KEY;
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.wrapAndThrow;
+
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.slf4j.Logger;
@@ -35,6 +36,7 @@ import org.slf4j.LoggerFactory;
 
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -51,6 +53,11 @@ public class DocBuilder {
   private static final Logger LOG = LoggerFactory.getLogger(DocBuilder.class);
 
   private static final Date EPOCH = new Date(0);
+  public static final String DELETE_DOC_BY_ID = "$deleteDocById";
+  public static final String DELETE_DOC_BY_QUERY = "$deleteDocByQuery";
+  public static final String DOC_BOOST = "$docBoost";
+  public static final String SKIP_DOC = "$skipDoc";
+  public static final String SKIP_ROW = "$skipRow";
 
   DataImporter dataImporter;
 
@@ -67,9 +74,9 @@ public class DocBuilder {
 
   boolean verboseDebug = false;
 
-  Map<String, Object> session = new HashMap<String, Object>();
+  Map<String, Object> session = new HashMap<>();
 
-  static final ThreadLocal<DocBuilder> INSTANCE = new ThreadLocal<DocBuilder>();
+  static final ThreadLocal<DocBuilder> INSTANCE = new ThreadLocal<>();
   private Map<String, Object> persistedProperties;
   
   private DIHProperties propWriter;
@@ -117,6 +124,7 @@ public class DocBuilder {
   private VariableResolver getVariableResolver() {
     try {
       VariableResolver resolver = null;
+      String epoch = propWriter.convertDateToString(EPOCH);
       if(dataImporter != null && dataImporter.getCore() != null
           && dataImporter.getCore().getResourceLoader().getCoreProperties() != null){
         resolver =  new VariableResolver(dataImporter.getCore().getResourceLoader().getCoreProperties());
@@ -124,23 +132,23 @@ public class DocBuilder {
         resolver = new VariableResolver();
       }
       resolver.setEvaluators(dataImporter.getEvaluators());
-      Map<String, Object> indexerNamespace = new HashMap<String, Object>();
+      Map<String, Object> indexerNamespace = new HashMap<>();
       if (persistedProperties.get(LAST_INDEX_TIME) != null) {
         indexerNamespace.put(LAST_INDEX_TIME, persistedProperties.get(LAST_INDEX_TIME));
       } else  {
         // set epoch
-        indexerNamespace.put(LAST_INDEX_TIME, EPOCH);
+        indexerNamespace.put(LAST_INDEX_TIME, epoch);
       }
       indexerNamespace.put(INDEX_START_TIME, dataImporter.getIndexStartTime());
-      indexerNamespace.put("request", new HashMap<String,Object>(reqParams.getRawParams()));
+      indexerNamespace.put("request", new HashMap<>(reqParams.getRawParams()));
       for (Entity entity : dataImporter.getConfig().getEntities()) {
-        Map<String, Object> entityNamespace = new HashMap<String, Object>();        
+        Map<String, Object> entityNamespace = new HashMap<>();
         String key = SolrWriter.LAST_INDEX_KEY;
         Object lastIndex = persistedProperties.get(entity.getName() + "." + key);
         if (lastIndex != null) {
           entityNamespace.put(SolrWriter.LAST_INDEX_KEY, lastIndex);
         } else  {
-          entityNamespace.put(SolrWriter.LAST_INDEX_KEY, EPOCH);
+          entityNamespace.put(SolrWriter.LAST_INDEX_KEY, epoch);
         }
         indexerNamespace.put(entity.getName(), entityNamespace);
       }
@@ -180,7 +188,7 @@ public class DocBuilder {
     try {
       dataImporter.store(DataImporter.STATUS_MSGS, statusMessages);
       config = dataImporter.getConfig();
-      final AtomicLong startTime = new AtomicLong(System.currentTimeMillis());
+      final AtomicLong startTime = new AtomicLong(System.nanoTime());
       statusMessages.put(TIME_ELAPSED, new Object() {
         @Override
         public String toString() {
@@ -205,10 +213,10 @@ public class DocBuilder {
       }
       AtomicBoolean fullCleanDone = new AtomicBoolean(false);
       //we must not do a delete of *:* multiple times if there are multiple root entities to be run
-      Map<String,Object> lastIndexTimeProps = new HashMap<String,Object>();
+      Map<String,Object> lastIndexTimeProps = new HashMap<>();
       lastIndexTimeProps.put(LAST_INDEX_KEY, dataImporter.getIndexStartTime());
 
-      epwList = new ArrayList<EntityProcessorWrapper>(config.getEntities().size());
+      epwList = new ArrayList<>(config.getEntities().size());
       for (Entity e : config.getEntities()) {
         epwList.add(getEntityProcessorWrapper(e));
       }
@@ -334,7 +342,7 @@ public class DocBuilder {
 
     addStatusMessage("Identifying Delta");
     LOG.info("Starting delta collection.");
-    Set<Map<String, Object>> deletedKeys = new HashSet<Map<String, Object>>();
+    Set<Map<String, Object>> deletedKeys = new HashSet<>();
     Set<Map<String, Object>> allPks = collectDelta(currentEntityProcessorWrapper, resolver, deletedKeys);
     if (stop.get())
       return;
@@ -403,7 +411,7 @@ public class DocBuilder {
   private void buildDocument(VariableResolver vr, DocWrapper doc,
       Map<String,Object> pk, EntityProcessorWrapper epw, boolean isRoot,
       ContextImpl parentCtx) {
-    List<EntityProcessorWrapper> entitiesToDestroy = new ArrayList<EntityProcessorWrapper>();
+    List<EntityProcessorWrapper> entitiesToDestroy = new ArrayList<>();
     try {
       buildDocument(vr, doc, pk, epw, isRoot, parentCtx, entitiesToDestroy);
     } catch (Exception e) {
@@ -532,7 +540,7 @@ public class DocBuilder {
               throw e;
           } else
             throw e;
-        } catch (Throwable t) {
+        } catch (Exception t) {
           if (verboseDebug) {
             getDebugLogger().log(DIHLogLevels.ENTITY_EXCEPTION, epw.getEntity().getName(), t);
           }
@@ -557,7 +565,7 @@ public class DocBuilder {
     Map<String ,Object> session;
 
     public void setSessionAttribute(String key, Object val){
-      if(session == null) session = new HashMap<String, Object>();
+      if(session == null) session = new HashMap<>();
       session.put(key, val);
     }
 
@@ -567,7 +575,7 @@ public class DocBuilder {
   }
 
   private void handleSpecialCommands(Map<String, Object> arow, DocWrapper doc) {
-    Object value = arow.get("$deleteDocById");
+    Object value = arow.get(DELETE_DOC_BY_ID);
     if (value != null) {
       if (value instanceof Collection) {
         Collection collection = (Collection) value;
@@ -580,7 +588,7 @@ public class DocBuilder {
         importStatistics.deletedDocCount.incrementAndGet();
       }
     }    
-    value = arow.get("$deleteDocByQuery");
+    value = arow.get(DELETE_DOC_BY_QUERY);
     if (value != null) {
       if (value instanceof Collection) {
         Collection collection = (Collection) value;
@@ -593,7 +601,7 @@ public class DocBuilder {
         importStatistics.deletedDocCount.incrementAndGet();
       }
     }
-    value = arow.get("$docBoost");
+    value = arow.get(DOC_BOOST);
     if (value != null) {
       float value1 = 1.0f;
       if (value instanceof Number) {
@@ -604,7 +612,7 @@ public class DocBuilder {
       doc.setDocumentBoost(value1);
     }
 
-    value = arow.get("$skipDoc");
+    value = arow.get(SKIP_DOC);
     if (value != null) {
       if (Boolean.parseBoolean(value.toString())) {
         throw new DataImportHandlerException(DataImportHandlerException.SKIP,
@@ -612,7 +620,7 @@ public class DocBuilder {
       }
     }
 
-    value = arow.get("$skipRow");
+    value = arow.get(SKIP_ROW);
     if (value != null) {
       if (Boolean.parseBoolean(value.toString())) {
         throw new DataImportHandlerException(DataImportHandlerException.SKIP_ROW);
@@ -760,7 +768,7 @@ public class DocBuilder {
     ContextImpl context1 = new ContextImpl(epw, resolver, null, Context.FIND_DELTA, session, null, this);
     epw.init(context1);
 
-    Set<Map<String, Object>> myModifiedPks = new HashSet<Map<String, Object>>();
+    Set<Map<String, Object>> myModifiedPks = new HashSet<>();
 
    
 
@@ -773,7 +781,7 @@ public class DocBuilder {
     }
     
     // identifying the modified rows for this entity
-    Map<String, Map<String, Object>> deltaSet = new HashMap<String, Map<String, Object>>();
+    Map<String, Map<String, Object>> deltaSet = new HashMap<>();
     LOG.info("Running ModifiedRowKey() for Entity: " + epw.getEntity().getName());
     //get the modified rows in this entity
     String pk = epw.getEntity().getPk();
@@ -796,7 +804,7 @@ public class DocBuilder {
         return new HashSet();
     }
     //get the deleted rows for this entity
-    Set<Map<String, Object>> deletedSet = new HashSet<Map<String, Object>>();
+    Set<Map<String, Object>> deletedSet = new HashSet<>();
     while (true) {
       Map<String, Object> row = epw.nextDeletedRowKey();
       if (row == null)
@@ -826,7 +834,7 @@ public class DocBuilder {
     LOG.info("Completed DeletedRowKey for Entity: " + epw.getEntity().getName() + " rows obtained : " + deletedSet.size());
 
     myModifiedPks.addAll(deltaSet.values());
-    Set<Map<String, Object>> parentKeyList = new HashSet<Map<String, Object>>();
+    Set<Map<String, Object>> parentKeyList = new HashSet<>();
     //all that we have captured is useless (in a sub-entity) if no rows in the parent is modified because of these
     //propogate up the changes in the chain
     if (epw.getEntity().getParentEntity() != null) {
@@ -854,7 +862,7 @@ public class DocBuilder {
 
     // Do not use entity.isDocRoot here because one of descendant entities may set rootEntity="true"
     return epw.getEntity().getParentEntity() == null ?
-        myModifiedPks : new HashSet<Map<String, Object>>(parentKeyList);
+        myModifiedPks : new HashSet<>(parentKeyList);
   }
 
   private void getModifiedParentRows(VariableResolver resolver,
@@ -888,7 +896,7 @@ public class DocBuilder {
   public static final String TIME_ELAPSED = "Time Elapsed";
 
   static String getTimeElapsedSince(long l) {
-    l = System.currentTimeMillis() - l;
+    l = TimeUnit.MILLISECONDS.convert(System.nanoTime() - l, TimeUnit.NANOSECONDS);
     return (l / (60000 * 60)) + ":" + (l / 60000) % 60 + ":" + (l / 1000)
             % 60 + "." + l % 1000;
   }
@@ -941,7 +949,7 @@ public class DocBuilder {
     }
 
     public Map<String, Object> getStatsSnapshot() {
-      Map<String, Object> result = new HashMap<String, Object>();
+      Map<String, Object> result = new HashMap<>();
       result.put("docCount", docCount.get());
       result.put("deletedDocCount", deletedDocCount.get());
       result.put("rowCount", rowsCount.get());
