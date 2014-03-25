@@ -43,16 +43,31 @@ public class TestFieldedIntervals extends IntervalTestBase {
     doc = new Document();
     doc.add(newField("field1", "Pease porridge warm! Pease porridge tepid!", fieldType));
     doc.add(newField("field2", "Some like it warm!  Some like it tepid", fieldType));
+    doc.add(newField("field3", "An extra field warm!", fieldType));
     writer.addDocument(doc);
+  }
+
+  @Test
+  public void testNestedBooleanOnOneField() throws Exception {
+    BooleanQuery bq = new BooleanQuery();
+    bq.add(new TermQuery(new Term("field1", "porridge")), BooleanClause.Occur.SHOULD);
+    bq.add(new TermQuery(new Term("field1", "cold!")), BooleanClause.Occur.SHOULD);
+    BooleanQuery pbq = new BooleanQuery();
+    pbq.add(new TermQuery(new Term("field1", "pease")), BooleanClause.Occur.MUST);
+    pbq.add(bq, BooleanClause.Occur.MUST);
+    checkFieldIntervals(pbq, searcher, new Object[][]{
+        { 0, "field1", 0, 0, "field1", 1, 1, "field1", 3, 3, "field1", 4, 4, "field1", 5, 5 },
+        { 1, "field1", 0, 0, "field1", 1, 1, "field1", 3, 3, "field1", 4, 4 }
+    });
   }
 
   @Test
   public void testSimpleBooleanOnTwoFields() throws IOException {
     BooleanQuery bq = new BooleanQuery();
-    bq.add(new TermQuery(new Term("field1", "hot!")), BooleanClause.Occur.MUST);
-    bq.add(new TermQuery(new Term("field2", "hot!")), BooleanClause.Occur.MUST);
+    bq.add(new TermQuery(new Term("field1", "warm!")), BooleanClause.Occur.MUST);
+    bq.add(new TermQuery(new Term("field2", "warm!")), BooleanClause.Occur.MUST);
     checkFieldIntervals(bq, searcher, new Object[][]{
-        { 0, "field1", 2, 2, "field2", 3, 3, }
+        { 1, "field1", 2, 2, "field2", 3, 3 }
     });
   }
 
@@ -89,5 +104,37 @@ public class TestFieldedIntervals extends IntervalTestBase {
     });
   }
 
+  @Test
+  public void testEquivalentPositionsOnSeparateFieldsConjunctionOfDisjunction() throws IOException {
+
+    BooleanQuery bq = new BooleanQuery();
+    bq.add(new TermQuery(new Term("field1", "pease")), BooleanClause.Occur.SHOULD);
+    bq.add(new TermQuery(new Term("field2", "some")), BooleanClause.Occur.SHOULD);
+
+    BooleanQuery superq = new BooleanQuery();
+    superq.add(bq, BooleanClause.Occur.MUST);
+    superq.add(new TermQuery(new Term("field2", "like")), BooleanClause.Occur.MUST);
+
+    checkFieldIntervals(superq, searcher, new Object[][]{
+        {0, "field1", 0, 0, "field1", 3, 3, "field2", 0, 0, "field2", 1, 1, "field2", 4, 4, "field2", 5, 5},
+        {1, "field1", 0, 0, "field1", 3, 3, "field2", 0, 0, "field2", 1, 1, "field2", 4, 4, "field2", 5, 5},
+    });
+  }
+
+  @Test
+  public void testThirdField() throws IOException {
+
+    BooleanQuery bq = new BooleanQuery();
+    bq.add(new TermQuery(new Term("field1", "pease")), BooleanClause.Occur.SHOULD);
+    bq.add(new TermQuery(new Term("field2", "some")), BooleanClause.Occur.SHOULD);
+
+    BooleanQuery superbq = new BooleanQuery();
+    superbq.add(bq, BooleanClause.Occur.MUST);
+    superbq.add(new TermQuery(new Term("field3", "an")), BooleanClause.Occur.MUST);
+
+    checkFieldIntervals(superbq, searcher, new Object[][]{
+        { 1, "field1", 0, 0, "field1", 3, 3, "field2", 0, 0, "field2", 4, 4, "field3", 0, 0 }
+    });
+  }
 
 }

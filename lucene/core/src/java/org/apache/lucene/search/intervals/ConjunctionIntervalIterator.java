@@ -86,7 +86,7 @@ public final class ConjunctionIntervalIterator extends IntervalIterator {
   @Override
   public Interval next() throws IOException {
     
-    while (queue.size() >= nrMustMatch
+    while (queue.size() >= nrMustMatch //&& queue.top().interval.field.equals(queue.currentCandidate.field)
         && queue.top().interval.begin == queue.currentCandidate.begin) {
       advance();
     }
@@ -100,7 +100,7 @@ public final class ConjunctionIntervalIterator extends IntervalIterator {
         snapShotSubPositions(); // this looks odd? -> see SnapShotCollector below for
                                 // details!
       }
-      if (queue.currentCandidate.begin == top.begin
+      if (queue.currentCandidate.begin == top.begin //&& queue.currentCandidate.field.equals(top.field)
           && queue.currentCandidate.end == top.end) {
         return queue.currentCandidate;
       }
