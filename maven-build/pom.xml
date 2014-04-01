@@ -26,7 +26,7 @@
   </parent>
   <groupId>uk.co.flax.lucene-solr-intervals</groupId>
   <artifactId>lucene-solr-grandparent</artifactId>
-  <version>5.0.0-intervals-1.3-SNAPSHOT</version>
+  <version>r1581360-intervals-1.3-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Grandparent POM for Flax Intervals fork of Apache Lucene Core and Apache Solr</name>
   <description>Grandparent POM for Flax Intervals fork of Apache Lucene Core and Apache Solr</description>
@@ -694,6 +694,11 @@
           <groupId>org.mortbay.jetty</groupId>
           <artifactId>jetty-maven-plugin</artifactId>
           <version>${jetty.version}</version>
+        </plugin>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-release-plugin</artifactId>
+            <version>2.5</version>
         </plugin>
         <plugin>
           <groupId>org.codehaus.gmaven</groupId>
