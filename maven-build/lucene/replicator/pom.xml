@@ -38,29 +38,45 @@
     <connection>scm:svn:${vc-anonymous-base-url}/${module-directory}</connection>
     <developerConnection>scm:svn:${vc-dev-base-url}/${module-directory}</developerConnection>
     <url>${vc-browse-base-url}/${module-directory}</url>
-    <tag>HEAD</tag>
   </scm>
   <dependencies>
     <dependency> 
       <!-- lucene-test-framework dependency must be declared before lucene-core -->
-      <groupId>${project.groupId}</groupId>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
       <artifactId>lucene-test-framework</artifactId>
-      <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>${project.groupId}</groupId>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
       <artifactId>lucene-core</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>${project.groupId}</groupId>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
       <artifactId>lucene-facet</artifactId>
-      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>commons-logging</groupId>
+      <artifactId>commons-logging</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.httpcomponents</groupId>
       <artifactId>httpclient</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpcore</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-continuation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-http</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-io</artifactId>
     </dependency>
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
@@ -69,17 +85,21 @@
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
       <artifactId>jetty-servlet</artifactId>
-      <exclusions>
-        <exclusion>
-          <groupId>org.eclipse.jetty</groupId>
-          <artifactId>jetty-security</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
       <artifactId>jetty-util</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.eclipse.jetty.orbit</groupId>
+      <artifactId>javax.servlet</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
+      <artifactId>lucene-codecs</artifactId>
+      <scope>test</scope>
+    </dependency>
+
   </dependencies>
   <build>
     <sourceDirectory>${module-path}/src/java</sourceDirectory>

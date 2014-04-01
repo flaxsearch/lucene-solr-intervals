@@ -38,27 +38,34 @@
     <connection>scm:svn:${vc-anonymous-base-url}/${module-directory}</connection>
     <developerConnection>scm:svn:${vc-dev-base-url}/${module-directory}</developerConnection>
     <url>${vc-browse-base-url}/${module-directory}</url>
-    <tag>HEAD</tag>
   </scm>
   <dependencies>
     <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>lucene-core</artifactId>
-      <version>${project.version}</version>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
+      <artifactId>lucene-codecs</artifactId>
     </dependency>
     <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>lucene-codecs</artifactId>
-      <version>${project.version}</version>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
+      <artifactId>lucene-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.carrotsearch.randomizedtesting</groupId>
+      <artifactId>junit4-ant</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.carrotsearch.randomizedtesting</groupId>
+      <artifactId>randomizedtesting-runner</artifactId>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.carrotsearch.randomizedtesting</groupId>
-      <artifactId>randomizedtesting-runner</artifactId>
+      <groupId>org.apache.ant</groupId>
+      <artifactId>ant</artifactId>
     </dependency>
+
+
   </dependencies>
   <build>
     <sourceDirectory>${module-path}/src/java</sourceDirectory>

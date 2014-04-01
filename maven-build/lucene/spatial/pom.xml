@@ -39,25 +39,28 @@
   <dependencies>
     <dependency> 
       <!-- lucene-test-framework dependency must be declared before lucene-core -->
-      <groupId>${project.groupId}</groupId>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
       <artifactId>lucene-test-framework</artifactId>
-      <version>${project.version}</version>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
+      <artifactId>lucene-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
+      <artifactId>lucene-queries</artifactId>
     </dependency>
     <dependency>
       <groupId>com.spatial4j</groupId>
       <artifactId>spatial4j</artifactId>
     </dependency>
     <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>lucene-core</artifactId>
-      <version>${project.version}</version>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
+      <artifactId>lucene-codecs</artifactId>
+      <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>lucene-queries</artifactId>
-      <version>${project.version}</version>
-    </dependency>
+
   </dependencies>
   <build>
     <sourceDirectory>${module-path}/src/java</sourceDirectory>

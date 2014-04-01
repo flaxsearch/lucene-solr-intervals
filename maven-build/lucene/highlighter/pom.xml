@@ -40,37 +40,33 @@
     <connection>scm:svn:${vc-anonymous-base-url}/${module-directory}</connection>
     <developerConnection>scm:svn:${vc-dev-base-url}/${module-directory}</developerConnection>
     <url>${vc-browse-base-url}/${module-directory}</url>
-    <tag>HEAD</tag>
   </scm>
   <dependencies>
     <dependency> 
       <!-- lucene-test-framework dependency must be declared before lucene-core -->
-      <groupId>${project.groupId}</groupId>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
       <artifactId>lucene-test-framework</artifactId>
-      <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>${project.groupId}</groupId>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
       <artifactId>lucene-core</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>${project.groupId}</groupId>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
+      <artifactId>lucene-memory</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
+      <artifactId>lucene-queries</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
       <artifactId>lucene-codecs</artifactId>
-      <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>lucene-memory</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>lucene-queries</artifactId>
-      <version>${project.version}</version>
-    </dependency>
+
   </dependencies>
   <build>
     <sourceDirectory>${module-path}/src/java</sourceDirectory>
