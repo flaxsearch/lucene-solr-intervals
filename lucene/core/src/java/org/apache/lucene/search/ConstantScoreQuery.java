@@ -38,10 +38,14 @@ public class ConstantScoreQuery extends FieldedQuery {
   protected final Filter filter;
   protected final Query query;
 
+  public ConstantScoreQuery(FieldedQuery query) {
+    this(query.getField(), query);
+  }
+
   /** Strips off scores from the passed in Query. The hits will get a constant score
    * dependent on the boost factor of this query. */
   public ConstantScoreQuery(Query query) {
-    this(FieldedQuery.extractField(query), query);
+    this(null, query);
   }
 
   public ConstantScoreQuery(String field, Query query) {

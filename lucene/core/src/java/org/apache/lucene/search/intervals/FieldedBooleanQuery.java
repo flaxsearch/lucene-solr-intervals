@@ -43,7 +43,7 @@ public class FieldedBooleanQuery extends FieldedQuery {
       FieldedQuery fq = toFieldedQuery(clause.getQuery());
       if (field == null)
         field = fq.getField();
-      if (!field.equals(fq.getField())) {
+      if (field != null && !field.equals(fq.getField())) {
         throw new IllegalArgumentException("Cannot create single-field boolean query from mixed-field subqueries, "
             + "found fields [" + field + "] and [" + fq.getField() + "]");
       }
