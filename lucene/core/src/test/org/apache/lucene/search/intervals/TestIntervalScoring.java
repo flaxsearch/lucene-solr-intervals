@@ -21,11 +21,16 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.FieldedQuery;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.RegexpQuery;
 import org.apache.lucene.search.TopDocs;
 import org.junit.Assert;
 
 import java.io.IOException;
+
+import static org.hamcrest.core.Is.is;
+import static org.hamcrest.core.IsInstanceOf.instanceOf;
 
 public class TestIntervalScoring extends IntervalTestBase {
 
@@ -56,6 +61,14 @@ public class TestIntervalScoring extends IntervalTestBase {
                                                   new RegexpQuery(new Term("field", "foo.*")));
     TopDocs docs = searcher.search(q, 10);
     Assert.assertEquals(docs.totalHits, 0);
+  }
+
+  public void testRewrittenEmptyMultiTermPreservesField() throws IOException {
+    OrderedNearQuery q = new OrderedNearQuery(10, new RegexpQuery(new Term("field", "bar.*")),
+        new RegexpQuery(new Term("field", "foo.*")));
+    Query rewritten = q.rewrite(searcher.getIndexReader());
+    assertThat(rewritten, instanceOf(FieldedQuery.class));
+    assertThat(((FieldedQuery)rewritten).getField(), is("field"));
   }
 
 

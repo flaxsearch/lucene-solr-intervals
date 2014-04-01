@@ -110,7 +110,7 @@ class ConstantScoreAutoRewrite extends TermCollectingRewrite<BooleanQuery> {
         }
       }
       // Strip scores
-      final Query result = new ConstantScoreQuery(new FieldedBooleanQuery(query.field, bq));
+      final Query result = ConstantScoreQuery.fromFieldedQuery(new FieldedBooleanQuery(query.field, bq));
       result.setBoost(query.getBoost());
       return result;
     }
