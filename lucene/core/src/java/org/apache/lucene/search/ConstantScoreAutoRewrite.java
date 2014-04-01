@@ -17,19 +17,20 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.intervals.FieldedBooleanQuery;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
-import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.BytesRefHash.DirectBytesStartArray;
+import org.apache.lucene.util.RamUsageEstimator;
+
+import java.io.IOException;
 
 class ConstantScoreAutoRewrite extends TermCollectingRewrite<BooleanQuery> {
 
@@ -109,7 +110,7 @@ class ConstantScoreAutoRewrite extends TermCollectingRewrite<BooleanQuery> {
         }
       }
       // Strip scores
-      final Query result = new ConstantScoreQuery(bq);
+      final Query result = new ConstantScoreQuery(new FieldedBooleanQuery(query.field, bq));
       result.setBoost(query.getBoost());
       return result;
     }

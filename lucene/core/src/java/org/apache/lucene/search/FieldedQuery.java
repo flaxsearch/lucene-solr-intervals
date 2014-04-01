@@ -17,6 +17,8 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.search.intervals.FieldedBooleanQuery;
+
 public abstract class FieldedQuery extends Query {
 
   protected final String field;
@@ -27,6 +29,14 @@ public abstract class FieldedQuery extends Query {
 
   public String getField() {
     return field;
+  }
+
+  public static String extractField(Query query) {
+    if (query instanceof FieldedQuery)
+      return ((FieldedQuery)query).getField();
+    if (query instanceof BooleanQuery)
+      return FieldedBooleanQuery.extractFieldName((BooleanQuery)query);
+    return null;
   }
 
 }
