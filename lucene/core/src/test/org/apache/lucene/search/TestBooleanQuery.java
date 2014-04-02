@@ -33,7 +33,6 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Weight.PostingFeatures;
 import org.apache.lucene.search.intervals.FieldedConjunctionQuery;
 import org.apache.lucene.search.intervals.IntervalFilterQuery;
-import org.apache.lucene.search.intervals.RangeIntervalFilter;
 import org.apache.lucene.search.intervals.WithinIntervalFilter;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.spans.SpanQuery;
@@ -330,13 +329,6 @@ public class TestBooleanQuery extends LuceneTestCase {
       new TermQuery(new Term("field", "hot!"))
      );
 
-     {
-       IntervalFilterQuery filter = new IntervalFilterQuery(query, new RangeIntervalFilter(0,3));
-       TopDocs search = searcher.search(filter, 10);
-       ScoreDoc[] scoreDocs = search.scoreDocs;
-       assertEquals(1, search.totalHits);
-       assertEquals(0, scoreDocs[0].doc);
-     }
      {
        IntervalFilterQuery filter = new IntervalFilterQuery(query, new WithinIntervalFilter(3));
        TopDocs search = searcher.search(filter, 10);

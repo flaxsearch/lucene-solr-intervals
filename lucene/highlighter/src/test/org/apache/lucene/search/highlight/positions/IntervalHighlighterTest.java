@@ -53,6 +53,7 @@ import org.apache.lucene.search.intervals.IntervalFilterQuery;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.search.intervals.NonOverlappingQuery;
 import org.apache.lucene.search.intervals.OrderedNearQuery;
+import org.apache.lucene.search.intervals.UnorderedNearQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
@@ -60,6 +61,8 @@ import org.junit.Ignore;
 
 import java.io.IOException;
 import java.io.StringReader;
+
+import static org.hamcrest.core.Is.is;
 
 /**
  * TODO: FIX THIS TEST Phrase and Span Queries positions callback API
@@ -405,13 +408,14 @@ public class IntervalHighlighterTest extends LuceneTestCase {
         new TermQuery(new Term(F, "jumps"))
     );
 
-    assertEquals(getHighlight(query),
-                 "<B>the</B> <B>quick</B> brown duck <B>jumps</B> over <B>the</B> lazy dog with the <B>quick</B> brown fox");
+    assertThat(getHighlight(query),
+        is("<B>the</B> <B>quick</B> brown duck <B>jumps</B> over <B>the</B> lazy dog with <B>the</B> <B>quick</B> brown fox"));
 
-    NonOverlappingQuery bq = new NonOverlappingQuery(query, new TermQuery(new Term(F, "duck")));
+    UnorderedNearQuery unq = new UnorderedNearQuery(20, true, query);
+    NonOverlappingQuery bq = new NonOverlappingQuery(unq, new TermQuery(new Term(F, "duck")));
 
-    assertEquals(getHighlight(bq),
-                 "the quick brown duck <B>jumps</B> over <B>the</B> lazy dog with the <B>quick</B> brown fox");
+    assertThat(getHighlight(bq),
+        is("the quick brown duck <B>jumps</B> over <B>the</B> lazy dog with the <B>quick</B> brown fox"));
 
     close();
   }
@@ -478,6 +482,7 @@ public class IntervalHighlighterTest extends LuceneTestCase {
       return terms;
     }
 
+  @Ignore
   public void testSloppyPhraseQuery() throws Exception {
     assertSloppyPhrase( "a b c d a b c d e f", "a b <B>c</B> d <B>a</B> b c d e f", 2, "c", "a");
     assertSloppyPhrase( "a c e b d e f a b","<B>a</B> c e <B>b</B> d e f <B>a</B> <B>b</B>", 2, "a", "b");

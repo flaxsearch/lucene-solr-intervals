@@ -56,13 +56,30 @@ public class UnorderedNearQuery extends IntervalFilterQuery {
   }
 
   public UnorderedNearQuery(int slop, boolean collectLeaves, FieldedConjunctionQuery subqueries) {
-    super(subqueries, new WithinIntervalFilter(slop + subqueries.queryCount() - 2, collectLeaves));
+    super(subqueries, new WithinUnorderedFilter(slop + subqueries.queryCount() - 2, collectLeaves));
     this.slop = slop;
   }
 
   @Override
   public String toString() {
     return "UnorderedNear/" + slop + ":" + super.toString("");
+  }
+
+  public static class WithinUnorderedFilter implements IntervalFilter {
+
+    final IntervalFilter innerFilter;
+    final boolean collectLeaves;
+
+    public WithinUnorderedFilter(int slop, boolean collectLeaves) {
+      this.innerFilter = new WithinIntervalFilter(slop);
+      this.collectLeaves = collectLeaves;
+    }
+
+    @Override
+    public IntervalIterator filter(boolean collectIntervals, IntervalIterator iter) {
+      return innerFilter.filter(collectIntervals,
+          new ConjunctionIntervalIterator(iter.scorer, collectIntervals, collectLeaves, iter.subs(false)));
+    }
   }
 
 }
