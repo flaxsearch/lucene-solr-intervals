@@ -17,7 +17,7 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.search.intervals.ConjunctionIntervalIterator;
+import org.apache.lucene.search.intervals.CombinedIntervalIterator;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.ArrayUtil;
 
@@ -128,7 +128,7 @@ class ConjunctionScorer extends Scorer {
       throw new IllegalStateException("no positions requested for this scorer");
     }
       // only created if needed for this scorer - no penalty for non-positional queries
-    return new ConjunctionIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, scorersOrdered));
+    return new CombinedIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, scorersOrdered));
   }
 
 

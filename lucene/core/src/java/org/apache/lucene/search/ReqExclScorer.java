@@ -17,7 +17,7 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.search.intervals.ConjunctionIntervalIterator;
+import org.apache.lucene.search.intervals.CombinedIntervalIterator;
 import org.apache.lucene.search.intervals.IntervalIterator;
 
 import java.io.IOException;
@@ -136,7 +136,7 @@ class ReqExclScorer extends Scorer {
   public IntervalIterator intervals(boolean collectIntervals) throws IOException {
     if (reqScorer == null)
       return IntervalIterator.NO_MORE_INTERVALS;
-    return new ConjunctionIntervalIterator(this, collectIntervals, reqScorer.intervals(collectIntervals));
+    return new CombinedIntervalIterator(this, collectIntervals, reqScorer.intervals(collectIntervals));
   }
 
   public long cost() {

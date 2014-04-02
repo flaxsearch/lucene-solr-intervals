@@ -17,8 +17,7 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.search.intervals.ConjunctionIntervalIterator;
-import org.apache.lucene.search.intervals.DisjunctionIntervalIterator;
+import org.apache.lucene.search.intervals.CombinedIntervalIterator;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.ArrayUtil;
 
@@ -222,11 +221,7 @@ class MinShouldMatchSumScorer extends Scorer {
 
   @Override
   public IntervalIterator intervals(boolean collectIntervals) throws IOException {
-    if (mm > 1) {
-      return new ConjunctionIntervalIterator(this,
-          collectIntervals, mm, pullIterators(collectIntervals, sortedSubScorers));
-    }
-    return new DisjunctionIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, sortedSubScorers));
+    return new CombinedIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, sortedSubScorers));
   }
 
   /**

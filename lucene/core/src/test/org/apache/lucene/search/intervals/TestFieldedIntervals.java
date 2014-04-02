@@ -47,6 +47,7 @@ public class TestFieldedIntervals extends IntervalTestBase {
     writer.addDocument(doc);
   }
 
+  // field1:and(pease, or(porridge, cold))
   @Test
   public void testNestedBooleanOnOneField() throws Exception {
     BooleanQuery bq = new BooleanQuery();
