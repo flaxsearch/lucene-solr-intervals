@@ -25,7 +25,7 @@ import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.OpenBitSet;
+import org.apache.lucene.util.LongBitSet;
 
 /**
  * Rewrites MultiTermQueries into a filter, using DocTermOrds for term enumeration.
@@ -85,7 +85,7 @@ public final class DocTermOrdsRewriteMethod extends MultiTermQuery.RewriteMethod
     public DocIdSet getDocIdSet(AtomicReaderContext context, final Bits acceptDocs) throws IOException {
       final SortedSetDocValues docTermOrds = FieldCache.DEFAULT.getDocTermOrds(context.reader(), query.field);
       // Cannot use FixedBitSet because we require long index (ord):
-      final OpenBitSet termSet = new OpenBitSet(docTermOrds.getValueCount());
+      final LongBitSet termSet = new LongBitSet(docTermOrds.getValueCount());
       TermsEnum termsEnum = query.getTermsEnum(new Terms() {
         
         @Override
@@ -114,6 +114,11 @@ public final class DocTermOrdsRewriteMethod extends MultiTermQuery.RewriteMethod
         }
 
         @Override
+        public boolean hasFreqs() {
+          return false;
+        }
+
+        @Override
         public boolean hasOffsets() {
           return false;
         }
@@ -131,7 +136,7 @@ public final class DocTermOrdsRewriteMethod extends MultiTermQuery.RewriteMethod
       
       assert termsEnum != null;
       if (termsEnum.next() != null) {
-        // fill into a OpenBitSet
+        // fill into a bitset
         do {
           termSet.set(termsEnum.ord());
         } while (termsEnum.next() != null);

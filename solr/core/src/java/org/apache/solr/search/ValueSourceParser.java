@@ -41,6 +41,7 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.schema.*;
 
+import org.apache.solr.search.function.CollapseScoreFunction;
 import org.apache.solr.search.function.distance.*;
 import org.apache.solr.util.plugin.NamedListInitializedPlugin;
 
@@ -64,7 +65,7 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
   public abstract ValueSource parse(FunctionQParser fp) throws SyntaxError;
 
   /* standard functions */
-  public static Map<String, ValueSourceParser> standardValueSourceParsers = new HashMap<String, ValueSourceParser>();
+  public static Map<String, ValueSourceParser> standardValueSourceParsers = new HashMap<>();
 
   /** Adds a new parser for the name and returns any existing one that was overriden.
    *  This is not thread safe.
@@ -198,8 +199,8 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
         ValueSource source = fp.parseValueSource();
         float min = fp.parseFloat();
         float max = fp.parseFloat();
-        float target = fp.parseFloat();
-        Float def = fp.hasMoreArguments() ? fp.parseFloat() : null;
+        ValueSource target = fp.parseValueSource();
+        ValueSource def = fp.hasMoreArguments() ? fp.parseValueSource() : null;
         return new RangeMapFloatFunction(source, min, max, target, def);
       }
     });
@@ -219,6 +220,12 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
             return Math.abs(vals.floatVal(doc));
           }
         };
+      }
+    });
+    addParser("cscore", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new CollapseScoreFunction();
       }
     });
     addParser("sum", new ValueSourceParser() {
@@ -842,8 +849,8 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
       }
     } else {
       int dim = sources.size() / 2;
-      List<ValueSource> sources1 = new ArrayList<ValueSource>(dim);
-      List<ValueSource> sources2 = new ArrayList<ValueSource>(dim);
+      List<ValueSource> sources1 = new ArrayList<>(dim);
+      List<ValueSource> sources2 = new ArrayList<>(dim);
       //Get dim value sources for the first vector
       splitSources(dim, sources, sources1, sources2);
       mvr.mv1 = new VectorValueSource(sources1);

@@ -128,11 +128,11 @@ public class UpdateLog implements PluginInfoInitialized {
 
   protected TransactionLog tlog;
   protected TransactionLog prevTlog;
-  protected Deque<TransactionLog> logs = new LinkedList<TransactionLog>();  // list of recent logs, newest first
-  protected LinkedList<TransactionLog> newestLogsOnStartup = new LinkedList<TransactionLog>();
+  protected Deque<TransactionLog> logs = new LinkedList<>();  // list of recent logs, newest first
+  protected LinkedList<TransactionLog> newestLogsOnStartup = new LinkedList<>();
   protected int numOldRecords;  // number of records in the recent logs
 
-  protected Map<BytesRef,LogPtr> map = new HashMap<BytesRef, LogPtr>();
+  protected Map<BytesRef,LogPtr> map = new HashMap<>();
   protected Map<BytesRef,LogPtr> prevMap;  // used while committing/reopening is happening
   protected Map<BytesRef,LogPtr> prevMap2;  // used while committing/reopening is happening
   protected TransactionLog prevMapLog;  // the transaction log used to look up entries found in prevMap
@@ -160,7 +160,7 @@ public class UpdateLog implements PluginInfoInitialized {
     }
   }
 
-  protected LinkedList<DBQ> deleteByQueries = new LinkedList<DBQ>();
+  protected LinkedList<DBQ> deleteByQueries = new LinkedList<>();
 
   protected String[] tlogFiles;
   protected File tlogDir;
@@ -193,6 +193,19 @@ public class UpdateLog implements PluginInfoInitialized {
     }
   }
 
+  public long getTotalLogsSize() {
+    long size = 0;
+    synchronized (logs) {
+      for (TransactionLog log : logs) {
+        size += log.getLogSize();
+      }
+    }
+    return size;
+  }
+
+  public long getTotalLogsNumber() {
+    return logs.size();
+  }
 
   public VersionInfo getVersionInfo() {
     return versionInfo;
@@ -408,7 +421,7 @@ public class UpdateLog implements PluginInfoInitialized {
         try {
           RefCounted<SolrIndexSearcher> holder = uhandler.core.openNewSearcher(true, true);
           holder.decref();
-        } catch (Throwable e) {
+        } catch (Exception e) {
           SolrException.log(log, "Error opening realtime searcher for deleteByQuery", e);
         }
 
@@ -478,7 +491,7 @@ public class UpdateLog implements PluginInfoInitialized {
         try {
           RefCounted<SolrIndexSearcher> holder = uhandler.core.openNewSearcher(true, true);
           holder.decref();
-        } catch (Throwable e) {
+        } catch (Exception e) {
           SolrException.log(log, "Error opening realtime searcher for deleteByQuery", e);
         }
 
@@ -499,7 +512,7 @@ public class UpdateLog implements PluginInfoInitialized {
       try {
         RefCounted<SolrIndexSearcher> holder = uhandler.core.openNewSearcher(true, true);
         holder.decref();
-      } catch (Throwable e) {
+      } catch (Exception e) {
         SolrException.log(log, "Error opening realtime searcher for deleteByQuery", e);
       }
 
@@ -553,7 +566,7 @@ public class UpdateLog implements PluginInfoInitialized {
         return null;
       }
 
-      List<DBQ> dbqList = new ArrayList<DBQ>();
+      List<DBQ> dbqList = new ArrayList<>();
       for (DBQ dbq : deleteByQueries) {
         if (dbq.version <= version) break;
         dbqList.add(dbq);
@@ -569,7 +582,7 @@ public class UpdateLog implements PluginInfoInitialized {
     prevMap = map;
     prevMapLog = tlog;
 
-    map = new HashMap<BytesRef, LogPtr>();
+    map = new HashMap<>();
   }
 
   private void clearOldMaps() {
@@ -643,7 +656,7 @@ public class UpdateLog implements PluginInfoInitialized {
       // any added documents will make it into this commit or not.
       // But we do know that any updates already added will definitely
       // show up in the latest reader after the commit succeeds.
-      map = new HashMap<BytesRef, LogPtr>();
+      map = new HashMap<>();
 
       if (debug) {
         log.debug("TLOG: preSoftCommit: prevMap="+ System.identityHashCode(prevMap) + " new map=" + System.identityHashCode(map));
@@ -779,7 +792,7 @@ public class UpdateLog implements PluginInfoInitialized {
   public Future<RecoveryInfo> recoverFromLog() {
     recoveryInfo = new RecoveryInfo();
 
-    List<TransactionLog> recoverLogs = new ArrayList<TransactionLog>(1);
+    List<TransactionLog> recoverLogs = new ArrayList<>(1);
     for (TransactionLog ll : newestLogsOnStartup) {
       if (!ll.try_incref()) continue;
 
@@ -799,7 +812,7 @@ public class UpdateLog implements PluginInfoInitialized {
 
     if (recoverLogs.isEmpty()) return null;
 
-    ExecutorCompletionService<RecoveryInfo> cs = new ExecutorCompletionService<RecoveryInfo>(recoveryExecutor);
+    ExecutorCompletionService<RecoveryInfo> cs = new ExecutorCompletionService<>(recoveryExecutor);
     LogReplayer replayer = new LogReplayer(recoverLogs, false);
 
     versionInfo.blockUpdates();
@@ -846,7 +859,7 @@ public class UpdateLog implements PluginInfoInitialized {
     synchronized (this) {
       try {
         ExecutorUtil.shutdownNowAndAwaitTermination(recoveryExecutor);
-      } catch (Throwable e) {
+      } catch (Exception e) {
         SolrException.log(log, e);
       }
 
@@ -912,7 +925,7 @@ public class UpdateLog implements PluginInfoInitialized {
 
     /** Returns the list of deleteByQueries that happened after the given version */
     public List<Object> getDeleteByQuery(long afterVersion) {
-      List<Object> result = new ArrayList<Object>(deleteByQueryList.size());
+      List<Object> result = new ArrayList<>(deleteByQueryList.size());
       for (Update update : deleteByQueryList) {
         if (Math.abs(update.version) > afterVersion) {
           Object dbq = update.log.lookup(update.pointer);
@@ -929,13 +942,13 @@ public class UpdateLog implements PluginInfoInitialized {
 
     private void update() {
       int numUpdates = 0;
-      updateList = new ArrayList<List<Update>>(logList.size());
-      deleteByQueryList = new ArrayList<Update>();
-      deleteList = new ArrayList<DeleteUpdate>();
-      updates = new HashMap<Long,Update>(numRecordsToKeep);
+      updateList = new ArrayList<>(logList.size());
+      deleteByQueryList = new ArrayList<>();
+      deleteList = new ArrayList<>();
+      updates = new HashMap<>(numRecordsToKeep);
 
       for (TransactionLog oldLog : logList) {
-        List<Update> updatesForLog = new ArrayList<Update>();
+        List<Update> updatesForLog = new ArrayList<>();
 
         TransactionLog.ReverseReader reader = null;
         try {
@@ -1017,7 +1030,7 @@ public class UpdateLog implements PluginInfoInitialized {
   public RecentUpdates getRecentUpdates() {
     Deque<TransactionLog> logList;
     synchronized (this) {
-      logList = new LinkedList<TransactionLog>(logs);
+      logList = new LinkedList<>(logs);
       for (TransactionLog log : logList) {
         log.incref();
       }
@@ -1143,7 +1156,7 @@ public class UpdateLog implements PluginInfoInitialized {
       tlog.decref();
       throw new RuntimeException("executor is not running...");
     }
-    ExecutorCompletionService<RecoveryInfo> cs = new ExecutorCompletionService<RecoveryInfo>(recoveryExecutor);
+    ExecutorCompletionService<RecoveryInfo> cs = new ExecutorCompletionService<>(recoveryExecutor);
     LogReplayer replayer = new LogReplayer(Arrays.asList(new TransactionLog[]{tlog}), true);
     return cs.submit(replayer, recoveryInfo);
   }
@@ -1175,7 +1188,7 @@ public class UpdateLog implements PluginInfoInitialized {
     boolean debug = loglog.isDebugEnabled();
 
     public LogReplayer(List<TransactionLog> translogs, boolean activeLog) {
-      this.translogs = new LinkedList<TransactionLog>();
+      this.translogs = new LinkedList<>();
       this.translogs.addAll(translogs);
       this.activeLog = activeLog;
     }
@@ -1209,7 +1222,7 @@ public class UpdateLog implements PluginInfoInitialized {
           recoveryInfo.errors++;
           SolrException.log(log, e);
         }
-      } catch (Throwable e) {
+      } catch (Exception e) {
         recoveryInfo.errors++;
         SolrException.log(log, e);
       } finally {
@@ -1282,7 +1295,7 @@ public class UpdateLog implements PluginInfoInitialized {
             SolrException.log(log,e);
           } catch (IOException e) {
             SolrException.log(log,e);
-          } catch (Throwable e) {
+          } catch (Exception e) {
             SolrException.log(log,e);
           }
 
@@ -1368,7 +1381,7 @@ public class UpdateLog implements PluginInfoInitialized {
             recoveryInfo.errors++;
             loglog.warn("REYPLAY_ERR: IOException reading log", ex);
             // could be caused by an incomplete flush if recovering from log
-          } catch (Throwable ex) {
+          } catch (Exception ex) {
             recoveryInfo.errors++;
             loglog.warn("REPLAY_ERR: Exception replaying log", ex);
             // something wrong with the request?

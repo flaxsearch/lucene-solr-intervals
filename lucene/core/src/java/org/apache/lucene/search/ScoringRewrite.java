@@ -17,20 +17,20 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.MultiTermQuery.RewriteMethod;
-
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
-import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.BytesRefHash.DirectBytesStartArray;
+import org.apache.lucene.util.RamUsageEstimator;
+
+import java.io.IOException;
 
 /** 
  * Base rewrite method that translates each term into a query, and keeps
@@ -87,11 +87,8 @@ public abstract class ScoringRewrite<Q extends Query> extends TermCollectingRewr
     @Override
     public Query rewrite(IndexReader reader, MultiTermQuery query) throws IOException {
       final BooleanQuery bq = SCORING_BOOLEAN_QUERY_REWRITE.rewrite(reader, query);
-      // TODO: if empty boolean query return NullQuery?
-      if (bq.clauses().isEmpty())
-        return bq;
       // strip the scores off
-      final Query result = new ConstantScoreQuery(bq);
+      final Query result = new ConstantScoreQuery(query.getField(), bq);
       result.setBoost(query.getBoost());
       return result;
     }

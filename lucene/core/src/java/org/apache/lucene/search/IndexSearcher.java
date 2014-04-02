@@ -17,6 +17,23 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.ReaderUtil;
+import org.apache.lucene.index.StoredDocument;
+import org.apache.lucene.index.StoredFieldVisitor;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.store.NIOFSDirectory;
+import org.apache.lucene.util.ThreadInterruptedException;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -31,24 +48,6 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.DirectoryReader; // javadocs
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.index.IndexReaderContext;
-import org.apache.lucene.index.ReaderUtil;
-import org.apache.lucene.index.StoredDocument;
-import org.apache.lucene.index.StoredFieldVisitor;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.TermContext;
-import org.apache.lucene.index.Terms;
-import org.apache.lucene.search.intervals.IntervalIterator;
-import org.apache.lucene.search.similarities.DefaultSimilarity;
-import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.store.NIOFSDirectory;    // javadoc
-import org.apache.lucene.util.ThreadInterruptedException;
-import org.apache.lucene.index.IndexWriter; // javadocs
 
 /** Implements search over a single IndexReader.
  *
@@ -432,7 +431,7 @@ public class IndexSearcher {
       limit = 1;
     }
     if (after != null && after.doc >= limit) {
-      throw new IllegalArgumentException("after.doc exceeds the number of documents in that reader: after.doc="
+      throw new IllegalArgumentException("after.doc exceeds the number of documents in the reader: after.doc="
           + after.doc + " limit=" + limit);
     }
     nDocs = Math.min(nDocs, limit);
@@ -442,7 +441,7 @@ public class IndexSearcher {
     } else {
       final HitQueue hq = new HitQueue(nDocs, false);
       final Lock lock = new ReentrantLock();
-      final ExecutionHelper<TopDocs> runner = new ExecutionHelper<TopDocs>(executor);
+      final ExecutionHelper<TopDocs> runner = new ExecutionHelper<>(executor);
     
       for (int i = 0; i < leafSlices.length; i++) { // search each sub
         runner.submit(new SearcherCallableNoSort(lock, this, leafSlices[i], weight, after, nDocs, hq));
@@ -533,7 +532,7 @@ public class IndexSearcher {
                                                                       false);
 
       final Lock lock = new ReentrantLock();
-      final ExecutionHelper<TopFieldDocs> runner = new ExecutionHelper<TopFieldDocs>(executor);
+      final ExecutionHelper<TopFieldDocs> runner = new ExecutionHelper<>(executor);
       for (int i = 0; i < leafSlices.length; i++) { // search each leaf slice
         runner.submit(
                       new SearcherCallableWithSort(lock, this, leafSlices[i], weight, after, nDocs, topCollector, sort, doDocScores, doMaxScore));
@@ -608,7 +607,7 @@ public class IndexSearcher {
         // continue with the following leaf
         continue;
       }
-      Scorer scorer = weight.scorer(ctx, !collector.acceptsDocsOutOfOrder(), true, collector.postingFeatures(), ctx.reader().getLiveDocs());
+      BulkScorer scorer = weight.bulkScorer(ctx, !collector.acceptsDocsOutOfOrder(), collector.postingFeatures(), ctx.reader().getLiveDocs());
       if (scorer != null) {
         try {
           scorer.score(collector);
@@ -769,49 +768,6 @@ public class IndexSearcher {
       this.doMaxScore = doMaxScore;
     }
 
-    private final class FakeScorer extends Scorer {
-      float score;
-      int doc;
-
-      public FakeScorer() {
-        super(null);
-      }
-    
-      @Override
-      public int advance(int target) {
-        throw new UnsupportedOperationException("FakeScorer doesn't support advance(int)");
-      }
-
-      @Override
-      public int docID() {
-        return doc;
-      }
-
-      @Override
-      public int freq() {
-        throw new UnsupportedOperationException("FakeScorer doesn't support freq()");
-      }
-
-      @Override
-      public int nextDoc() {
-        throw new UnsupportedOperationException("FakeScorer doesn't support nextDoc()");
-      }
-    
-      @Override
-      public float score() {
-        return score;
-      }
-
-      @Override
-      public IntervalIterator intervals(boolean collectIntervals) throws IOException {
-        return null;
-      }
-
-      public long cost() {
-        return 1;
-      }
-    }
-
     private final FakeScorer fakeScorer = new FakeScorer();
 
     @Override
@@ -854,7 +810,7 @@ public class IndexSearcher {
     private int numTasks;
 
     ExecutionHelper(final Executor executor) {
-      this.service = new ExecutorCompletionService<T>(executor);
+      this.service = new ExecutorCompletionService<>(executor);
     }
 
     @Override

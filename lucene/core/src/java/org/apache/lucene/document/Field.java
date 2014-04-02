@@ -554,7 +554,7 @@ public class Field implements IndexableField, StorableField {
       return analyzer.tokenStream(name(), stringValue());
     }
 
-    throw new IllegalArgumentException("Field must have either TokenStream, String, Reader or Number value");
+    throw new IllegalArgumentException("Field must have either TokenStream, String, Reader or Number value; got " + this);
   }
   
   static final class StringTokenStream extends TokenStream {
@@ -588,7 +588,8 @@ public class Field implements IndexableField, StorableField {
     }
 
     @Override
-    public void end() {
+    public void end() throws IOException {
+      super.end();
       final int finalOffset = value.length();
       offsetAttribute.setOffset(finalOffset, finalOffset);
     }

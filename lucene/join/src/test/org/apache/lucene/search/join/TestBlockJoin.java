@@ -70,7 +70,7 @@ public class TestBlockJoin extends LuceneTestCase {
     // we don't want to merge - since we rely on certain segment setup
     final IndexWriter w = new IndexWriter(dir, config);
 
-    final List<Document> docs = new ArrayList<Document>();
+    final List<Document> docs = new ArrayList<>();
 
     docs.add(makeJob("java", 2007));
     docs.add(makeJob("python", 2010));
@@ -128,7 +128,7 @@ public class TestBlockJoin extends LuceneTestCase {
     final Directory dir = newDirectory();
     final RandomIndexWriter w = new RandomIndexWriter(random(), dir);
 
-    final List<Document> docs = new ArrayList<Document>();
+    final List<Document> docs = new ArrayList<>();
 
     docs.add(makeJob("java", 2007));
     docs.add(makeJob("python", 2010));
@@ -202,7 +202,7 @@ public class TestBlockJoin extends LuceneTestCase {
     childDoc = s.doc(hits.scoreDocs[0].doc);
     //System.out.println("CHILD = " + childDoc + " docID=" + hits.scoreDocs[0].doc);
     assertEquals("java", childDoc.get("skill"));
-    assertEquals(2007, (childDoc.getField("year")).numericValue());
+    assertEquals(2007, childDoc.getField("year").numericValue());
     assertEquals("Lisa", getParentDoc(r, parentsFilter, hits.scoreDocs[0].doc).get("name"));
 
     // Test with filter on child docs:
@@ -210,6 +210,54 @@ public class TestBlockJoin extends LuceneTestCase {
                              new QueryWrapperFilter(new TermQuery(new Term("skill", "foosball"))),
                              1).totalHits);
     
+    r.close();
+    dir.close();
+  }
+
+  public void testBugCausedByRewritingTwice() throws IOException {
+    final Directory dir = newDirectory();
+    final RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+
+    final List<Document> docs = new ArrayList<>();
+
+    for (int i=0;i<10;i++) {
+      docs.clear();
+      docs.add(makeJob("ruby", i));
+      docs.add(makeJob("java", 2007));
+      docs.add(makeResume("Frank", "United States"));
+      w.addDocuments(docs);
+    }
+
+    IndexReader r = w.getReader();
+    w.close();
+    IndexSearcher s = newSearcher(r);
+
+    MultiTermQuery qc = NumericRangeQuery.newIntRange("year", 2007, 2007, true, true);
+    // Hacky: this causes the query to need 2 rewrite
+    // iterations: 
+    qc.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
+
+    Filter parentsFilter = new FixedBitSetCachingWrapperFilter(new QueryWrapperFilter(new TermQuery(new Term("docType", "resume"))));
+
+    int h1 = qc.hashCode();
+    Query qw1 = qc.rewrite(r);
+    int h2 = qw1.hashCode();
+    Query qw2 = qw1.rewrite(r);
+    int h3 = qw2.hashCode();
+
+    assertTrue(h1 != h2);
+    assertTrue(h2 != h3);
+    assertTrue(h3 != h1);
+
+    ToParentBlockJoinQuery qp = new ToParentBlockJoinQuery(qc, parentsFilter, ScoreMode.Max);
+    ToParentBlockJoinCollector c = new ToParentBlockJoinCollector(Sort.RELEVANCE, 10, true, true);
+
+    s.search(qp, c);
+    TopGroups<Integer> groups = c.getTopGroups(qp, Sort.INDEXORDER, 0, 10, 0, true);
+    for (GroupDocs<Integer> group : groups.groups) {
+      assertEquals(1, group.totalHits);
+    }
+
     r.close();
     dir.close();
   }
@@ -392,18 +440,18 @@ public class TestBlockJoin extends LuceneTestCase {
 
   private String[][] getRandomFields(int maxUniqueValues) {
 
-    final String[][] fields = new String[_TestUtil.nextInt(random(), 2, 4)][];
+    final String[][] fields = new String[TestUtil.nextInt(random(), 2, 4)][];
     for(int fieldID=0;fieldID<fields.length;fieldID++) {
       final int valueCount;
       if (fieldID == 0) {
         valueCount = 2;
       } else {
-        valueCount = _TestUtil.nextInt(random(), 1, maxUniqueValues);
+        valueCount = TestUtil.nextInt(random(), 1, maxUniqueValues);
       }
         
       final String[] values = fields[fieldID] = new String[valueCount];
       for(int i=0;i<valueCount;i++) {
-        values[i] = _TestUtil.randomRealisticUnicodeString(random());
+        values[i] = TestUtil.randomRealisticUnicodeString(random());
         //values[i] = _TestUtil.randomSimpleString(random);
       }
     }
@@ -443,7 +491,7 @@ public class TestBlockJoin extends LuceneTestCase {
     final Directory dir = newDirectory();
     final Directory joinDir = newDirectory();
 
-    final int numParentDocs = _TestUtil.nextInt(random(), 100*RANDOM_MULTIPLIER, 300*RANDOM_MULTIPLIER);
+    final int numParentDocs = TestUtil.nextInt(random(), 100 * RANDOM_MULTIPLIER, 300 * RANDOM_MULTIPLIER);
     //final int numParentDocs = 30;
 
     // Values for parent fields:
@@ -491,10 +539,10 @@ public class TestBlockJoin extends LuceneTestCase {
         System.out.println("  " + sb.toString());
       }
 
-      final int numChildDocs = _TestUtil.nextInt(random(), 1, 20);
+      final int numChildDocs = TestUtil.nextInt(random(), 1, 20);
       for(int childDocID=0;childDocID<numChildDocs;childDocID++) {
         // Denormalize: copy all parent fields into child doc:
-        Document childDoc = _TestUtil.cloneDocument(parentDoc);
+        Document childDoc = TestUtil.cloneDocument(parentDoc);
         Document joinChildDoc = new Document();
         joinDocs.add(joinChildDoc);
 
@@ -583,7 +631,7 @@ public class TestBlockJoin extends LuceneTestCase {
       } else if (random().nextInt(3) == 2) {
         BooleanQuery bq = new BooleanQuery();
         childQuery = bq;
-        final int numClauses = _TestUtil.nextInt(random(), 2, 4);
+        final int numClauses = TestUtil.nextInt(random(), 2, 4);
         boolean didMust = false;
         for(int clauseIDX=0;clauseIDX<numClauses;clauseIDX++) {
           Query clause;
@@ -594,7 +642,7 @@ public class TestBlockJoin extends LuceneTestCase {
             didMust = true;
           } else {
             occur = BooleanClause.Occur.SHOULD;
-            final int childFieldID = _TestUtil.nextInt(random(), 1, childFields.length-1);
+            final int childFieldID = TestUtil.nextInt(random(), 1, childFields.length - 1);
             clause = new TermQuery(new Term("child" + childFieldID,
                                             childFields[childFieldID][random().nextInt(childFields[childFieldID].length)]));
           }
@@ -606,7 +654,7 @@ public class TestBlockJoin extends LuceneTestCase {
         
         bq.add(new TermQuery(randomChildTerm(childFields[0])),
                BooleanClause.Occur.MUST);
-        final int childFieldID = _TestUtil.nextInt(random(), 1, childFields.length-1);
+        final int childFieldID = TestUtil.nextInt(random(), 1, childFields.length - 1);
         bq.add(new TermQuery(new Term("child" + childFieldID, childFields[childFieldID][random().nextInt(childFields[childFieldID].length)])),
                random().nextBoolean() ? BooleanClause.Occur.MUST : BooleanClause.Occur.MUST_NOT);
       }
@@ -714,7 +762,7 @@ public class TestBlockJoin extends LuceneTestCase {
 
       joinS.search(parentJoinQuery, c);
 
-      final int hitsPerGroup = _TestUtil.nextInt(random(), 1, 20);
+      final int hitsPerGroup = TestUtil.nextInt(random(), 1, 20);
       //final int hitsPerGroup = 100;
       final TopGroups<Integer> joinResults = c.getTopGroups(childJoinQuery, childSort, 0, hitsPerGroup, 0, true);
 
@@ -775,7 +823,7 @@ public class TestBlockJoin extends LuceneTestCase {
       } else if (random().nextInt(3) == 2) {
         BooleanQuery bq = new BooleanQuery();
         parentQuery2 = bq;
-        final int numClauses = _TestUtil.nextInt(random(), 2, 4);
+        final int numClauses = TestUtil.nextInt(random(), 2, 4);
         boolean didMust = false;
         for(int clauseIDX=0;clauseIDX<numClauses;clauseIDX++) {
           Query clause;
@@ -786,7 +834,7 @@ public class TestBlockJoin extends LuceneTestCase {
             didMust = true;
           } else {
             occur = BooleanClause.Occur.SHOULD;
-            final int fieldID = _TestUtil.nextInt(random(), 1, parentFields.length-1);
+            final int fieldID = TestUtil.nextInt(random(), 1, parentFields.length - 1);
             clause = new TermQuery(new Term("parent" + fieldID,
                                             parentFields[fieldID][random().nextInt(parentFields[fieldID].length)]));
           }
@@ -798,7 +846,7 @@ public class TestBlockJoin extends LuceneTestCase {
         
         bq.add(new TermQuery(randomParentTerm(parentFields[0])),
                BooleanClause.Occur.MUST);
-        final int fieldID = _TestUtil.nextInt(random(), 1, parentFields.length-1);
+        final int fieldID = TestUtil.nextInt(random(), 1, parentFields.length - 1);
         bq.add(new TermQuery(new Term("parent" + fieldID, parentFields[fieldID][random().nextInt(parentFields[fieldID].length)])),
                random().nextBoolean() ? BooleanClause.Occur.MUST : BooleanClause.Occur.MUST_NOT);
       }
@@ -1056,7 +1104,6 @@ public class TestBlockJoin extends LuceneTestCase {
     parentDoc = s.doc(qGroup.groupValue);
     assertEquals("Lisa", parentDoc.get("name"));
 
-
     r.close();
     dir.close();
   }
@@ -1079,7 +1126,7 @@ public class TestBlockJoin extends LuceneTestCase {
 
     ToParentBlockJoinQuery q = new ToParentBlockJoinQuery(tq, parentFilter, ScoreMode.Avg);
     Weight weight = s.createNormalizedWeight(q);
-    DocIdSetIterator disi = weight.scorer(s.getIndexReader().leaves().get(0), true, true, PostingFeatures.DOCS_AND_FREQS, null);
+    DocIdSetIterator disi = weight.scorer(s.getIndexReader().leaves().get(0), PostingFeatures.DOCS_AND_FREQS, null);
     assertEquals(1, disi.advance(1));
     r.close();
     dir.close();
@@ -1113,7 +1160,7 @@ public class TestBlockJoin extends LuceneTestCase {
 
     ToParentBlockJoinQuery q = new ToParentBlockJoinQuery(tq, parentFilter, ScoreMode.Avg);
     Weight weight = s.createNormalizedWeight(q);
-    DocIdSetIterator disi = weight.scorer(s.getIndexReader().leaves().get(0), true, true, PostingFeatures.DOCS_AND_FREQS, null);
+    DocIdSetIterator disi = weight.scorer(s.getIndexReader().leaves().get(0), PostingFeatures.DOCS_AND_FREQS, null);
     assertEquals(2, disi.advance(0));
     r.close();
     dir.close();
@@ -1153,7 +1200,6 @@ public class TestBlockJoin extends LuceneTestCase {
     ToParentBlockJoinQuery childJoinQuery = new ToParentBlockJoinQuery(childQuery, parentsFilter, ScoreMode.Avg);
 
     ToParentBlockJoinCollector c = new ToParentBlockJoinCollector(Sort.RELEVANCE, 2, true, true);
-
     s.search(childJoinQuery, c);
 
     //Get all child documents within groups
@@ -1219,7 +1265,7 @@ public class TestBlockJoin extends LuceneTestCase {
     parent.add(newTextField("parentText", "text", Field.Store.NO));
     parent.add(newStringField("isParent", "yes", Field.Store.NO));
 
-    List<Document> docs = new ArrayList<Document>();
+    List<Document> docs = new ArrayList<>();
 
     Document child = new Document();
     docs.add(child);
@@ -1265,7 +1311,6 @@ public class TestBlockJoin extends LuceneTestCase {
     GroupDocs<Integer> group = groups.groups[0];
     StoredDocument doc = r.document(group.groupValue.intValue());
     assertEquals("0", doc.get("parentID"));
-    System.out.println("group: " + group);
 
     group = groups.groups[1];
     doc = r.document(group.groupValue.intValue());
@@ -1284,7 +1329,7 @@ public class TestBlockJoin extends LuceneTestCase {
     parent.add(newTextField("parentText", "text", Field.Store.NO));
     parent.add(newStringField("isParent", "yes", Field.Store.NO));
 
-    List<Document> docs = new ArrayList<Document>();
+    List<Document> docs = new ArrayList<>();
 
     Document child = new Document();
     docs.add(child);
@@ -1331,7 +1376,6 @@ public class TestBlockJoin extends LuceneTestCase {
     GroupDocs<Integer> group = groups.groups[0];
     StoredDocument doc = r.document(group.groupValue.intValue());
     assertEquals("0", doc.get("parentID"));
-    System.out.println("group: " + group);
 
     group = groups.groups[1];
     doc = r.document(group.groupValue.intValue());
@@ -1350,7 +1394,7 @@ public class TestBlockJoin extends LuceneTestCase {
     parent.add(newTextField("parentText", "text", Field.Store.NO));
     parent.add(newStringField("isParent", "yes", Field.Store.NO));
 
-    List<Document> docs = new ArrayList<Document>();
+    List<Document> docs = new ArrayList<>();
 
     Document child = new Document();
     docs.add(child);
@@ -1395,5 +1439,49 @@ public class TestBlockJoin extends LuceneTestCase {
 
     r.close();
     d.close();
+  }
+
+  public void testAdvanceSingleDeletedParentNoChild() throws Exception {
+
+    final Directory dir = newDirectory();
+    final RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+
+    // First doc with 1 children
+    Document parentDoc = new Document();
+    parentDoc.add(newStringField("parent", "1", Field.Store.NO));
+    parentDoc.add(newStringField("isparent", "yes", Field.Store.NO));
+    Document childDoc = new Document();
+    childDoc.add(newStringField("child", "1", Field.Store.NO));
+    w.addDocuments(Arrays.asList(childDoc, parentDoc));
+
+    parentDoc = new Document();
+    parentDoc.add(newStringField("parent", "2", Field.Store.NO));
+    parentDoc.add(newStringField("isparent", "yes", Field.Store.NO));
+    w.addDocuments(Arrays.asList(parentDoc));
+
+    w.deleteDocuments(new Term("parent", "2"));
+
+    parentDoc = new Document();
+    parentDoc.add(newStringField("parent", "2", Field.Store.NO));
+    parentDoc.add(newStringField("isparent", "yes", Field.Store.NO));
+    childDoc = new Document();
+    childDoc.add(newStringField("child", "2", Field.Store.NO));
+    w.addDocuments(Arrays.asList(childDoc, parentDoc));
+
+    IndexReader r = w.getReader();
+    w.close();
+    IndexSearcher s = newSearcher(r);
+
+    // Create a filter that defines "parent" documents in the index - in this case resumes
+    Filter parentsFilter = new FixedBitSetCachingWrapperFilter(new QueryWrapperFilter(new TermQuery(new Term("isparent", "yes"))));
+
+    Query parentQuery = new TermQuery(new Term("parent", "2"));
+
+    ToChildBlockJoinQuery parentJoinQuery = new ToChildBlockJoinQuery(parentQuery, parentsFilter, random().nextBoolean());
+    TopDocs topdocs = s.search(parentJoinQuery, 3);
+    assertEquals(1, topdocs.totalHits);
+    
+    r.close();
+    dir.close();
   }
 }

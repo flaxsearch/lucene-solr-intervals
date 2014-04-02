@@ -19,7 +19,10 @@ package org.apache.solr.core;
 
 import com.google.common.base.Charsets;
 import com.google.common.io.ByteStreams;
+
 import org.apache.commons.io.IOUtils;
+import org.apache.solr.cloud.CloudConfigSetService;
+import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.logging.LogWatcherConfig;
 import org.apache.solr.util.DOMUtil;
@@ -33,6 +36,7 @@ import org.xml.sax.InputSource;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -72,8 +76,8 @@ public abstract class ConfigSolr {
     }
   }
 
-  public static ConfigSolr fromString(String xml) {
-    return fromInputStream(null, new ByteArrayInputStream(xml.getBytes(Charsets.UTF_8)));
+  public static ConfigSolr fromString(SolrResourceLoader loader, String xml) {
+    return fromInputStream(loader, new ByteArrayInputStream(xml.getBytes(Charsets.UTF_8)));
   }
 
   public static ConfigSolr fromInputStream(SolrResourceLoader loader, InputStream is) {
@@ -102,6 +106,17 @@ public abstract class ConfigSolr {
   
   public abstract CoresLocator getCoresLocator();
 
+
+  /**
+   * The directory against which relative core instance dirs are resolved.  If none is
+   * specified in the config, uses solr home.
+   *
+   * @return core root directory
+   */
+  public String getCoreRootDirectory() {
+    return get(CfgProp.SOLR_COREROOTDIRECTORY, config.getResourceLoader().getInstanceDir());
+  }
+
   public PluginInfo getShardHandlerFactoryPluginInfo() {
     Node node = config.getNode(getShardHandlerFactoryConfigPath(), false);
     return (node == null) ? null : new PluginInfo(node, "shardHandlerFactory", false, true);
@@ -125,6 +140,7 @@ public abstract class ConfigSolr {
 
   private static final int DEFAULT_ZK_CLIENT_TIMEOUT = 15000;
   private static final int DEFAULT_LEADER_VOTE_WAIT = 180000;  // 3 minutes
+  private static final int DEFAULT_LEADER_CONFLICT_RESOLVE_WAIT = 180000;
   private static final int DEFAULT_CORE_LOAD_THREADS = 3;
 
   protected static final String DEFAULT_CORE_ADMIN_PATH = "/admin/cores";
@@ -144,6 +160,10 @@ public abstract class ConfigSolr {
   public int getLeaderVoteWait() {
     return getInt(CfgProp.SOLR_LEADERVOTEWAIT, DEFAULT_LEADER_VOTE_WAIT);
   }
+  
+  public int getLeaderConflictResolveWait() {
+    return getInt(CfgProp.SOLR_LEADERCONFLICTRESOLVEWAIT, DEFAULT_LEADER_CONFLICT_RESOLVE_WAIT);
+  }
 
   public boolean getGenericCoreNodeNames() {
     return getBool(CfgProp.SOLR_GENERICCORENODENAMES, false);
@@ -155,6 +175,14 @@ public abstract class ConfigSolr {
 
   public int getDistributedSocketTimeout() {
     return getInt(CfgProp.SOLR_DISTRIBUPDATESOTIMEOUT, 0);
+  }
+  
+  public int getMaxUpdateConnections() {
+    return getInt(CfgProp.SOLR_MAXUPDATECONNECTIONS, 10000);
+  }
+
+  public int getMaxUpdateConnectionsPerHost() {
+    return getInt(CfgProp.SOLR_MAXUPDATECONNECTIONSPERHOST, 100);
   }
 
   public int getCoreLoadThreadCount() {
@@ -179,12 +207,24 @@ public abstract class ConfigSolr {
     return get(CfgProp.SOLR_ADMINHANDLER, "org.apache.solr.handler.admin.CoreAdminHandler");
   }
 
+  public String getCollectionsHandlerClass() {
+    return get(CfgProp.SOLR_COLLECTIONSHANDLER, "org.apache.solr.handler.admin.CollectionsHandler");
+  }
+
+  public String getInfoHandlerClass() {
+    return get(CfgProp.SOLR_INFOHANDLER, "org.apache.solr.handler.admin.InfoHandler");
+  }
+
   public boolean hasSchemaCache() {
     return getBool(ConfigSolr.CfgProp.SOLR_SHARESCHEMA, false);
   }
 
   public String getManagementPath() {
     return get(CfgProp.SOLR_MANAGEMENTPATH, null);
+  }
+
+  public String getConfigSetBaseDirectory() {
+    return get(CfgProp.SOLR_CONFIGSETBASEDIR, "configsets");
   }
 
   public LogWatcherConfig getLogWatcherConfig() {
@@ -200,16 +240,28 @@ public abstract class ConfigSolr {
     return getInt(CfgProp.SOLR_TRANSIENTCACHESIZE, Integer.MAX_VALUE);
   }
 
+  public ConfigSetService createCoreConfigService(SolrResourceLoader loader, ZkController zkController) {
+    if (getZkHost() != null)
+      return new CloudConfigSetService(loader, zkController);
+    if (hasSchemaCache())
+      return new ConfigSetService.SchemaCaching(loader, getConfigSetBaseDirectory());
+    return new ConfigSetService.Default(loader, getConfigSetBaseDirectory());
+  }
+
   // Ugly for now, but we'll at least be able to centralize all of the differences between 4x and 5x.
   protected static enum CfgProp {
     SOLR_ADMINHANDLER,
+    SOLR_COLLECTIONSHANDLER,
     SOLR_CORELOADTHREADS,
     SOLR_COREROOTDIRECTORY,
     SOLR_DISTRIBUPDATECONNTIMEOUT,
     SOLR_DISTRIBUPDATESOTIMEOUT,
+    SOLR_MAXUPDATECONNECTIONS,
+    SOLR_MAXUPDATECONNECTIONSPERHOST,
     SOLR_HOST,
     SOLR_HOSTCONTEXT,
     SOLR_HOSTPORT,
+    SOLR_INFOHANDLER,
     SOLR_LEADERVOTEWAIT,
     SOLR_LOGGING_CLASS,
     SOLR_LOGGING_ENABLED,
@@ -222,6 +274,8 @@ public abstract class ConfigSolr {
     SOLR_GENERICCORENODENAMES,
     SOLR_ZKCLIENTTIMEOUT,
     SOLR_ZKHOST,
+    SOLR_LEADERCONFLICTRESOLVEWAIT,
+    SOLR_CONFIGSETBASEDIR,
 
     //TODO: Remove all of these elements for 5.0
     SOLR_PERSISTENT,
@@ -230,7 +284,7 @@ public abstract class ConfigSolr {
   }
 
   protected Config config;
-  protected Map<CfgProp, String> propMap = new HashMap<CfgProp, String>();
+  protected Map<CfgProp, String> propMap = new HashMap<>();
 
   public ConfigSolr(Config config) {
     this.config = config;
@@ -268,7 +322,7 @@ public abstract class ConfigSolr {
     try {
       return readProperties(((NodeList) config.evaluate(
           path, XPathConstants.NODESET)).item(0));
-    } catch (Throwable e) {
+    } catch (Exception e) {
       SolrException.log(log, null, e);
     }
     return null;

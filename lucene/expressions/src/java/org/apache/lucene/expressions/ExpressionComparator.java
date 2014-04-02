@@ -30,6 +30,7 @@ import org.apache.lucene.search.Scorer;
 class ExpressionComparator extends FieldComparator<Double> {
   private final double[] values;
   private double bottom;
+  private double topValue;
   
   private ValueSource source;
   private FunctionValues scores;
@@ -47,9 +48,9 @@ class ExpressionComparator extends FieldComparator<Double> {
     // TODO: might be cleaner to lazy-init 'source' and set scorer after?
     assert readerContext != null;
     try {
-      Map<String,Object> context = new HashMap<String,Object>();
+      Map<String,Object> context = new HashMap<>();
       assert scorer != null;
-      context.put("scorer", new ScoreFunctionValues(scorer));
+      context.put("scorer", scorer);
       scores = source.getValues(context, readerContext);
     } catch (IOException e) {
       throw new RuntimeException(e);
@@ -64,6 +65,11 @@ class ExpressionComparator extends FieldComparator<Double> {
   @Override
   public void setBottom(int slot) {
     bottom = values[slot];
+  }
+  
+  @Override
+  public void setTopValue(Double value) {
+    topValue = value.doubleValue();
   }
   
   @Override
@@ -88,7 +94,7 @@ class ExpressionComparator extends FieldComparator<Double> {
   }
   
   @Override
-  public int compareDocToValue(int doc, Double valueObj) throws IOException {
-    return Double.compare(scores.doubleVal(doc), valueObj.doubleValue());
+  public int compareTop(int doc) throws IOException {
+    return Double.compare(topValue, scores.doubleVal(doc));
   }
 }

@@ -26,6 +26,7 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 
 import org.apache.lucene.analysis.tokenattributes.*;
 import org.apache.lucene.document.Document;
@@ -41,7 +42,7 @@ import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.Rethrow;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.TestUtil;
 
 /** 
  * Base class for all Lucene unit tests that use TokenStreams. 
@@ -154,8 +155,8 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     }
     
     // Maps position to the start/end offset:
-    final Map<Integer,Integer> posToStartOffset = new HashMap<Integer,Integer>();
-    final Map<Integer,Integer> posToEndOffset = new HashMap<Integer,Integer>();
+    final Map<Integer,Integer> posToStartOffset = new HashMap<>();
+    final Map<Integer,Integer> posToEndOffset = new HashMap<>();
 
     ts.reset();
     int pos = -1;
@@ -401,6 +402,20 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       ts.end();
       ts.close();
     }
+    
+    // check for a missing close()
+    ts = a.tokenStream("bogus", input);
+    ts.reset();
+    while (ts.incrementToken()) {}
+    ts.end();
+    try {
+      ts = a.tokenStream("bogus", input);
+      fail("didn't get expected exception when close() not called");
+    } catch (IllegalStateException expected) {
+      // ok
+    } finally {
+      ts.close();
+    }
   }
 
   // simple utility method for testing stemmers
@@ -436,13 +451,14 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     final boolean simple;
     final boolean offsetsAreCorrect;
     final RandomIndexWriter iw;
+    final CountDownLatch latch;
 
     // NOTE: not volatile because we don't want the tests to
     // add memory barriers (ie alter how threads
     // interact)... so this is just "best effort":
     public boolean failed;
     
-    AnalysisThread(long seed, Analyzer a, int iterations, int maxWordLength, boolean useCharFilter, boolean simple, boolean offsetsAreCorrect, RandomIndexWriter iw) {
+    AnalysisThread(long seed, CountDownLatch latch, Analyzer a, int iterations, int maxWordLength, boolean useCharFilter, boolean simple, boolean offsetsAreCorrect, RandomIndexWriter iw) {
       this.seed = seed;
       this.a = a;
       this.iterations = iterations;
@@ -451,17 +467,19 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       this.simple = simple;
       this.offsetsAreCorrect = offsetsAreCorrect;
       this.iw = iw;
+      this.latch = latch;
     }
     
     @Override
     public void run() {
       boolean success = false;
       try {
+        latch.await();
         // see the part in checkRandomData where it replays the same text again
         // to verify reproducability/reuse: hopefully this would catch thread hazards.
         checkRandomData(new Random(seed), a, iterations, maxWordLength, useCharFilter, simple, offsetsAreCorrect, iw);
         success = true;
-      } catch (IOException e) {
+      } catch (Exception e) {
         Rethrow.rethrow(e);
       } finally {
         failed = !success;
@@ -479,12 +497,12 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     boolean useCharFilter = random.nextBoolean();
     Directory dir = null;
     RandomIndexWriter iw = null;
-    final String postingsFormat =  _TestUtil.getPostingsFormat("dummy");
+    final String postingsFormat =  TestUtil.getPostingsFormat("dummy");
     boolean codecOk = iterations * maxWordLength < 100000 ||
         !(postingsFormat.equals("Memory") ||
             postingsFormat.equals("SimpleText"));
     if (rarely(random) && codecOk) {
-      dir = newFSDirectory(_TestUtil.getTempDir("bttc"));
+      dir = newFSDirectory(TestUtil.getTempDir("bttc"));
       iw = new RandomIndexWriter(new Random(seed), dir, a);
     }
     boolean success = false;
@@ -492,14 +510,16 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       checkRandomData(new Random(seed), a, iterations, maxWordLength, useCharFilter, simple, offsetsAreCorrect, iw);
       // now test with multiple threads: note we do the EXACT same thing we did before in each thread,
       // so this should only really fail from another thread if its an actual thread problem
-      int numThreads = _TestUtil.nextInt(random, 2, 4);
+      int numThreads = TestUtil.nextInt(random, 2, 4);
+      final CountDownLatch startingGun = new CountDownLatch(1);
       AnalysisThread threads[] = new AnalysisThread[numThreads];
       for (int i = 0; i < threads.length; i++) {
-        threads[i] = new AnalysisThread(seed, a, iterations, maxWordLength, useCharFilter, simple, offsetsAreCorrect, iw);
+        threads[i] = new AnalysisThread(seed, startingGun, a, iterations, maxWordLength, useCharFilter, simple, offsetsAreCorrect, iw);
       }
       for (int i = 0; i < threads.length; i++) {
         threads[i].start();
       }
+      startingGun.countDown();
       for (int i = 0; i < threads.length; i++) {
         try {
           threads[i].join();
@@ -542,7 +562,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       if (random.nextBoolean()) {
         ft.setOmitNorms(true);
       }
-      String pf = _TestUtil.getPostingsFormat("dummy");
+      String pf = TestUtil.getPostingsFormat("dummy");
       boolean supportsOffsets = !doesntSupportOffsets.contains(pf);
       switch(random.nextInt(4)) {
         case 0: ft.setIndexOptions(IndexOptions.DOCS_ONLY); break;
@@ -584,7 +604,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
           }
         } else {
           // synthetic
-          text = randomAnalysisString(random, maxWordLength, simple);
+          text = TestUtil.randomAnalysisString(random, maxWordLength, simple);
         }
         
         try {
@@ -621,7 +641,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     int charUpto = 0;
     final StringBuilder sb = new StringBuilder();
     while (charUpto < s.length()) {
-      final int c = s.codePointAt(charUpto);
+      final int c = s.charAt(charUpto);
       if (c == 0xa) {
         // Strangely, you cannot put \ u000A into Java
         // sources (not in a comment nor a string
@@ -641,7 +661,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
         // don't escape...
         sb.append(String.format(Locale.ROOT, "\\u%04x", c));
       }
-      charUpto += Character.charCount(c);
+      charUpto++;
     }
     return sb.toString();
   }
@@ -668,12 +688,12 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     PositionIncrementAttribute posIncAtt = ts.hasAttribute(PositionIncrementAttribute.class) ? ts.getAttribute(PositionIncrementAttribute.class) : null;
     PositionLengthAttribute posLengthAtt = ts.hasAttribute(PositionLengthAttribute.class) ? ts.getAttribute(PositionLengthAttribute.class) : null;
     TypeAttribute typeAtt = ts.hasAttribute(TypeAttribute.class) ? ts.getAttribute(TypeAttribute.class) : null;
-    List<String> tokens = new ArrayList<String>();
-    List<String> types = new ArrayList<String>();
-    List<Integer> positions = new ArrayList<Integer>();
-    List<Integer> positionLengths = new ArrayList<Integer>();
-    List<Integer> startOffsets = new ArrayList<Integer>();
-    List<Integer> endOffsets = new ArrayList<Integer>();
+    List<String> tokens = new ArrayList<>();
+    List<String> types = new ArrayList<>();
+    List<Integer> positions = new ArrayList<>();
+    List<Integer> positionLengths = new ArrayList<>();
+    List<Integer> startOffsets = new ArrayList<>();
+    List<Integer> endOffsets = new ArrayList<>();
     ts.reset();
 
     // First pass: save away "correct" tokens
@@ -862,77 +882,6 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       field.setReaderValue(useCharFilter ? new MockCharFilter(reader, remainder) : reader);
     }
   }
-  
-  private static String randomAnalysisString(Random random, int maxLength, boolean simple) {
-    assert maxLength >= 0;
-    
-    // sometimes just a purely random string
-    if (random.nextInt(31) == 0) {
-      return randomSubString(random, random.nextInt(maxLength), simple);
-    }
-    
-    // otherwise, try to make it more realistic with 'words' since most tests use MockTokenizer
-    // first decide how big the string will really be: 0..n
-    maxLength = random.nextInt(maxLength);
-    int avgWordLength = _TestUtil.nextInt(random, 3, 8);
-    StringBuilder sb = new StringBuilder();
-    while (sb.length() < maxLength) {
-      if (sb.length() > 0) {
-        sb.append(' ');
-      }
-      int wordLength = -1;
-      while (wordLength < 0) {
-        wordLength = (int) (random.nextGaussian() * 3 + avgWordLength);
-      }
-      wordLength = Math.min(wordLength, maxLength - sb.length());
-      sb.append(randomSubString(random, wordLength, simple));
-    }
-    return sb.toString();
-  }
-  
-  private static String randomSubString(Random random, int wordLength, boolean simple) {
-    if (wordLength == 0) {
-      return "";
-    }
-    
-    int evilness = _TestUtil.nextInt(random, 0, 20);
-    
-    StringBuilder sb = new StringBuilder();
-    while (sb.length() < wordLength) {;
-      if (simple) { 
-        sb.append(random.nextBoolean() ? _TestUtil.randomSimpleString(random, wordLength) : _TestUtil.randomHtmlishString(random, wordLength));
-      } else {
-        if (evilness < 10) {
-          sb.append(_TestUtil.randomSimpleString(random, wordLength));
-        } else if (evilness < 15) {
-          assert sb.length() == 0; // we should always get wordLength back!
-          sb.append(_TestUtil.randomRealisticUnicodeString(random, wordLength, wordLength));
-        } else if (evilness == 16) {
-          sb.append(_TestUtil.randomHtmlishString(random, wordLength));
-        } else if (evilness == 17) {
-          // gives a lot of punctuation
-          sb.append(_TestUtil.randomRegexpishString(random, wordLength));
-        } else {
-          sb.append(_TestUtil.randomUnicodeString(random, wordLength));
-        }
-      }
-    }
-    if (sb.length() > wordLength) {
-      sb.setLength(wordLength);
-      if (Character.isHighSurrogate(sb.charAt(wordLength-1))) {
-        sb.setLength(wordLength-1);
-      }
-    }
-    
-    if (random.nextInt(17) == 0) {
-      // mix up case
-      String mixedUp = _TestUtil.randomlyRecaseCodePoints(random, sb.toString());
-      assert mixedUp.length() == sb.length();
-      return mixedUp;
-    } else {
-      return sb.toString();
-    }
-  }
 
   protected String toDot(Analyzer a, String inputText) throws IOException {
     final StringWriter sw = new StringWriter();
@@ -958,4 +907,29 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     }
     return ret;
   }
+
+  protected static MockTokenizer whitespaceMockTokenizer(Reader input) throws IOException {
+    MockTokenizer mockTokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    mockTokenizer.setReader(input);
+    return mockTokenizer;
+  }
+
+  protected static MockTokenizer whitespaceMockTokenizer(String input) throws IOException {
+    MockTokenizer mockTokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    mockTokenizer.setReader(new StringReader(input));
+    return mockTokenizer;
+  }
+
+  protected static MockTokenizer keywordMockTokenizer(Reader input) throws IOException {
+    MockTokenizer mockTokenizer = new MockTokenizer(MockTokenizer.KEYWORD, false);
+    mockTokenizer.setReader(input);
+    return mockTokenizer;
+  }
+
+  protected static MockTokenizer keywordMockTokenizer(String input) throws IOException {
+    MockTokenizer mockTokenizer = new MockTokenizer(MockTokenizer.KEYWORD, false);
+    mockTokenizer.setReader(new StringReader(input));
+    return mockTokenizer;
+  }
+
 }

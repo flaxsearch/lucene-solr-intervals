@@ -69,8 +69,7 @@ public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCa
     params.set("command", "full-import");
     params.set("clean", "false");
     req.setParams(params);
-    String url = "http://127.0.0.1:" + jetty.getLocalPort() + "/solr";
-    HttpSolrServer solrServer = new HttpSolrServer(url);
+    HttpSolrServer solrServer = new HttpSolrServer(buildUrl(jetty.getLocalPort(), "/solr"));
     solrServer.request(req);
     ModifiableSolrParams qparams = new ModifiableSolrParams();
     qparams.add("q", "*:*");
@@ -80,6 +79,7 @@ public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCa
     SolrDocument doc = results.get(0);
     assertEquals("1", doc.getFieldValue("id"));
     assertEquals("Hello C1", ((List)doc.getFieldValue("desc")).get(0));
+    solrServer.shutdown();
   }
 
   @Test
@@ -89,8 +89,7 @@ public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCa
         "clean", "false", UpdateParams.COMMIT, "false", 
         UpdateParams.COMMIT_WITHIN, "1000");
     req.setParams(params);
-    String url = "http://127.0.0.1:" + jetty.getLocalPort() + "/solr";
-    HttpSolrServer solrServer = new HttpSolrServer(url);
+    HttpSolrServer solrServer = new HttpSolrServer(buildUrl(jetty.getLocalPort(), "/solr"));
     solrServer.request(req);
     Thread.sleep(100);
     ModifiableSolrParams queryAll = params("q", "*");
@@ -102,6 +101,7 @@ public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCa
       qres = solrServer.query(queryAll);
       results = qres.getResults();
       if (2 == results.getNumFound()) {
+        solrServer.shutdown();
         return;
       }
       Thread.sleep(500);
@@ -181,7 +181,7 @@ public class TestContentStreamDataSource extends AbstractDataImportHandlerTestCa
 
   private JettySolrRunner createJetty(SolrInstance instance) throws Exception {
     System.setProperty("solr.data.dir", instance.getDataDir());
-    JettySolrRunner jetty = new JettySolrRunner(instance.getHomeDir(), "/solr", 0);
+    JettySolrRunner jetty = new JettySolrRunner(instance.getHomeDir(), "/solr", 0, null, null, true, null, sslConfig);
     jetty.start();
     return jetty;
   }

@@ -78,7 +78,7 @@ public final class NonOverlappingQuery extends FieldedQuery implements Cloneable
     super(minuend.getField());
     this.minuend = minuend;
     this.subtrahend = subtrahend;
-    if (minuend.getField() != subtrahend.getField())
+    if (!minuend.getField().equals(subtrahend.getField()))
       throw new IllegalArgumentException("Minuend and Subtrahend must be on the same field");
   }
 
@@ -120,10 +120,9 @@ public final class NonOverlappingQuery extends FieldedQuery implements Cloneable
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
-        boolean topScorer, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(AtomicReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
       flags = flags == PostingFeatures.DOCS_AND_FREQS ? PostingFeatures.POSITIONS : flags;
-      ScorerFactory factory = new ScorerFactory(minuted, subtracted, context, topScorer, flags, acceptDocs);
+      ScorerFactory factory = new ScorerFactory(minuted, subtracted, context, flags, acceptDocs);
       final Scorer scorer = factory.minutedScorer();
       final Scorer subScorer = factory.subtractedScorer();
       if (subScorer == null) {
@@ -152,26 +151,24 @@ public final class NonOverlappingQuery extends FieldedQuery implements Cloneable
     final Weight minuted;
     final Weight subtracted;
     final AtomicReaderContext context;
-    final boolean topScorer;
     final PostingFeatures flags;
     final Bits acceptDocs;
     ScorerFactory(Weight minuted, Weight subtracted,
-        AtomicReaderContext context, boolean topScorer, PostingFeatures flags,
+        AtomicReaderContext context, PostingFeatures flags,
         Bits acceptDocs) {
       this.minuted = minuted;
       this.subtracted = subtracted;
       this.context = context;
-      this.topScorer = topScorer;
       this.flags = flags;
       this.acceptDocs = acceptDocs;
     }
     
     public Scorer minutedScorer() throws IOException {
-      return minuted.scorer(context, true, topScorer, flags, acceptDocs);
+      return minuted.scorer(context, flags, acceptDocs);
     }
     
     public Scorer subtractedScorer() throws IOException {
-      return subtracted.scorer(context, true, topScorer, flags, acceptDocs);
+      return subtracted.scorer(context, flags, acceptDocs);
     }
     
   }

@@ -32,7 +32,9 @@ import org.apache.lucene.util.AttributeSource;
  * The output tokens can then be broken into words with {@link WordTokenFilter}
  * </p>
  * @lucene.experimental
+ * @deprecated Use {@link HMMChineseTokenizer} instead
  */
+@Deprecated
 public final class SentenceTokenizer extends Tokenizer {
 
   /**
@@ -48,12 +50,11 @@ public final class SentenceTokenizer extends Tokenizer {
   private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
   private final TypeAttribute typeAtt = addAttribute(TypeAttribute.class);
 
-  public SentenceTokenizer(Reader reader) {
-    super(reader);
+  public SentenceTokenizer() {
   }
 
-  public SentenceTokenizer(AttributeFactory factory, Reader reader) {
-    super(factory, reader);
+  public SentenceTokenizer(AttributeFactory factory) {
+    super(factory);
   }
   
   @Override

@@ -25,14 +25,12 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -52,47 +50,45 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.search.suggest.Lookup.LookupResult;
-import org.apache.lucene.search.suggest.TermFreq;
-import org.apache.lucene.search.suggest.TermFreqArrayIterator;
-import org.apache.lucene.search.suggest.TermFreqPayload;
-import org.apache.lucene.search.suggest.TermFreqPayloadArrayIterator;
+import org.apache.lucene.search.suggest.Input;
+import org.apache.lucene.search.suggest.InputArrayIterator;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.TestUtil;
 
 public class AnalyzingSuggesterTest extends LuceneTestCase {
   
   /** this is basically the WFST test ported to KeywordAnalyzer. so it acts the same */
   public void testKeyword() throws Exception {
-    Iterable<TermFreq> keys = shuffle(
-        new TermFreq("foo", 50),
-        new TermFreq("bar", 10),
-        new TermFreq("barbar", 10),
-        new TermFreq("barbar", 12),
-        new TermFreq("barbara", 6),
-        new TermFreq("bar", 5),
-        new TermFreq("barbara", 1)
+    Iterable<Input> keys = shuffle(
+        new Input("foo", 50),
+        new Input("bar", 10),
+        new Input("barbar", 10),
+        new Input("barbar", 12),
+        new Input("barbara", 6),
+        new Input("bar", 5),
+        new Input("barbara", 1)
     );
 
     AnalyzingSuggester suggester = new AnalyzingSuggester(new MockAnalyzer(random(), MockTokenizer.KEYWORD, false));
-    suggester.build(new TermFreqArrayIterator(keys));
+    suggester.build(new InputArrayIterator(keys));
     
     // top N of 2, but only foo is available
-    List<LookupResult> results = suggester.lookup(_TestUtil.stringToCharSequence("f", random()), false, 2);
+    List<LookupResult> results = suggester.lookup(TestUtil.stringToCharSequence("f", random()), false, 2);
     assertEquals(1, results.size());
     assertEquals("foo", results.get(0).key.toString());
     assertEquals(50, results.get(0).value, 0.01F);
     
     // top N of 1 for 'bar': we return this even though
     // barbar is higher because exactFirst is enabled:
-    results = suggester.lookup(_TestUtil.stringToCharSequence("bar", random()), false, 1);
+    results = suggester.lookup(TestUtil.stringToCharSequence("bar", random()), false, 1);
     assertEquals(1, results.size());
     assertEquals("bar", results.get(0).key.toString());
     assertEquals(10, results.get(0).value, 0.01F);
     
     // top N Of 2 for 'b'
-    results = suggester.lookup(_TestUtil.stringToCharSequence("b", random()), false, 2);
+    results = suggester.lookup(TestUtil.stringToCharSequence("b", random()), false, 2);
     assertEquals(2, results.size());
     assertEquals("barbar", results.get(0).key.toString());
     assertEquals(12, results.get(0).value, 0.01F);
@@ -100,7 +96,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(10, results.get(1).value, 0.01F);
     
     // top N of 3 for 'ba'
-    results = suggester.lookup(_TestUtil.stringToCharSequence("ba", random()), false, 3);
+    results = suggester.lookup(TestUtil.stringToCharSequence("ba", random()), false, 3);
     assertEquals(3, results.size());
     assertEquals("barbar", results.get(0).key.toString());
     assertEquals(12, results.get(0).value, 0.01F);
@@ -111,19 +107,19 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   }
   
   public void testKeywordWithPayloads() throws Exception {
-    Iterable<TermFreqPayload> keys = shuffle(
-      new TermFreqPayload("foo", 50, new BytesRef("hello")),
-      new TermFreqPayload("bar", 10, new BytesRef("goodbye")),
-      new TermFreqPayload("barbar", 12, new BytesRef("thank you")),
-      new TermFreqPayload("bar", 9, new BytesRef("should be deduplicated")),
-      new TermFreqPayload("bar", 8, new BytesRef("should also be deduplicated")),
-      new TermFreqPayload("barbara", 6, new BytesRef("for all the fish")));
+    Iterable<Input> keys = shuffle(
+      new Input("foo", 50, new BytesRef("hello")),
+      new Input("bar", 10, new BytesRef("goodbye")),
+      new Input("barbar", 12, new BytesRef("thank you")),
+      new Input("bar", 9, new BytesRef("should be deduplicated")),
+      new Input("bar", 8, new BytesRef("should also be deduplicated")),
+      new Input("barbara", 6, new BytesRef("for all the fish")));
     
     AnalyzingSuggester suggester = new AnalyzingSuggester(new MockAnalyzer(random(), MockTokenizer.KEYWORD, false));
-    suggester.build(new TermFreqPayloadArrayIterator(keys));
+    suggester.build(new InputArrayIterator(keys));
     for (int i = 0; i < 2; i++) {
       // top N of 2, but only foo is available
-      List<LookupResult> results = suggester.lookup(_TestUtil.stringToCharSequence("f", random()), false, 2);
+      List<LookupResult> results = suggester.lookup(TestUtil.stringToCharSequence("f", random()), false, 2);
       assertEquals(1, results.size());
       assertEquals("foo", results.get(0).key.toString());
       assertEquals(50, results.get(0).value, 0.01F);
@@ -131,14 +127,14 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
       
       // top N of 1 for 'bar': we return this even though
       // barbar is higher because exactFirst is enabled:
-      results = suggester.lookup(_TestUtil.stringToCharSequence("bar", random()), false, 1);
+      results = suggester.lookup(TestUtil.stringToCharSequence("bar", random()), false, 1);
       assertEquals(1, results.size());
       assertEquals("bar", results.get(0).key.toString());
       assertEquals(10, results.get(0).value, 0.01F);
       assertEquals(new BytesRef("goodbye"), results.get(0).payload);
       
       // top N Of 2 for 'b'
-      results = suggester.lookup(_TestUtil.stringToCharSequence("b", random()), false, 2);
+      results = suggester.lookup(TestUtil.stringToCharSequence("b", random()), false, 2);
       assertEquals(2, results.size());
       assertEquals("barbar", results.get(0).key.toString());
       assertEquals(12, results.get(0).value, 0.01F);
@@ -148,7 +144,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
       assertEquals(new BytesRef("goodbye"), results.get(1).payload);
       
       // top N of 3 for 'ba'
-      results = suggester.lookup(_TestUtil.stringToCharSequence("ba", random()), false, 3);
+      results = suggester.lookup(TestUtil.stringToCharSequence("ba", random()), false, 3);
       assertEquals(3, results.size());
       assertEquals("barbar", results.get(0).key.toString());
       assertEquals(12, results.get(0).value, 0.01F);
@@ -165,33 +161,32 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   public void testRandomRealisticKeys() throws IOException {
     LineFileDocs lineFile = new LineFileDocs(random());
     Map<String, Long> mapping = new HashMap<>();
-    List<TermFreq> keys = new ArrayList<>();
+    List<Input> keys = new ArrayList<>();
     
     int howMany = atLeast(100); // this might bring up duplicates
     for (int i = 0; i < howMany; i++) {
       Document nextDoc = lineFile.nextDoc();
       String title = nextDoc.getField("title").stringValue();
       int randomWeight = random().nextInt(100);
-      keys.add(new TermFreq(title, randomWeight));
+      keys.add(new Input(title, randomWeight));
       if (!mapping.containsKey(title) || mapping.get(title) < randomWeight) {
           mapping.put(title, Long.valueOf(randomWeight));
       }
     }
-    
-    AnalyzingSuggester analyzingSuggester = new AnalyzingSuggester(new MockAnalyzer(random()));
-    analyzingSuggester.setPreservePositionIncrements(random().nextBoolean());
+    AnalyzingSuggester analyzingSuggester = new AnalyzingSuggester(new MockAnalyzer(random()), new MockAnalyzer(random()),
+        AnalyzingSuggester.EXACT_FIRST | AnalyzingSuggester.PRESERVE_SEP, 256, -1, random().nextBoolean());
     boolean doPayloads = random().nextBoolean();
     if (doPayloads) {
-      List<TermFreqPayload> keysAndPayloads = new ArrayList<>();
-      for (TermFreq termFreq : keys) {
-        keysAndPayloads.add(new TermFreqPayload(termFreq.term, termFreq.v, new BytesRef(Long.toString(termFreq.v))));
+      List<Input> keysAndPayloads = new ArrayList<>();
+      for (Input termFreq : keys) {
+        keysAndPayloads.add(new Input(termFreq.term, termFreq.v, new BytesRef(Long.toString(termFreq.v))));
       }
-      analyzingSuggester.build(new TermFreqPayloadArrayIterator(keysAndPayloads));
+      analyzingSuggester.build(new InputArrayIterator(keysAndPayloads));
     } else {
-      analyzingSuggester.build(new TermFreqArrayIterator(keys));  
+      analyzingSuggester.build(new InputArrayIterator(keys));  
     }
     
-    for (TermFreq termFreq : keys) {
+    for (Input termFreq : keys) {
       List<LookupResult> lookup = analyzingSuggester.lookup(termFreq.term.utf8ToString(), false, keys.size());
       for (LookupResult lookupResult : lookup) {
         assertEquals(mapping.get(lookupResult.key), Long.valueOf(lookupResult.value));
@@ -211,28 +206,29 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
    * basic "standardanalyzer" test with stopword removal
    */
   public void testStandard() throws Exception {
-    TermFreq keys[] = new TermFreq[] {
-        new TermFreq("the ghost of christmas past", 50),
+    Input keys[] = new Input[] {
+        new Input("the ghost of christmas past", 50),
     };
     
     Analyzer standard = new MockAnalyzer(random(), MockTokenizer.WHITESPACE, true, MockTokenFilter.ENGLISH_STOPSET);
-    AnalyzingSuggester suggester = new AnalyzingSuggester(standard);
-    suggester.setPreservePositionIncrements(false);
-    suggester.build(new TermFreqArrayIterator(keys));
+    AnalyzingSuggester suggester = new AnalyzingSuggester(standard, standard, 
+        AnalyzingSuggester.EXACT_FIRST | AnalyzingSuggester.PRESERVE_SEP, 256, -1, false);
+
+    suggester.build(new InputArrayIterator(keys));
     
-    List<LookupResult> results = suggester.lookup(_TestUtil.stringToCharSequence("the ghost of chris", random()), false, 1);
+    List<LookupResult> results = suggester.lookup(TestUtil.stringToCharSequence("the ghost of chris", random()), false, 1);
     assertEquals(1, results.size());
     assertEquals("the ghost of christmas past", results.get(0).key.toString());
     assertEquals(50, results.get(0).value, 0.01F);
 
     // omit the 'the' since its a stopword, its suggested anyway
-    results = suggester.lookup(_TestUtil.stringToCharSequence("ghost of chris", random()), false, 1);
+    results = suggester.lookup(TestUtil.stringToCharSequence("ghost of chris", random()), false, 1);
     assertEquals(1, results.size());
     assertEquals("the ghost of christmas past", results.get(0).key.toString());
     assertEquals(50, results.get(0).value, 0.01F);
 
     // omit the 'the' and 'of' since they are stopwords, its suggested anyway
-    results = suggester.lookup(_TestUtil.stringToCharSequence("ghost chris", random()), false, 1);
+    results = suggester.lookup(TestUtil.stringToCharSequence("ghost chris", random()), false, 1);
     assertEquals(1, results.size());
     assertEquals("the ghost of christmas past", results.get(0).key.toString());
     assertEquals(50, results.get(0).value, 0.01F);
@@ -241,28 +237,28 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   public void testEmpty() throws Exception {
     Analyzer standard = new MockAnalyzer(random(), MockTokenizer.WHITESPACE, true, MockTokenFilter.ENGLISH_STOPSET);
     AnalyzingSuggester suggester = new AnalyzingSuggester(standard);
-    suggester.build(new TermFreqArrayIterator(new TermFreq[0]));
+    suggester.build(new InputArrayIterator(new Input[0]));
 
     List<LookupResult> result = suggester.lookup("a", false, 20);
     assertTrue(result.isEmpty());
   }
 
   public void testNoSeps() throws Exception {
-    TermFreq[] keys = new TermFreq[] {
-      new TermFreq("ab cd", 0),
-      new TermFreq("abcd", 1),
+    Input[] keys = new Input[] {
+      new Input("ab cd", 0),
+      new Input("abcd", 1),
     };
 
     int options = 0;
 
     Analyzer a = new MockAnalyzer(random());
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, options, 256, -1);
-    suggester.build(new TermFreqArrayIterator(keys));
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, options, 256, -1, true);
+    suggester.build(new InputArrayIterator(keys));
     // TODO: would be nice if "ab " would allow the test to
     // pass, and more generally if the analyzer can know
     // that the user's current query has ended at a word, 
     // but, analyzers don't produce SEP tokens!
-    List<LookupResult> r = suggester.lookup(_TestUtil.stringToCharSequence("ab c", random()), false, 2);
+    List<LookupResult> r = suggester.lookup(TestUtil.stringToCharSequence("ab c", random()), false, 2);
     assertEquals(2, r.size());
 
     // With no PRESERVE_SEPS specified, "ab c" should also
@@ -275,8 +271,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
 
     final Analyzer analyzer = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
         return new TokenStreamComponents(tokenizer) {
           int tokenStreamCounter = 0;
@@ -318,13 +314,13 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
       }
     };
 
-    TermFreq keys[] = new TermFreq[] {
-        new TermFreq("wifi network is slow", 50),
-        new TermFreq("wi fi network is fast", 10),
+    Input keys[] = new Input[] {
+        new Input("wifi network is slow", 50),
+        new Input("wi fi network is fast", 10),
     };
     //AnalyzingSuggester suggester = new AnalyzingSuggester(analyzer, AnalyzingSuggester.EXACT_FIRST, 256, -1);
     AnalyzingSuggester suggester = new AnalyzingSuggester(analyzer);
-    suggester.build(new TermFreqArrayIterator(keys));
+    suggester.build(new InputArrayIterator(keys));
     List<LookupResult> results = suggester.lookup("wifi network", false, 10);
     if (VERBOSE) {
       System.out.println("Results: " + results);
@@ -348,8 +344,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
 
     final Analyzer analyzer = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
         return new TokenStreamComponents(tokenizer) {
           int tokenStreamCounter = 0;
@@ -384,12 +380,12 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
       }
     };
 
-    TermFreq keys[] = new TermFreq[] {
-        new TermFreq("ab xc", 50),
-        new TermFreq("ba xd", 50),
+    Input keys[] = new Input[] {
+        new Input("ab xc", 50),
+        new Input("ba xd", 50),
     };
     AnalyzingSuggester suggester = new AnalyzingSuggester(analyzer);
-    suggester.build(new TermFreqArrayIterator(keys));
+    suggester.build(new InputArrayIterator(keys));
     List<LookupResult> results = suggester.lookup("ab x", false, 1);
     assertTrue(results.size() == 1);
   }
@@ -426,8 +422,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   private final Analyzer getUnusualAnalyzer() {
     return new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
         return new TokenStreamComponents(tokenizer) {
 
@@ -461,12 +457,13 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   public void testExactFirst() throws Exception {
 
     Analyzer a = getUnusualAnalyzer();
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.EXACT_FIRST | AnalyzingSuggester.PRESERVE_SEP, 256, -1);
-    suggester.build(new TermFreqArrayIterator(new TermFreq[] {
-          new TermFreq("x y", 1),
-          new TermFreq("x y z", 3),
-          new TermFreq("x", 2),
-          new TermFreq("z z z", 20),
+    int options = AnalyzingSuggester.EXACT_FIRST | AnalyzingSuggester.PRESERVE_SEP;
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, options, 256, -1, true);
+    suggester.build(new InputArrayIterator(new Input[] {
+          new Input("x y", 1),
+          new Input("x y z", 3),
+          new Input("x", 2),
+          new Input("z z z", 20),
         }));
 
     //System.out.println("ALL: " + suggester.lookup("x y", false, 6));
@@ -500,13 +497,13 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   public void testNonExactFirst() throws Exception {
 
     Analyzer a = getUnusualAnalyzer();
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.PRESERVE_SEP, 256, -1);
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.PRESERVE_SEP, 256, -1, true);
 
-    suggester.build(new TermFreqArrayIterator(new TermFreq[] {
-          new TermFreq("x y", 1),
-          new TermFreq("x y z", 3),
-          new TermFreq("x", 2),
-          new TermFreq("z z z", 20),
+    suggester.build(new InputArrayIterator(new Input[] {
+          new Input("x y", 1),
+          new Input("x y z", 3),
+          new Input("x", 2),
+          new Input("z z z", 20),
         }));
 
     for(int topN=1;topN<6;topN++) {
@@ -632,8 +629,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     }
 
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      MockTokenizer tokenizer = new MockTokenizer(factory, reader, MockTokenizer.WHITESPACE, false, MockTokenizer.DEFAULT_MAX_TOKEN_LENGTH);
+    public TokenStreamComponents createComponents(String fieldName) {
+      MockTokenizer tokenizer = new MockTokenizer(factory, MockTokenizer.WHITESPACE, false, MockTokenizer.DEFAULT_MAX_TOKEN_LENGTH);
       tokenizer.setEnableChecks(true);
       TokenStream next;
       if (numStopChars != 0) {
@@ -651,18 +648,18 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
 
     int numQueries = atLeast(1000);
     
-    final List<TermFreq2> slowCompletor = new ArrayList<TermFreq2>();
-    final TreeSet<String> allPrefixes = new TreeSet<String>();
-    final Set<String> seen = new HashSet<String>();
+    final List<TermFreq2> slowCompletor = new ArrayList<>();
+    final TreeSet<String> allPrefixes = new TreeSet<>();
+    final Set<String> seen = new HashSet<>();
     
     boolean doPayloads = random().nextBoolean();
 
-    TermFreq[] keys = null;
-    TermFreqPayload[] payloadKeys = null;
+    Input[] keys = null;
+    Input[] payloadKeys = null;
     if (doPayloads) {
-      payloadKeys = new TermFreqPayload[numQueries];
+      payloadKeys = new Input[numQueries];
     } else {
-      keys = new TermFreq[numQueries];
+      keys = new Input[numQueries];
     }
 
     boolean preserveSep = random().nextBoolean();
@@ -675,7 +672,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     }
     
     for (int i = 0; i < numQueries; i++) {
-      int numTokens = _TestUtil.nextInt(random(), 1, 4);
+      int numTokens = TestUtil.nextInt(random(), 1, 4);
       String key;
       String analyzedKey;
       while(true) {
@@ -687,7 +684,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
           while (true) {
             // TODO: would be nice to fix this slowCompletor/comparator to
             // use full range, but we might lose some coverage too...
-            s = _TestUtil.randomSimpleString(random());
+            s = TestUtil.randomSimpleString(random());
             if (s.length() > 0) {
               if (token > 0) {
                 key += " ";
@@ -733,9 +730,9 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         byte[] bytes = new byte[random().nextInt(10)];
         random().nextBytes(bytes);
         payload = new BytesRef(bytes);
-        payloadKeys[i] = new TermFreqPayload(key, weight, payload);
+        payloadKeys[i] = new Input(key, weight, payload);
       } else {
-        keys[i] = new TermFreq(key, weight);
+        keys[i] = new Input(key, weight);
         payload = null;
       }
 
@@ -745,7 +742,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     if (VERBOSE) {
       // Don't just sort original list, to avoid VERBOSE
       // altering the test:
-      List<TermFreq2> sorted = new ArrayList<TermFreq2>(slowCompletor);
+      List<TermFreq2> sorted = new ArrayList<>(slowCompletor);
       Collections.sort(sorted);
       for(TermFreq2 ent : sorted) {
         System.out.println("  surface='" + ent.surfaceForm + "' analyzed='" + ent.analyzedForm + "' weight=" + ent.weight);
@@ -754,11 +751,11 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
 
     Analyzer a = new MockTokenEatingAnalyzer(numStopChars, preserveHoles);
     AnalyzingSuggester suggester = new AnalyzingSuggester(a, a,
-                                                          preserveSep ? AnalyzingSuggester.PRESERVE_SEP : 0, 256, -1);
+                                                          preserveSep ? AnalyzingSuggester.PRESERVE_SEP : 0, 256, -1, true);
     if (doPayloads) {
-      suggester.build(new TermFreqPayloadArrayIterator(shuffle(payloadKeys)));
+      suggester.build(new InputArrayIterator(shuffle(payloadKeys)));
     } else {
-      suggester.build(new TermFreqArrayIterator(shuffle(keys)));
+      suggester.build(new InputArrayIterator(shuffle(keys)));
     }
 
     for (String prefix : allPrefixes) {
@@ -767,11 +764,11 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         System.out.println("\nTEST: prefix=" + prefix);
       }
 
-      final int topN = _TestUtil.nextInt(random(), 1, 10);
-      List<LookupResult> r = suggester.lookup(_TestUtil.stringToCharSequence(prefix, random()), false, topN);
+      final int topN = TestUtil.nextInt(random(), 1, 10);
+      List<LookupResult> r = suggester.lookup(TestUtil.stringToCharSequence(prefix, random()), false, topN);
 
       // 2. go thru whole set to find suggestions:
-      List<TermFreq2> matches = new ArrayList<TermFreq2>();
+      List<TermFreq2> matches = new ArrayList<>();
 
       // "Analyze" the key:
       String[] tokens = prefix.split(" ");
@@ -875,9 +872,9 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
 
   public void testMaxSurfaceFormsPerAnalyzedForm() throws Exception {
     Analyzer a = new MockAnalyzer(random());
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 2, -1);
-    suggester.build(new TermFreqArrayIterator(shuffle(new TermFreq("a", 40),
-        new TermFreq("a ", 50), new TermFreq(" a", 60))));
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 2, -1, true);
+    suggester.build(new InputArrayIterator(shuffle(new Input("a", 40),
+        new Input("a ", 50), new Input(" a", 60))));
 
     List<LookupResult> results = suggester.lookup("a", false, 5);
     assertEquals(2, results.size());
@@ -889,13 +886,13 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
 
   public void testQueueExhaustion() throws Exception {
     Analyzer a = new MockAnalyzer(random());
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.EXACT_FIRST, 256, -1);
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.EXACT_FIRST, 256, -1, true);
 
-    suggester.build(new TermFreqArrayIterator(new TermFreq[] {
-          new TermFreq("a", 2),
-          new TermFreq("a b c", 3),
-          new TermFreq("a c a", 1),
-          new TermFreq("a c b", 1),
+    suggester.build(new InputArrayIterator(new Input[] {
+          new Input("a", 2),
+          new Input("a b c", 3),
+          new Input("a c a", 1),
+          new Input("a c b", 1),
         }));
 
     suggester.lookup("a", false, 4);
@@ -905,14 +902,15 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
 
     Analyzer a = new MockAnalyzer(random());
 
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.EXACT_FIRST, 256, -1);
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.EXACT_FIRST, 256, -1, true);
 
-    suggester.build(new TermFreqArrayIterator(new TermFreq[] {
-          new TermFreq("a", 5),
-          new TermFreq("a b", 3),
-          new TermFreq("a c", 4),
+    suggester.build(new InputArrayIterator(new Input[] {
+          new Input("a", 5),
+          new Input("a b", 3),
+          new Input("a c", 4),
         }));
 
+    assertEquals(3, suggester.getCount());
     List<LookupResult> results = suggester.lookup("a", false, 3);
     assertEquals(3, results.size());
     assertEquals("a", results.get(0).key);
@@ -923,7 +921,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(3, results.get(2).value);
 
     // Try again after save/load:
-    File tmpDir = _TestUtil.getTempDir("AnalyzingSuggesterTest");
+    File tmpDir = TestUtil.getTempDir("AnalyzingSuggesterTest");
     tmpDir.mkdir();
 
     File path = new File(tmpDir, "suggester");
@@ -936,6 +934,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     suggester.load(is);
     is.close();
 
+    assertEquals(3, suggester.getCount());
     results = suggester.lookup("a", false, 3);
     assertEquals(3, results.size());
     assertEquals("a", results.get(0).key);
@@ -949,8 +948,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   public void testDupSurfaceFormsMissingResults() throws Exception {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
         return new TokenStreamComponents(tokenizer) {
 
@@ -970,11 +969,11 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
       }
     };
 
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, -1);
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, -1, true);
 
-    suggester.build(new TermFreqArrayIterator(shuffle(
-          new TermFreq("hambone", 6),
-          new TermFreq("nellie", 5))));
+    suggester.build(new InputArrayIterator(shuffle(
+          new Input("hambone", 6),
+          new Input("nellie", 5))));
 
     List<LookupResult> results = suggester.lookup("nellie", false, 2);
     assertEquals(2, results.size());
@@ -984,7 +983,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(5, results.get(1).value);
 
     // Try again after save/load:
-    File tmpDir = _TestUtil.getTempDir("AnalyzingSuggesterTest");
+    File tmpDir = TestUtil.getTempDir("AnalyzingSuggesterTest");
     tmpDir.mkdir();
 
     File path = new File(tmpDir, "suggester");
@@ -1008,8 +1007,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   public void testDupSurfaceFormsMissingResults2() throws Exception {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
         return new TokenStreamComponents(tokenizer) {
 
@@ -1039,11 +1038,11 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
       }
     };
 
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, -1);
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, -1, true);
 
-    suggester.build(new TermFreqArrayIterator(new TermFreq[] {
-          new TermFreq("a", 6),
-          new TermFreq("b", 5),
+    suggester.build(new InputArrayIterator(new Input[] {
+          new Input("a", 6),
+          new Input("b", 5),
         }));
 
     List<LookupResult> results = suggester.lookup("a", false, 2);
@@ -1054,7 +1053,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(5, results.get(1).value);
 
     // Try again after save/load:
-    File tmpDir = _TestUtil.getTempDir("AnalyzingSuggesterTest");
+    File tmpDir = TestUtil.getTempDir("AnalyzingSuggesterTest");
     tmpDir.mkdir();
 
     File path = new File(tmpDir, "suggester");
@@ -1078,8 +1077,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   public void test0ByteKeys() throws Exception {
     final Analyzer a = new Analyzer() {
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
           return new TokenStreamComponents(tokenizer) {
             int tokenStreamCounter = 0;
@@ -1112,33 +1111,33 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         }
       };
 
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, -1);
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, -1, true);
 
-    suggester.build(new TermFreqArrayIterator(new TermFreq[] {
-          new TermFreq("a a", 50),
-          new TermFreq("a b", 50),
+    suggester.build(new InputArrayIterator(new Input[] {
+          new Input("a a", 50),
+          new Input("a b", 50),
         }));
   }
 
   public void testDupSurfaceFormsMissingResults3() throws Exception {
     Analyzer a = new MockAnalyzer(random());
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.PRESERVE_SEP, 256, -1);
-    suggester.build(new TermFreqArrayIterator(new TermFreq[] {
-          new TermFreq("a a", 7),
-          new TermFreq("a a", 7),
-          new TermFreq("a c", 6),
-          new TermFreq("a c", 3),
-          new TermFreq("a b", 5),
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.PRESERVE_SEP, 256, -1, true);
+    suggester.build(new InputArrayIterator(new Input[] {
+          new Input("a a", 7),
+          new Input("a a", 7),
+          new Input("a c", 6),
+          new Input("a c", 3),
+          new Input("a b", 5),
         }));
     assertEquals("[a a/7, a c/6, a b/5]", suggester.lookup("a", false, 3).toString());
   }
 
   public void testEndingSpace() throws Exception {
     Analyzer a = new MockAnalyzer(random());
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.PRESERVE_SEP, 256, -1);
-    suggester.build(new TermFreqArrayIterator(new TermFreq[] {
-          new TermFreq("i love lucy", 7),
-          new TermFreq("isla de muerta", 8),
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, AnalyzingSuggester.PRESERVE_SEP, 256, -1, true);
+    suggester.build(new InputArrayIterator(new Input[] {
+          new Input("i love lucy", 7),
+          new Input("isla de muerta", 8),
         }));
     assertEquals("[isla de muerta/8, i love lucy/7]", suggester.lookup("i", false, 3).toString());
     assertEquals("[i love lucy/7]", suggester.lookup("i ", false, 3).toString());
@@ -1148,8 +1147,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
 
     final Analyzer a = new Analyzer() {
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
           return new TokenStreamComponents(tokenizer) {
             @Override
@@ -1168,16 +1167,16 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         }
       };
 
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, 1);
-    suggester.build(new TermFreqArrayIterator(new TermFreq[] {new TermFreq("a", 1)}));
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, 1, true);
+    suggester.build(new InputArrayIterator(new Input[] {new Input("a", 1)}));
     assertEquals("[a/1]", suggester.lookup("a", false, 1).toString());
   }
   
   public void testIllegalLookupArgument() throws Exception {
     Analyzer a = new MockAnalyzer(random());
-    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, -1);
-    suggester.build(new TermFreqArrayIterator(new TermFreq[] {
-        new TermFreq("а где Люси?", 7),
+    AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, -1, true);
+    suggester.build(new InputArrayIterator(new Input[] {
+        new Input("а где Люси?", 7),
     }));
     try {
       suggester.lookup("а\u001E", false, 3);
@@ -1193,10 +1192,9 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     }
   }
 
-  @SafeVarargs
-  public final <T> Iterable<T> shuffle(T...values) {
-    final List<T> asList = new ArrayList<T>(values.length);
-    for (T value : values) {
+  static final Iterable<Input> shuffle(Input...values) {
+    final List<Input> asList = new ArrayList<>(values.length);
+    for (Input value : values) {
       asList.add(value);
     }
     Collections.shuffle(asList, random());

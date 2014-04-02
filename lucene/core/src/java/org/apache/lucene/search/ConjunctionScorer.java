@@ -139,7 +139,7 @@ class ConjunctionScorer extends Scorer {
 
   @Override
   public Collection<ChildScorer> getChildren() {
-    ArrayList<ChildScorer> children = new ArrayList<ChildScorer>(docsAndFreqs.length);
+    ArrayList<ChildScorer> children = new ArrayList<>(docsAndFreqs.length);
     for (DocsAndFreqs docs : docsAndFreqs) {
       children.add(new ChildScorer(docs.scorer, "MUST"));
     }

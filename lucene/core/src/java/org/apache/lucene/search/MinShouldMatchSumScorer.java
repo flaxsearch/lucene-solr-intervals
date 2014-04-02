@@ -122,7 +122,7 @@ class MinShouldMatchSumScorer extends Scorer {
 
   @Override
   public final Collection<ChildScorer> getChildren() {
-    ArrayList<ChildScorer> children = new ArrayList<ChildScorer>(numScorers);
+    ArrayList<ChildScorer> children = new ArrayList<>(numScorers);
     for (int i = 0; i < numScorers; i++) {
       children.add(new ChildScorer(subScorers[i], "SHOULD"));
     }
@@ -224,9 +224,9 @@ class MinShouldMatchSumScorer extends Scorer {
   public IntervalIterator intervals(boolean collectIntervals) throws IOException {
     if (mm > 1) {
       return new ConjunctionIntervalIterator(this,
-          collectIntervals, mm, pullIterators(collectIntervals, subScorers));
+          collectIntervals, mm, pullIterators(collectIntervals, sortedSubScorers));
     }
-    return new DisjunctionIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, subScorers));
+    return new DisjunctionIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, sortedSubScorers));
   }
 
   /**

@@ -101,7 +101,7 @@ public class DataImportHandler extends RequestHandlerBase implements
       }
       debugEnabled = StrUtils.parseBool((String)initArgs.get(ENABLE_DEBUG), true);
       importer = new DataImporter(core, myName);         
-    } catch (Throwable e) {
+    } catch (Exception e) {
       LOG.error( DataImporter.MSG.LOAD_EXP, e);
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, DataImporter.MSG.LOAD_EXP, e);
     }
@@ -210,7 +210,7 @@ public class DataImportHandler extends RequestHandlerBase implements
 
   private Map<String, Object> getParamsMap(SolrParams params) {
     Iterator<String> names = params.getParameterNamesIterator();
-    Map<String, Object> result = new HashMap<String, Object>();
+    Map<String, Object> result = new HashMap<>();
     while (names.hasNext()) {
       String s = names.next();
       String[] val = params.getParams(s);

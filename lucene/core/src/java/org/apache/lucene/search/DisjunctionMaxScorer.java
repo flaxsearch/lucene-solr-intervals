@@ -30,7 +30,6 @@ import java.io.IOException;
 class DisjunctionMaxScorer extends DisjunctionScorer {
   /* Multiplier applied to non-maximum-scoring subqueries for a document as they are summed into the result. */
   private final float tieBreakerMultiplier;
-  private int doc = -1;
   private int freq = -1;
 
   /* Used when scoring currently matching doc. */
@@ -47,39 +46,12 @@ class DisjunctionMaxScorer extends DisjunctionScorer {
    *          document as they are summed into the result.
    * @param subScorers
    *          The sub scorers this Scorer should iterate on
-   * @param numScorers
-   *          The actual number of scorers to iterate on. Note that the array's
-   *          length may be larger than the actual number of scorers.
    */
   public DisjunctionMaxScorer(Weight weight, float tieBreakerMultiplier,
-      Scorer[] subScorers, int numScorers) {
-    super(weight, subScorers, numScorers);
+      Scorer[] subScorers) {
+    super(weight, subScorers);
     this.tieBreakerMultiplier = tieBreakerMultiplier;
         
-  }
-
-  @Override
-  public int nextDoc() throws IOException {
-    assert doc != NO_MORE_DOCS;
-    while(true) {
-      if (subScorers[0].nextDoc() != NO_MORE_DOCS) {
-        heapAdjust(0);
-      } else {
-        heapRemoveRoot();
-        if (numScorers == 0) {
-          return doc = NO_MORE_DOCS;
-        }
-      }
-      if (subScorers[0].docID() != doc) {
-        afterNext();
-        return doc;
-      }
-    }
-  }
-
-  @Override
-  public int docID() {
-    return doc;
   }
 
   /** Determine the current document score.  Initially invalid, until {@link #nextDoc()} is called the first time.
@@ -90,7 +62,8 @@ class DisjunctionMaxScorer extends DisjunctionScorer {
     return scoreMax + (scoreSum - scoreMax) * tieBreakerMultiplier;
   }
   
-  private void afterNext() throws IOException {
+  @Override
+  protected void afterNext() throws IOException {
     doc = subScorers[0].docID();
     if (doc != NO_MORE_DOCS) {
       scoreSum = scoreMax = subScorers[0].score();
@@ -116,28 +89,10 @@ class DisjunctionMaxScorer extends DisjunctionScorer {
   public int freq() throws IOException {
     return freq;
   }
-
-  @Override
-  public int advance(int target) throws IOException {
-    assert doc != NO_MORE_DOCS;
-    while(true) {
-      if (subScorers[0].advance(target) != NO_MORE_DOCS) {
-        heapAdjust(0);
-      } else {
-        heapRemoveRoot();
-        if (numScorers == 0) {
-          return doc = NO_MORE_DOCS;
-        }
-      }
-      if (subScorers[0].docID() >= target) {
-        afterNext();
-        return doc;
-      }
-    }
-  }
   
   @Override
   public IntervalIterator intervals(boolean collectIntervals) throws IOException {
     return new DisjunctionIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, subScorers));
   }
+
 }

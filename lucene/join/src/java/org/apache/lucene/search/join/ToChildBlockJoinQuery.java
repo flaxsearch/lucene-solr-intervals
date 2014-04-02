@@ -47,6 +47,11 @@ import java.util.Set;
 
 public class ToChildBlockJoinQuery extends Query {
 
+  /** Message thrown from {@link
+   *  ToChildBlockJoinScorer#validateParentDoc} on mis-use,
+   *  when the parent query incorrectly returns child docs. */
+  static final String INVALID_QUERY_MESSAGE = "Parent query yields document which is not matched by parents filter, docID=";
+
   private final Filter parentsFilter;
   private final Query parentQuery;
 
@@ -120,11 +125,9 @@ public class ToChildBlockJoinQuery extends Query {
     // NOTE: acceptDocs applies (and is checked) only in the
     // child document space
     @Override
-    public Scorer scorer(AtomicReaderContext readerContext, boolean scoreDocsInOrder,
-        boolean topScorer, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(AtomicReaderContext readerContext, PostingFeatures flags, Bits acceptDocs) throws IOException {
 
-      // Pass scoreDocsInOrder true, topScorer false to our sub:
-      final Scorer parentScorer = parentWeight.scorer(readerContext, true, false, flags, null);
+      final Scorer parentScorer = parentWeight.scorer(readerContext, flags, null);
 
       if (parentScorer == null) {
         // No matches
@@ -202,14 +205,16 @@ public class ToChildBlockJoinQuery extends Query {
           // children:
           while (true) {
             parentDoc = parentScorer.nextDoc();
+            validateParentDoc();
 
             if (parentDoc == 0) {
-              // Degenerate but allowed: parent has no children
+              // Degenerate but allowed: first parent doc has no children
               // TODO: would be nice to pull initial parent
               // into ctor so we can skip this if... but it's
               // tricky because scorer must return -1 for
               // .doc() on init...
               parentDoc = parentScorer.nextDoc();
+              validateParentDoc();
             }
 
             if (parentDoc == NO_MORE_DOCS) {
@@ -218,7 +223,14 @@ public class ToChildBlockJoinQuery extends Query {
               return childDoc;
             }
 
+            // Go to first child for this next parentDoc:
             childDoc = 1 + parentBits.prevSetBit(parentDoc-1);
+
+            if (childDoc == parentDoc) {
+              // This parent has no children; continue
+              // parent loop so we move to next parent
+              continue;
+            }
 
             if (acceptDocs != null && !acceptDocs.get(childDoc)) {
               continue nextChildDoc;
@@ -244,6 +256,14 @@ public class ToChildBlockJoinQuery extends Query {
           //System.out.println("  " + childDoc);
           return childDoc;
         }
+      }
+    }
+
+    /** Detect mis-use, where provided parent query in fact
+     *  sometimes returns child documents.  */
+    private void validateParentDoc() {
+      if (parentDoc != NO_MORE_DOCS && !parentBits.get(parentDoc)) {
+        throw new IllegalStateException(INVALID_QUERY_MESSAGE + parentDoc);
       }
     }
 
@@ -276,6 +296,7 @@ public class ToChildBlockJoinQuery extends Query {
       if (childDoc == -1 || childTarget > parentDoc) {
         // Advance to new parent:
         parentDoc = parentScorer.advance(childTarget);
+        validateParentDoc();
         //System.out.println("  advance to parentDoc=" + parentDoc);
         assert parentDoc > childTarget;
         if (parentDoc == NO_MORE_DOCS) {

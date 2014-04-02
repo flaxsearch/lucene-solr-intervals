@@ -123,7 +123,7 @@ public class IntervalFilterQuery extends FieldedQuery implements Cloneable {
     @Override
     public Explanation explain(AtomicReaderContext context, int doc)
         throws IOException {
-      Scorer scorer = scorer(context, true, false, PostingFeatures.POSITIONS,
+      Scorer scorer = scorer(context, PostingFeatures.POSITIONS,
                               context.reader().getLiveDocs());
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
@@ -144,12 +144,11 @@ public class IntervalFilterQuery extends FieldedQuery implements Cloneable {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
-        boolean topScorer, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(AtomicReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
       if (stats == null)
         return null;
       flags = flags == PostingFeatures.DOCS_AND_FREQS ? PostingFeatures.POSITIONS : flags;
-      ScorerFactory factory = new ScorerFactory(other, context, topScorer, flags, acceptDocs);
+      ScorerFactory factory = new ScorerFactory(other, context, flags, acceptDocs);
       final Scorer scorer = factory.scorer();
       Similarity.SimScorer docScorer = similarity.simScorer(stats, context);
       return scorer == null ? null : new IntervalFilterScorer(this, scorer, factory, docScorer);
@@ -175,21 +174,19 @@ public class IntervalFilterQuery extends FieldedQuery implements Cloneable {
   static class ScorerFactory {
     final Weight weight;
     final AtomicReaderContext context;
-    final boolean topScorer;
     final PostingFeatures flags;
     final Bits acceptDocs;
     ScorerFactory(Weight weight,
-        AtomicReaderContext context, boolean topScorer, PostingFeatures flags,
+        AtomicReaderContext context, PostingFeatures flags,
         Bits acceptDocs) {
       this.weight = weight;
       this.context = context;
-      this.topScorer = topScorer;
       this.flags = flags;
       this.acceptDocs = acceptDocs;
     }
     
     public Scorer scorer() throws IOException {
-      return weight.scorer(context, true, topScorer, flags, acceptDocs);
+      return weight.scorer(context, flags, acceptDocs);
     }
     
   }

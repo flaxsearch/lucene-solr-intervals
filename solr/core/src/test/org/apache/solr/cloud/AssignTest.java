@@ -58,11 +58,11 @@ public class AssignTest extends SolrTestCaseJ4 {
   public void testAssignNode() throws Exception {
     String cname = "collection1";
     
-    Map<String,DocCollection> collectionStates = new HashMap<String,DocCollection>();
+    Map<String,DocCollection> collectionStates = new HashMap<>();
     
-    Map<String,Slice> slices = new HashMap<String,Slice>();
+    Map<String,Slice> slices = new HashMap<>();
     
-    Map<String,Replica> replicas = new HashMap<String,Replica>();
+    Map<String,Replica> replicas = new HashMap<>();
     
     ZkNodeProps m = new ZkNodeProps(Overseer.QUEUE_OPERATION, "state", 
         ZkStateReader.STATE_PROP, "ACTIVE", 
@@ -85,8 +85,8 @@ public class AssignTest extends SolrTestCaseJ4 {
 
     collectionStates.put(cname, docCollection);
     
-    Set<String> liveNodes = new HashSet<String>();
-    ClusterState state = new ClusterState(liveNodes, collectionStates);
+    Set<String> liveNodes = new HashSet<>();
+    ClusterState state = new ClusterState(-1,liveNodes, collectionStates,ClusterStateTest.getMockZkStateReader(collectionStates.keySet()));
     String nodeName = Assign.assignNode("collection1", state);
     
     assertEquals("core_node2", nodeName);

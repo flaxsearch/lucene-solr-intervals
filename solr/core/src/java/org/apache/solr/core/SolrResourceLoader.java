@@ -33,6 +33,7 @@ import org.apache.solr.handler.component.SearchComponent;
 import org.apache.solr.handler.component.ShardHandlerFactory;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.response.QueryResponseWriter;
+import org.apache.solr.rest.RestManager;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.ManagedIndexSchemaFactory;
 import org.apache.solr.schema.SimilarityFactory;
@@ -79,7 +80,11 @@ public class SolrResourceLoader implements ResourceLoader,Closeable
 
   static final String project = "solr";
   static final String base = "org.apache" + "." + project;
-  static final String[] packages = {"","analysis.","schema.","handler.","search.","update.","core.","response.","request.","update.processor.","util.", "spelling.", "handler.component.", "handler.dataimport." };
+  static final String[] packages = {
+      "", "analysis.", "schema.", "handler.", "search.", "update.", "core.", "response.", "request.",
+      "update.processor.", "util.", "spelling.", "handler.component.", "handler.dataimport.",
+      "spelling.suggest.", "spelling.suggest.fst.", "rest.schema.analysis."
+  };
 
   protected URLClassLoader classLoader;
   private final String instanceDir;
@@ -94,7 +99,20 @@ public class SolrResourceLoader implements ResourceLoader,Closeable
   private final Properties coreProperties;
 
   private volatile boolean live;
-
+  
+  // Provide a registry so that managed resources can register themselves while the XML configuration
+  // documents are being parsed ... after all are registered, they are asked by the RestManager to
+  // initialize themselves. This two-step process is required because not all resources are available
+  // (such as the SolrZkClient) when XML docs are being parsed.    
+  private RestManager.Registry managedResourceRegistry;
+  
+  public synchronized RestManager.Registry getManagedResourceRegistry() {
+    if (managedResourceRegistry == null) {
+      managedResourceRegistry = new RestManager.Registry();      
+    }
+    return managedResourceRegistry; 
+  }
+  
   /**
    * <p>
    * This loader will delegate to the context classloader when possible,
@@ -390,7 +408,7 @@ public class SolrResourceLoader implements ResourceLoader,Closeable
   /*
    * A static map of short class name to fully qualified class name 
    */
-  private static final Map<String, String> classNameCache = new ConcurrentHashMap<String, String>();
+  private static final Map<String, String> classNameCache = new ConcurrentHashMap<>();
 
   // Using this pattern, legacy analysis components from previous Solr versions are identified and delegated to SPI loader:
   private static final Pattern legacyAnalysisPattern = 
@@ -426,56 +444,66 @@ public class SolrResourceLoader implements ResourceLoader,Closeable
 
       }
     }
+    
     Class<? extends T> clazz = null;
-    
-    // first try legacy analysis patterns, now replaced by Lucene's Analysis package:
-    final Matcher m = legacyAnalysisPattern.matcher(cname);
-    if (m.matches()) {
-      final String name = m.group(4);
-      log.trace("Trying to load class from analysis SPI using name='{}'", name);
-      try {
-        if (CharFilterFactory.class.isAssignableFrom(expectedType)) {
-          return clazz = CharFilterFactory.lookupClass(name).asSubclass(expectedType);
-        } else if (TokenizerFactory.class.isAssignableFrom(expectedType)) {
-          return clazz = TokenizerFactory.lookupClass(name).asSubclass(expectedType);
-        } else if (TokenFilterFactory.class.isAssignableFrom(expectedType)) {
-          return clazz = TokenFilterFactory.lookupClass(name).asSubclass(expectedType);
-        } else {
-          log.warn("'{}' looks like an analysis factory, but caller requested different class type: {}", cname, expectedType.getName());
-        }
-      } catch (IllegalArgumentException ex) { 
-        // ok, we fall back to legacy loading
-      }
-    }
-    
-    // first try cname == full name
     try {
-      return Class.forName(cname, true, classLoader).asSubclass(expectedType);
-    } catch (ClassNotFoundException e) {
-      String newName=cname;
-      if (newName.startsWith(project)) {
-        newName = cname.substring(project.length()+1);
-      }
-      for (String subpackage : subpackages) {
+      // first try legacy analysis patterns, now replaced by Lucene's Analysis package:
+      final Matcher m = legacyAnalysisPattern.matcher(cname);
+      if (m.matches()) {
+        final String name = m.group(4);
+        log.trace("Trying to load class from analysis SPI using name='{}'", name);
         try {
-          String name = base + '.' + subpackage + newName;
-          log.trace("Trying class name " + name);
-          return clazz = Class.forName(name,true,classLoader).asSubclass(expectedType);
-        } catch (ClassNotFoundException e1) {
-          // ignore... assume first exception is best.
+          if (CharFilterFactory.class.isAssignableFrom(expectedType)) {
+            return clazz = CharFilterFactory.lookupClass(name).asSubclass(expectedType);
+          } else if (TokenizerFactory.class.isAssignableFrom(expectedType)) {
+            return clazz = TokenizerFactory.lookupClass(name).asSubclass(expectedType);
+          } else if (TokenFilterFactory.class.isAssignableFrom(expectedType)) {
+            return clazz = TokenFilterFactory.lookupClass(name).asSubclass(expectedType);
+          } else {
+            log.warn("'{}' looks like an analysis factory, but caller requested different class type: {}", cname, expectedType.getName());
+          }
+        } catch (IllegalArgumentException ex) { 
+          // ok, we fall back to legacy loading
         }
       }
-  
-      throw new SolrException( SolrException.ErrorCode.SERVER_ERROR, "Error loading class '" + cname + "'", e);
-    }finally{
-      //cache the shortname vs FQN if it is loaded by the webapp classloader  and it is loaded
-      // using a shortname
-      if ( clazz != null &&
-              clazz.getClassLoader() == SolrResourceLoader.class.getClassLoader() &&
+      
+      // first try cname == full name
+      try {
+        return clazz = Class.forName(cname, true, classLoader).asSubclass(expectedType);
+      } catch (ClassNotFoundException e) {
+        String newName=cname;
+        if (newName.startsWith(project)) {
+          newName = cname.substring(project.length()+1);
+        }
+        for (String subpackage : subpackages) {
+          try {
+            String name = base + '.' + subpackage + newName;
+            log.trace("Trying class name " + name);
+            return clazz = Class.forName(name,true,classLoader).asSubclass(expectedType);
+          } catch (ClassNotFoundException e1) {
+            // ignore... assume first exception is best.
+          }
+        }
+    
+        throw new SolrException( SolrException.ErrorCode.SERVER_ERROR, "Error loading class '" + cname + "'", e);
+      }
+      
+    } finally {
+      if (clazz != null) {
+        //cache the shortname vs FQN if it is loaded by the webapp classloader  and it is loaded
+        // using a shortname
+        if (clazz.getClassLoader() == SolrResourceLoader.class.getClassLoader() &&
               !cname.equals(clazz.getName()) &&
               (subpackages.length == 0 || subpackages == packages)) {
-        //store in the cache
-        classNameCache.put(cname, clazz.getName());
+          //store in the cache
+          classNameCache.put(cname, clazz.getName());
+        }
+        
+        // print warning if class is deprecated
+        if (clazz.isAnnotationPresent(Deprecated.class)) {
+          log.warn("Solr loaded a deprecated plugin/analysis class [{}]. Please consult documentation how to replace it accordingly.",
+              cname);
+        }
       }
     }
   }
@@ -665,8 +693,8 @@ public class SolrResourceLoader implements ResourceLoader,Closeable
     for (SolrInfoMBean bean : arr) {
       try {
         infoRegistry.put(bean.getName(), bean);
-      } catch (Throwable t) {
-        log.warn("could not register MBean '" + bean.getName() + "'.", t);
+      } catch (Exception e) {
+        log.warn("could not register MBean '" + bean.getName() + "'.", e);
       }
     }
   }
@@ -732,7 +760,7 @@ public class SolrResourceLoader implements ResourceLoader,Closeable
    */
   private static final Map<Class, Class[]> awareCompatibility;
   static {
-    awareCompatibility = new HashMap<Class, Class[]>();
+    awareCompatibility = new HashMap<>();
     awareCompatibility.put( 
       SolrCoreAware.class, new Class[] {
         CodecFactory.class,

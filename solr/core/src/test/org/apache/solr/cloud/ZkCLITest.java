@@ -29,10 +29,13 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.commons.io.filefilter.TrueFileFilter;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.util.ExternalPaths;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -80,7 +83,7 @@ public class ZkCLITest extends SolrTestCaseJ4 {
     } else {
       File tmpSolrHome = new File(dataDir, "tmp-solr-home");
       FileUtils.copyDirectory(new File(ExternalPaths.EXAMPLE_HOME), tmpSolrHome);
-      FileUtils.copyFile(new File(ExternalPaths.SOURCE_HOME, "core/src/test-files/old-solr-example/solr.xml"), new File(tmpSolrHome, "solr.xml"));
+      FileUtils.copyFile(getFile("old-solr-example/solr.xml"), new File(tmpSolrHome, "solr.xml"));
       solrHome = tmpSolrHome.getAbsolutePath();
     }
     
@@ -262,6 +265,53 @@ public class ZkCLITest extends SolrTestCaseJ4 {
     assertEquals(0, zkClient.getChildren("/", null, true).size());
   }
   
+  @Test
+  public void testGet() throws Exception {
+    String getNode = "/getNode";
+    byte [] data = new String("getNode-data").getBytes("UTF-8");
+    this.zkClient.create(getNode, data, CreateMode.PERSISTENT, true);
+    String[] args = new String[] {"-zkhost", zkServer.getZkAddress(), "-cmd",
+        "get", getNode};
+    ZkCLI.main(args);
+  }
+
+  @Test
+  public void testGetFile() throws Exception {
+    String getNode = "/getFileNode";
+    byte [] data = new String("getFileNode-data").getBytes("UTF-8");
+    this.zkClient.create(getNode, data, CreateMode.PERSISTENT, true);
+
+    File file = new File(TEMP_DIR,
+        "solrtest-getfile-" + this.getClass().getName() + "-" + System.currentTimeMillis());
+    String[] args = new String[] {"-zkhost", zkServer.getZkAddress(), "-cmd",
+        "getfile", getNode, file.getAbsolutePath()};
+    ZkCLI.main(args);
+
+    byte [] readData = FileUtils.readFileToByteArray(file);
+    assertArrayEquals(data, readData);
+  }
+
+  @Test
+  public void testGetFileNotExists() throws Exception {
+    String getNode = "/getFileNotExistsNode";
+
+    File file = new File(TEMP_DIR,
+        "solrtest-getfilenotexists-" + this.getClass().getName() + "-" + System.currentTimeMillis());
+    String[] args = new String[] {"-zkhost", zkServer.getZkAddress(), "-cmd",
+        "getfile", getNode, file.getAbsolutePath()};
+    try {
+      ZkCLI.main(args);
+      fail("Expected NoNodeException");
+    } catch (KeeperException.NoNodeException ex) {
+    }
+  }
+
+  @Test(expected = SolrException.class)
+  public void testInvalidZKAddress() throws SolrException{
+    SolrZkClient zkClient = new SolrZkClient("----------:33332", 100);
+    zkClient.close();
+  }
+
   @Override
   public void tearDown() throws Exception {
     if (VERBOSE) {

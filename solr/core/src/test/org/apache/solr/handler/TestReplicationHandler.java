@@ -28,11 +28,11 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.Set;
-import java.util.Date;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Date;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -47,20 +47,21 @@ import org.apache.lucene.store.SimpleFSDirectory;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.BaseDistributedSearchTestCase;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
-import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
+import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.response.UpdateResponse;
-import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.core.CachingDirectoryFactory;
@@ -72,6 +73,7 @@ import org.apache.solr.util.AbstractSolrTestCase;
 import org.apache.solr.util.FileUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 /**
@@ -81,6 +83,7 @@ import org.junit.Test;
  * @since 1.4
  */
 @Slow
+@SuppressSSL     // Currently unknown why SSL does not work with this test
 public class TestReplicationHandler extends SolrTestCaseJ4 {
 
 
@@ -97,8 +100,12 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
   // number of docs to index... decremented for each test case to tell if we accidentally reuse
   // index from previous test method
   static int nDocs = 500;
+  
+  @BeforeClass
+  public static void beforeClass() {
 
-
+  }
+  
   @Before
   public void setUp() throws Exception {
     super.setUp();
@@ -135,6 +142,8 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     slave.tearDown();
     masterJetty = slaveJetty = null;
     master = slave = null;
+    masterClient.shutdown();
+    slaveClient.shutdown();
     masterClient = slaveClient = null;
   }
 
@@ -150,8 +159,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
   private static SolrServer createNewSolrServer(int port) {
     try {
       // setup the server...
-      String url = "http://127.0.0.1:" + port + context;
-      HttpSolrServer s = new HttpSolrServer(url);
+      HttpSolrServer s = new HttpSolrServer(buildUrl(port));
       s.setConnectionTimeout(15000);
       s.setSoTimeout(60000);
       s.setDefaultMaxConnectionsPerHost(100);
@@ -337,6 +345,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
       try { 
         if (repeater != null) repeater.tearDown();
       } catch (Exception e) { /* :NOOP: */ }
+      if (repeaterClient != null) repeaterClient.shutdown();
     }
   }
 
@@ -484,7 +493,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
   //jetty servers.
   private void invokeReplicationCommand(int pJettyPort, String pCommand) throws IOException
   {
-    String masterUrl = "http://127.0.0.1:" + pJettyPort + "/solr/replication?command=" + pCommand;
+    String masterUrl = buildUrl(pJettyPort) + "/replication?command=" + pCommand;
     try {
       URL u = new URL(masterUrl);
       InputStream stream = u.openStream();
@@ -529,6 +538,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     masterJetty.stop();
 
     masterJetty = createJetty(master);
+    masterClient.shutdown();
     masterClient = createNewSolrServer(masterJetty.getLocalPort());
 
     slave.setTestPort(masterJetty.getLocalPort());
@@ -547,6 +557,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     assertFalse(slaveXsltDir.exists());
 
     slaveJetty = createJetty(slave);
+    slaveClient.shutdown();
     slaveClient = createNewSolrServer(slaveJetty.getLocalPort());
 
     //add a doc with new field and commit on master to trigger snappull from slave.
@@ -624,6 +635,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     slave.copyConfigFile(CONF_DIR + "solrconfig-slave1.xml", "solrconfig.xml");
     slaveJetty.stop();
     slaveJetty = createJetty(slave);
+    slaveClient.shutdown();
     slaveClient = createNewSolrServer(slaveJetty.getLocalPort());
 
     masterClient.deleteByQuery("*:*");
@@ -637,7 +649,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     
     // todo: make SolrJ easier to pass arbitrary params to
     // TODO: precommit WILL screw with the rest of this test
-    String masterUrl = "http://127.0.0.1:" + masterJetty.getLocalPort() + "/solr/update?prepareCommit=true";
+    String masterUrl = buildUrl(masterJetty.getLocalPort()) + "/update?prepareCommit=true";
     URL url = new URL(masterUrl);
 //    InputStream stream = url.openStream();
 //    try {
@@ -653,8 +665,8 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     assertEquals(nDocs, masterQueryResult.getNumFound());
 
     // snappull
-    masterUrl = "http://127.0.0.1:" + slaveJetty.getLocalPort() + "/solr/replication?command=fetchindex&masterUrl=";
-    masterUrl += "http://127.0.0.1:" + masterJetty.getLocalPort() + "/solr/replication";
+    masterUrl = buildUrl(slaveJetty.getLocalPort()) + "/replication?command=fetchindex&masterUrl=";
+    masterUrl += buildUrl(masterJetty.getLocalPort()) + "/replication";
     url = new URL(masterUrl);
     InputStream stream = url.openStream();
     try {
@@ -750,7 +762,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
   }
   
   
-  @Test
+  @Test 
   public void doTestStressReplication() throws Exception {
     // change solrconfig on slave
     // this has no entry for pollinginterval
@@ -771,12 +783,14 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
       slave.copyConfigFile(CONF_DIR +slaveSchema, "schema.xml");
       slaveJetty.stop();
       slaveJetty = createJetty(slave);
+      slaveClient.shutdown();
       slaveClient = createNewSolrServer(slaveJetty.getLocalPort());
 
       master.copyConfigFile(CONF_DIR + "solrconfig-master3.xml",
           "solrconfig.xml");
       masterJetty.stop();
       masterJetty = createJetty(master);
+      masterClient.shutdown();
       masterClient = createNewSolrServer(masterJetty.getLocalPort());
       
       masterClient.deleteByQuery("*:*");
@@ -798,7 +812,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
           master.copyConfigFile(CONF_DIR + slaveSchema, "schema.xml");
         }
         
-        int docs = random().nextInt(maxDocs);
+        int docs = random().nextInt(maxDocs) + 1;
         for (int i = 0; i < docs; i++) {
           index(masterClient, "id", id++, "name", "name = " + i);
         }
@@ -891,6 +905,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     slave.copyConfigFile(CONF_DIR + "solrconfig-slave1.xml", "solrconfig.xml");
     slaveJetty.stop();
     slaveJetty = createJetty(slave);
+    slaveClient.shutdown();
     slaveClient = createNewSolrServer(slaveJetty.getLocalPort());
 
     try {
@@ -899,6 +914,9 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
       repeater.copyConfigFile(CONF_DIR + "solrconfig-repeater.xml",
           "solrconfig.xml");
       repeaterJetty = createJetty(repeater);
+      if (repeaterClient != null) {
+        repeaterClient.shutdown();
+      }
       repeaterClient = createNewSolrServer(repeaterJetty.getLocalPort());
       
       for (int i = 0; i < 3; i++)
@@ -1001,10 +1019,9 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     String masterUrl;
     URL url;
     InputStream stream;
-    masterUrl = "http://127.0.0.1:" + to.getLocalPort()
-        + "/solr/replication?wait=true&command=fetchindex&masterUrl=";
-    masterUrl += "http://127.0.0.1:" + from.getLocalPort()
-        + "/solr/replication";
+    masterUrl = buildUrl(to.getLocalPort())
+        + "/replication?wait=true&command=fetchindex&masterUrl="
+        + buildUrl(from.getLocalPort()) + "/replication";
     url = new URL(masterUrl);
     stream = url.openStream();
     try {
@@ -1033,6 +1050,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     masterJetty.stop();
 
     masterJetty = createJetty(master);
+    masterClient.shutdown();
     masterClient = createNewSolrServer(masterJetty.getLocalPort());
     
     for (int i = 0; i < nDocs; i++)
@@ -1050,6 +1068,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
 
     //start slave
     slaveJetty = createJetty(slave);
+    slaveClient.shutdown();
     slaveClient = createNewSolrServer(slaveJetty.getLocalPort());
 
     //get docs from slave and check if number is equal to master
@@ -1083,6 +1102,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
       masterJetty.stop();
       
       masterJetty = createJetty(master);
+      masterClient.shutdown();
       masterClient = createNewSolrServer(masterJetty.getLocalPort());
       
       for (int i = 0; i < nDocs; i++)
@@ -1108,6 +1128,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
       
       // start slave
       slaveJetty = createJetty(slave);
+      slaveClient.shutdown();
       slaveClient = createNewSolrServer(slaveJetty.getLocalPort());
       
       // get docs from slave and check if number is equal to master
@@ -1141,6 +1162,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     masterJetty.stop();
 
     masterJetty = createJetty(master);
+    masterClient.shutdown();
     masterClient = createNewSolrServer(masterJetty.getLocalPort());
 
     masterClient.deleteByQuery("*:*");
@@ -1158,6 +1180,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
 
     //start slave
     slaveJetty = createJetty(slave);
+    slaveClient.shutdown();
     slaveClient = createNewSolrServer(slaveJetty.getLocalPort());
     
     //get docs from slave and check if number is equal to master
@@ -1238,6 +1261,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     masterJetty.stop();
 
     masterJetty = createJetty(master);
+    masterClient.shutdown();
     masterClient = createNewSolrServer(masterJetty.getLocalPort());
 
     slave.setTestPort(masterJetty.getLocalPort());
@@ -1245,6 +1269,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
 
     slaveJetty.stop();
     slaveJetty = createJetty(slave);
+    slaveClient.shutdown();
     slaveClient = createNewSolrServer(slaveJetty.getLocalPort());
 
     slaveClient.deleteByQuery("*:*");
@@ -1298,6 +1323,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
                           "solrconfig.xml");
 
     masterJetty = createJetty(master);
+    masterClient.shutdown();
     masterClient = createNewSolrServer(masterJetty.getLocalPort());
 
     nDocs--;
@@ -1318,7 +1344,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
       @Override
       public void run() {
         String masterUrl = 
-          "http://127.0.0.1:" + masterJetty.getLocalPort() + "/solr/replication?command=" + ReplicationHandler.CMD_BACKUP + 
+          buildUrl(masterJetty.getLocalPort()) + "/replication?command=" + ReplicationHandler.CMD_BACKUP + 
           (addNumberToKeepInRequest ? "&" + backupKeepParamName + "=1" : "");
         URL url;
         InputStream stream = null;
@@ -1348,7 +1374,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
       }
       @Override
       public void run() {
-        String masterUrl = "http://127.0.0.1:" + masterJetty.getLocalPort() + "/solr/replication?command=" + ReplicationHandler.CMD_DETAILS;
+        String masterUrl = buildUrl(masterJetty.getLocalPort()) + "/replication?command=" + ReplicationHandler.CMD_DETAILS;
         URL url;
         InputStream stream = null;
         try {
@@ -1513,6 +1539,10 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     }
     fail("timed out waiting for collection1 startAt time to exceed: " + min);
     return min; // compilation neccessity
+  }
+  
+  private static String buildUrl(int port) {
+    return buildUrl(port, context);
   }
 
   private static class SolrInstance {

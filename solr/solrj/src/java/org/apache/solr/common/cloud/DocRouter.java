@@ -51,28 +51,37 @@ public abstract class DocRouter {
 
   protected String getRouteField(DocCollection coll){
     if(coll == null) return null;
-    Map m = (Map) coll.get(DOC_ROUTER);
+    Object o = coll.get(DOC_ROUTER);
+    if (o instanceof String) {
+      return null;
+      //old format. cannot have a routefield. Ignore it
+    }
+    Map m = (Map) o;
     if(m == null) return null;
     return (String) m.get("field");
 
   }
 
   public static Map<String,Object> getRouterSpec(ZkNodeProps props){
-    Map<String,Object> map =  new LinkedHashMap<String, Object>();
+    Map<String,Object> map =  new LinkedHashMap<>();
     for (String s : props.keySet()) {
       if(s.startsWith("router.")){
         map.put(s.substring(7), props.get(s));
       }
     }
-    if(map.get("name") == null) map.put("name", DEFAULT_NAME);
+    Object o = props.get("router");
+    if (o instanceof String) {
+      map.put("name", o);
+    } else if (map.get("name") == null) {
+      map.put("name", DEFAULT_NAME);
+    }
     return  map;
-
   }
 
   // currently just an implementation detail...
   private final static Map<String, DocRouter> routerMap;
   static {
-    routerMap = new HashMap<String, DocRouter>();
+    routerMap = new HashMap<>();
     PlainIdRouter plain = new PlainIdRouter();
     // instead of doing back compat this way, we could always convert the clusterstate on first read to "plain" if it doesn't have any properties.
     routerMap.put(null, plain);     // back compat with 4.0
@@ -86,7 +95,7 @@ public abstract class DocRouter {
   // Hash ranges can't currently "wrap" - i.e. max must be greater or equal to min.
   // TODO: ranges may not be all contiguous in the future (either that or we will
   // need an extra class to model a collection of ranges)
-  public static class Range implements JSONWriter.Writable {
+  public static class Range implements JSONWriter.Writable, Comparable<Range> {
     public int min;  // inclusive
     public int max;  // inclusive
 
@@ -132,6 +141,12 @@ public abstract class DocRouter {
     public void write(JSONWriter writer) {
       writer.write(toString());
     }
+
+    @Override
+    public int compareTo(Range that) {
+      int mincomp = Integer.valueOf(this.min).compareTo(that.min);
+      return mincomp == 0 ? Integer.valueOf(this.max).compareTo(that.max) : mincomp;
+    }
   }
 
   public Range fromString(String range) {
@@ -159,7 +174,7 @@ public abstract class DocRouter {
     long rangeSize = (long)max - (long)min;
     long rangeStep = Math.max(1, rangeSize / partitions);
 
-    List<Range> ranges = new ArrayList<Range>(partitions);
+    List<Range> ranges = new ArrayList<>(partitions);
 
     long start = min;
     long end = start;
@@ -201,7 +216,7 @@ public abstract class DocRouter {
     }
 
     List<String> shardKeyList = StrUtils.splitSmart(shardKeys, ",", true);
-    HashSet<Slice> allSlices = new HashSet<Slice>();
+    HashSet<Slice> allSlices = new HashSet<>();
     for (String shardKey : shardKeyList) {
       allSlices.addAll( getSearchSlicesSingle(shardKey, params, collection) );
     }

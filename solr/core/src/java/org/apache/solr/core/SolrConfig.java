@@ -17,33 +17,32 @@
 
 package org.apache.solr.core;
 
-import static org.apache.solr.core.SolrConfig.PluginOpts.*;
+
+import org.apache.lucene.index.IndexDeletionPolicy;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.util.Version;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.schema.IndexSchemaFactory;
-import org.apache.solr.util.DOMUtil;
-import org.apache.solr.util.FileUtils;
-import org.apache.solr.util.RegexFileFilter;
 import org.apache.solr.handler.component.SearchComponent;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.response.QueryResponseWriter;
 import org.apache.solr.response.transform.TransformerFactory;
-
+import org.apache.solr.rest.RestManager;
+import org.apache.solr.schema.IndexSchemaFactory;
 import org.apache.solr.search.CacheConfig;
 import org.apache.solr.search.FastLRUCache;
 import org.apache.solr.search.QParserPlugin;
 import org.apache.solr.search.ValueSourceParser;
+import org.apache.solr.servlet.SolrRequestParsers;
+import org.apache.solr.spelling.QueryConverter;
 import org.apache.solr.update.SolrIndexConfig;
 import org.apache.solr.update.UpdateLog;
 import org.apache.solr.update.processor.UpdateRequestProcessorChain;
-import org.apache.solr.spelling.QueryConverter;
-import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.index.IndexDeletionPolicy;
-import org.apache.lucene.util.Version;
-
+import org.apache.solr.util.DOMUtil;
+import org.apache.solr.util.FileUtils;
+import org.apache.solr.util.RegexFileFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
@@ -51,13 +50,24 @@ import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.xpath.XPathConstants;
-
 import java.io.File;
-import java.util.*;
-import java.util.regex.Pattern;
-import java.util.regex.Matcher;
 import java.io.FileFilter;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static org.apache.solr.core.SolrConfig.PluginOpts.MULTI_OK;
+import static org.apache.solr.core.SolrConfig.PluginOpts.NOOP;
+import static org.apache.solr.core.SolrConfig.PluginOpts.REQUIRE_CLASS;
+import static org.apache.solr.core.SolrConfig.PluginOpts.REQUIRE_NAME;
 
 
 /**
@@ -79,6 +89,18 @@ public class SolrConfig extends Config {
     // because of type determination
     NOOP
     }
+
+  private int multipartUploadLimitKB;
+
+  private int formUploadLimitKB;
+
+  private boolean enableRemoteStreams;
+
+  private boolean handleSelect;
+
+  private boolean addHttpRequestToContext;
+
+  private final SolrRequestParsers solrRequestParsers;
   
   /** Creates a default instance from the solrconfig.xml. */
   public SolrConfig()
@@ -116,6 +138,16 @@ public class SolrConfig extends Config {
   throws ParserConfigurationException, IOException, SAXException {
     this(new SolrResourceLoader(instanceDir), name, is);
   }
+
+  public static SolrConfig readFromResourceLoader(SolrResourceLoader loader, String name) {
+    try {
+      return new SolrConfig(loader, name, null);
+    }
+    catch (Exception e) {
+      String resource = loader.getInstanceDir() + name;
+      throw new SolrException(ErrorCode.SERVER_ERROR, "Error loading solr config from " + resource, e);
+    }
+  }
   
    /** Creates a configuration instance from a resource loader, a configuration name and a stream.
    * If the stream is null, the resource loader will open the configuration stream.
@@ -134,7 +166,7 @@ public class SolrConfig extends Config {
     // Old indexDefaults and mainIndex sections are deprecated and fails fast for luceneMatchVersion=>LUCENE_40.
     // For older solrconfig.xml's we allow the old sections, but never mixed with the new <indexConfig>
     boolean hasDeprecatedIndexConfig = (getNode("indexDefaults", false) != null) || (getNode("mainIndex", false) != null);
-    boolean hasNewIndexConfig = getNode("indexConfig", false) != null; 
+    boolean hasNewIndexConfig = getNode("indexConfig", false) != null;
     if(hasDeprecatedIndexConfig){
       if(luceneMatchVersion.onOrAfter(Version.LUCENE_40)) {
         throw new SolrException(ErrorCode.FORBIDDEN, "<indexDefaults> and <mainIndex> configuration sections are discontinued. Use <indexConfig> instead.");
@@ -155,12 +187,12 @@ public class SolrConfig extends Config {
     nrtMode = getBool(indexConfigPrefix+"/nrtMode", true);
     // Parse indexConfig section, using mainIndex as backup in case old config is used
     indexConfig = new SolrIndexConfig(this, "indexConfig", mainIndexConfig);
-   
+
     booleanQueryMaxClauseCount = getInt("query/maxBooleanClauses", BooleanQuery.getMaxClauseCount());
     log.info("Using Lucene MatchVersion: " + luceneMatchVersion);
 
     // Warn about deprecated / discontinued parameters
-    // boolToFilterOptimizer has had no effect since 3.1 
+    // boolToFilterOptimizer has had no effect since 3.1
     if(get("query/boolTofilterOptimizer", null) != null)
       log.warn("solrconfig.xml: <boolTofilterOptimizer> is currently not implemented and has no effect.");
     if(get("query/HashDocSet", null) != null)
@@ -170,19 +202,19 @@ public class SolrConfig extends Config {
 //    filtOptEnabled = getBool("query/boolTofilterOptimizer/@enabled", false);
 //    filtOptCacheSize = getInt("query/boolTofilterOptimizer/@cacheSize",32);
 //    filtOptThreshold = getFloat("query/boolTofilterOptimizer/@threshold",.05f);
-    
+
     useFilterForSortedQuery = getBool("query/useFilterForSortedQuery", false);
     queryResultWindowSize = Math.max(1, getInt("query/queryResultWindowSize", 1));
     queryResultMaxDocsCached = getInt("query/queryResultMaxDocsCached", Integer.MAX_VALUE);
     enableLazyFieldLoading = getBool("query/enableLazyFieldLoading", false);
 
-    
+
     filterCacheConfig = CacheConfig.getConfig(this, "query/filterCache");
     queryResultCacheConfig = CacheConfig.getConfig(this, "query/queryResultCache");
     documentCacheConfig = CacheConfig.getConfig(this, "query/documentCache");
     CacheConfig conf = CacheConfig.getConfig(this, "query/fieldValueCache");
     if (conf == null) {
-      Map<String,String> args = new HashMap<String,String>();
+      Map<String,String> args = new HashMap<>();
       args.put("name","fieldValueCache");
       args.put("size","10000");
       args.put("initialSize","10");
@@ -203,14 +235,14 @@ public class SolrConfig extends Config {
     hashDocSetMaxSize= getInt("//HashDocSet/@maxSize",3000);
 
     httpCachingConfig = new HttpCachingConfig(this);
-    
+
     Node jmx = getNode("jmx", false);
     if (jmx != null) {
-      jmxConfig = new JmxConfiguration(true, 
-                                       get("jmx/@agentId", null), 
+      jmxConfig = new JmxConfiguration(true,
+                                       get("jmx/@agentId", null),
                                        get("jmx/@serviceUrl", null),
                                        get("jmx/@rootName", null));
-                                           
+
     } else {
       jmxConfig = new JmxConfiguration(false, null, null, null);
     }
@@ -237,28 +269,45 @@ public class SolrConfig extends Config {
                     REQUIRE_NAME, REQUIRE_CLASS);
 
      // this is hackish, since it picks up all SolrEventListeners,
-     // regardless of when/how/why they are used (or even if they are 
-     // declared outside of the appropriate context) but there's no nice 
+     // regardless of when/how/why they are used (or even if they are
+     // declared outside of the appropriate context) but there's no nice
      // way around that in the PluginInfo framework
-     loadPluginInfo(SolrEventListener.class, "//listener", 
+     loadPluginInfo(SolrEventListener.class, "//listener",
                     REQUIRE_CLASS, MULTI_OK);
 
-     loadPluginInfo(DirectoryFactory.class,"directoryFactory", 
+     loadPluginInfo(DirectoryFactory.class,"directoryFactory",
                     REQUIRE_CLASS);
-     loadPluginInfo(IndexDeletionPolicy.class,indexConfigPrefix+"/deletionPolicy", 
+     loadPluginInfo(IndexDeletionPolicy.class,indexConfigPrefix+"/deletionPolicy",
                     REQUIRE_CLASS);
-     loadPluginInfo(CodecFactory.class,"codecFactory", 
+     loadPluginInfo(CodecFactory.class,"codecFactory",
                     REQUIRE_CLASS);
-     loadPluginInfo(IndexReaderFactory.class,"indexReaderFactory", 
+     loadPluginInfo(IndexReaderFactory.class,"indexReaderFactory",
                     REQUIRE_CLASS);
-     loadPluginInfo(UpdateRequestProcessorChain.class,"updateRequestProcessorChain", 
+     loadPluginInfo(UpdateRequestProcessorChain.class,"updateRequestProcessorChain",
                     MULTI_OK);
      loadPluginInfo(UpdateLog.class,"updateHandler/updateLog");
-     loadPluginInfo(IndexSchemaFactory.class,"schemaFactory", 
+     loadPluginInfo(IndexSchemaFactory.class,"schemaFactory",
                     REQUIRE_CLASS);
-
+     loadPluginInfo(RestManager.class, "restManager");
      updateHandlerInfo = loadUpdatehandlerInfo();
+     
+     multipartUploadLimitKB = getInt( 
+         "requestDispatcher/requestParsers/@multipartUploadLimitInKB", 2048 );
+     
+     formUploadLimitKB = getInt( 
+         "requestDispatcher/requestParsers/@formdataUploadLimitInKB", 2048 );
+     
+     enableRemoteStreams = getBool( 
+         "requestDispatcher/requestParsers/@enableRemoteStreaming", false ); 
+ 
+     // Let this filter take care of /select?xxx format
+     handleSelect = getBool( 
+         "requestDispatcher/@handleSelect", true ); 
+     
+     addHttpRequestToContext = getBool( 
+         "requestDispatcher/requestParsers/@addHttpRequestToContext", false ); 
 
+    solrRequestParsers = new SolrRequestParsers(this);
     Config.log.info("Loaded SolrConfig: " + name);
   }
 
@@ -290,13 +339,17 @@ public class SolrConfig extends Config {
   }
 
   public List<PluginInfo> readPluginInfos(String tag, boolean requireName, boolean requireClass) {
-    ArrayList<PluginInfo> result = new ArrayList<PluginInfo>();
+    ArrayList<PluginInfo> result = new ArrayList<>();
     NodeList nodes = (NodeList) evaluate(tag, XPathConstants.NODESET);
     for (int i=0; i<nodes.getLength(); i++) {
       PluginInfo pluginInfo = new PluginInfo(nodes.item(i), "[solrconfig.xml] " + tag, requireName, requireClass);
       if(pluginInfo.isEnabled()) result.add(pluginInfo);
     }
     return result;
+  }
+  
+  public SolrRequestParsers getRequestParsers() {
+    return solrRequestParsers;
   }
 
   /* The set of materialized parameters: */
@@ -330,7 +383,7 @@ public class SolrConfig extends Config {
 
   protected UpdateHandlerInfo updateHandlerInfo ;
 
-  private Map<String, List<PluginInfo>> pluginStore = new LinkedHashMap<String, List<PluginInfo>>();
+  private Map<String, List<PluginInfo>> pluginStore = new LinkedHashMap<>();
 
   public final int maxWarmingSearchers;
   public final boolean unlockOnStartup;
@@ -530,5 +583,25 @@ public class SolrConfig extends Config {
     } finally {
       loader.reloadLuceneSPI();
     }
+  }
+  
+  public int getMultipartUploadLimitKB() {
+    return multipartUploadLimitKB;
+  }
+
+  public int getFormUploadLimitKB() {
+    return formUploadLimitKB;
+  }
+
+  public boolean isHandleSelect() {
+    return handleSelect;
+  }
+
+  public boolean isAddHttpRequestToContext() {
+    return addHttpRequestToContext;
+  }
+
+  public boolean isEnableRemoteStreams() {
+    return enableRemoteStreams;
   }
 }

@@ -17,11 +17,11 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.search.Weight.PostingFeatures;
 import org.apache.lucene.util.Bits;
+
+import java.io.IOException;
 
 /** 
  * Constrains search results to only match those which also match a provided
@@ -57,7 +57,7 @@ public class QueryWrapperFilter extends Filter {
     return new DocIdSet() {
       @Override
       public DocIdSetIterator iterator() throws IOException {
-        return weight.scorer(privateContext, true, false, PostingFeatures.DOCS_AND_FREQS, acceptDocs);
+        return weight.scorer(privateContext, PostingFeatures.DOCS_AND_FREQS, acceptDocs);
       }
       @Override
       public boolean isCacheable() { return false; }

@@ -98,11 +98,9 @@ public class BoostedQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
-        boolean topScorer,  PostingFeatures flags, Bits acceptDocs) throws IOException {
-      // we are gonna advance() the subscorer
-      Scorer subQueryScorer = qWeight.scorer(context, true, false, flags, acceptDocs);
-      if(subQueryScorer == null) {
+    public Scorer scorer(AtomicReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
+      Scorer subQueryScorer = qWeight.scorer(context, flags, acceptDocs);
+      if (subQueryScorer == null) {
         return null;
       }
       return new BoostedQuery.CustomScorer(context, this, getBoost(), subQueryScorer, boostVal);

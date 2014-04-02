@@ -17,19 +17,20 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.intervals.FieldedBooleanQuery;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
-import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.BytesRefHash.DirectBytesStartArray;
+import org.apache.lucene.util.RamUsageEstimator;
+
+import java.io.IOException;
 
 class ConstantScoreAutoRewrite extends TermCollectingRewrite<BooleanQuery> {
 
@@ -96,20 +97,20 @@ class ConstantScoreAutoRewrite extends TermCollectingRewrite<BooleanQuery> {
     final int size = col.pendingTerms.size();
     if (col.hasCutOff) {
       return MultiTermQuery.CONSTANT_SCORE_FILTER_REWRITE.rewrite(reader, query);
-    } else if (size == 0) {
-      return getTopLevelQuery();
     } else {
       final BooleanQuery bq = getTopLevelQuery();
-      final BytesRefHash pendingTerms = col.pendingTerms;
-      final int sort[] = pendingTerms.sort(BytesRef.getUTF8SortedAsUnicodeComparator());
-      for(int i = 0; i < size; i++) {
-        final int pos = sort[i];
-        // docFreq is not used for constant score here, we pass 1
-        // to explicitely set a fake value, so it's not calculated
-        addClause(bq, new Term(query.field, pendingTerms.get(pos, new BytesRef())), 1, 1.0f, col.array.termState[pos]);
+      if (size > 0) {
+        final BytesRefHash pendingTerms = col.pendingTerms;
+        final int sort[] = pendingTerms.sort(BytesRef.getUTF8SortedAsUnicodeComparator());
+        for(int i = 0; i < size; i++) {
+          final int pos = sort[i];
+          // docFreq is not used for constant score here, we pass 1
+          // to explicitely set a fake value, so it's not calculated
+          addClause(bq, new Term(query.field, pendingTerms.get(pos, new BytesRef())), 1, 1.0f, col.array.termState[pos]);
+        }
       }
       // Strip scores
-      final Query result = new ConstantScoreQuery(bq);
+      final Query result = ConstantScoreQuery.fromFieldedQuery(new FieldedBooleanQuery(query.field, bq));
       result.setBoost(query.getBoost());
       return result;
     }

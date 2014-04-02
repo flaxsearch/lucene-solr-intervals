@@ -981,7 +981,8 @@ public class ShingleFilterTest extends BaseTokenStreamTestCase {
   }
   
   public void testReset() throws Exception {
-    Tokenizer wsTokenizer = new WhitespaceTokenizer(TEST_VERSION_CURRENT, new StringReader("please divide this sentence"));
+    Tokenizer wsTokenizer = new WhitespaceTokenizer(TEST_VERSION_CURRENT);
+    wsTokenizer.setReader(new StringReader("please divide this sentence"));
     TokenStream filter = new ShingleFilter(wsTokenizer, 2);
     assertTokenStreamContents(filter,
       new String[]{"please","please divide","divide","divide this","this","this sentence","sentence"},
@@ -1105,8 +1106,8 @@ public class ShingleFilterTest extends BaseTokenStreamTestCase {
   public void testRandomStrings() throws Exception {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         return new TokenStreamComponents(tokenizer, new ShingleFilter(tokenizer));
       }
     };
@@ -1118,8 +1119,8 @@ public class ShingleFilterTest extends BaseTokenStreamTestCase {
     Random random = random();
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         return new TokenStreamComponents(tokenizer, new ShingleFilter(tokenizer));
       }
     };
@@ -1129,8 +1130,8 @@ public class ShingleFilterTest extends BaseTokenStreamTestCase {
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new ShingleFilter(tokenizer));
       }
     };
@@ -1194,5 +1195,53 @@ public class ShingleFilterTest extends BaseTokenStreamTestCase {
                               new int[] {6, 13, 20, 13, 20, 20},
                               new int[] {1, 0, 0, 1, 0, 0},
                               20);
+  }
+
+  public void testTwoTrailingHolesTriShingleWithTokenFiller() throws IOException {
+    // Analyzing "purple wizard of the", where of and the are removed as a
+    // stopwords, leaving two trailing holes:
+    Token[] inputTokens = new Token[] {createToken("purple", 0, 6), createToken("wizard", 7, 13)};
+    ShingleFilter filter = new ShingleFilter(new CannedTokenStream(2, 20, inputTokens), 2, 3);
+    filter.setFillerToken("--");
+
+    assertTokenStreamContents(filter,
+        new String[]{"purple", "purple wizard", "purple wizard --", "wizard", "wizard --", "wizard -- --"},
+        new int[]{0, 0, 0, 7, 7, 7},
+        new int[]{6, 13, 20, 13, 20, 20},
+        new int[]{1, 0, 0, 1, 0, 0},
+        20);
+
+     filter = new ShingleFilter(new CannedTokenStream(2, 20, inputTokens), 2, 3);
+    filter.setFillerToken("");
+
+    assertTokenStreamContents(filter,
+        new String[]{"purple", "purple wizard", "purple wizard ", "wizard", "wizard ", "wizard  "},
+        new int[]{0, 0, 0, 7, 7, 7},
+        new int[]{6, 13, 20, 13, 20, 20},
+        new int[]{1, 0, 0, 1, 0, 0},
+        20);
+
+
+    filter = new ShingleFilter(new CannedTokenStream(2, 20, inputTokens), 2, 3);
+    filter.setFillerToken(null);
+
+    assertTokenStreamContents(filter,
+        new String[] {"purple", "purple wizard", "purple wizard ", "wizard", "wizard ", "wizard  "},
+        new int[] {0, 0, 0, 7, 7, 7},
+        new int[] {6, 13, 20, 13, 20, 20},
+        new int[] {1, 0, 0, 1, 0, 0},
+        20);
+
+
+    filter = new ShingleFilter(new CannedTokenStream(2, 20, inputTokens), 2, 3);
+    filter.setFillerToken(null);
+    filter.setTokenSeparator(null);
+
+    assertTokenStreamContents(filter,
+        new String[] {"purple", "purplewizard", "purplewizard", "wizard", "wizard", "wizard"},
+        new int[] {0, 0, 0, 7, 7, 7},
+        new int[] {6, 13, 20, 13, 20, 20},
+        new int[] {1, 0, 0, 1, 0, 0},
+        20);
   }
 }

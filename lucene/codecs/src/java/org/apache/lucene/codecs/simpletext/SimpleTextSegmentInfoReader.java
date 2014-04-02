@@ -17,8 +17,16 @@ package org.apache.lucene.codecs.simpletext;
  * limitations under the License.
  */
 
+import static org.apache.lucene.codecs.simpletext.SimpleTextSegmentInfoWriter.SI_DIAG_KEY;
+import static org.apache.lucene.codecs.simpletext.SimpleTextSegmentInfoWriter.SI_DIAG_VALUE;
+import static org.apache.lucene.codecs.simpletext.SimpleTextSegmentInfoWriter.SI_DOCCOUNT;
+import static org.apache.lucene.codecs.simpletext.SimpleTextSegmentInfoWriter.SI_FILE;
+import static org.apache.lucene.codecs.simpletext.SimpleTextSegmentInfoWriter.SI_NUM_DIAG;
+import static org.apache.lucene.codecs.simpletext.SimpleTextSegmentInfoWriter.SI_NUM_FILES;
+import static org.apache.lucene.codecs.simpletext.SimpleTextSegmentInfoWriter.SI_USECOMPOUND;
+import static org.apache.lucene.codecs.simpletext.SimpleTextSegmentInfoWriter.SI_VERSION;
+
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -33,8 +41,6 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.StringHelper;
-
-import static org.apache.lucene.codecs.simpletext.SimpleTextSegmentInfoWriter.*;
 
 /**
  * reads plaintext segments files
@@ -66,7 +72,7 @@ public class SimpleTextSegmentInfoReader extends SegmentInfoReader {
       SimpleTextUtil.readLine(input, scratch);
       assert StringHelper.startsWith(scratch, SI_NUM_DIAG);
       int numDiag = Integer.parseInt(readString(SI_NUM_DIAG.length, scratch));
-      Map<String,String> diagnostics = new HashMap<String,String>();
+      Map<String,String> diagnostics = new HashMap<>();
 
       for (int i = 0; i < numDiag; i++) {
         SimpleTextUtil.readLine(input, scratch);
@@ -80,25 +86,9 @@ public class SimpleTextSegmentInfoReader extends SegmentInfoReader {
       }
       
       SimpleTextUtil.readLine(input, scratch);
-      assert StringHelper.startsWith(scratch, SI_NUM_ATTS);
-      int numAtts = Integer.parseInt(readString(SI_NUM_ATTS.length, scratch));
-      Map<String,String> attributes = new HashMap<String,String>();
-
-      for (int i = 0; i < numAtts; i++) {
-        SimpleTextUtil.readLine(input, scratch);
-        assert StringHelper.startsWith(scratch, SI_ATT_KEY);
-        String key = readString(SI_ATT_KEY.length, scratch);
-      
-        SimpleTextUtil.readLine(input, scratch);
-        assert StringHelper.startsWith(scratch, SI_ATT_VALUE);
-        String value = readString(SI_ATT_VALUE.length, scratch);
-        attributes.put(key, value);
-      }
-
-      SimpleTextUtil.readLine(input, scratch);
       assert StringHelper.startsWith(scratch, SI_NUM_FILES);
       int numFiles = Integer.parseInt(readString(SI_NUM_FILES.length, scratch));
-      Set<String> files = new HashSet<String>();
+      Set<String> files = new HashSet<>();
 
       for (int i = 0; i < numFiles; i++) {
         SimpleTextUtil.readLine(input, scratch);
@@ -108,7 +98,7 @@ public class SimpleTextSegmentInfoReader extends SegmentInfoReader {
       }
 
       SegmentInfo info = new SegmentInfo(directory, version, segmentName, docCount, 
-                                         isCompoundFile, null, diagnostics, Collections.unmodifiableMap(attributes));
+                                         isCompoundFile, null, diagnostics);
       info.setFiles(files);
       success = true;
       return info;

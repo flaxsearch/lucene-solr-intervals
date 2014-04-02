@@ -35,6 +35,7 @@ import org.apache.lucene.search.DocTermOrdsRewriteMethod;
 import org.apache.lucene.search.FieldCacheRangeFilter;
 import org.apache.lucene.search.FieldCacheRewriteMethod;
 import org.apache.lucene.search.MultiTermQuery;
+import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
@@ -150,7 +151,7 @@ public abstract class FieldType extends FieldProperties {
     }
 
     this.args = Collections.unmodifiableMap(args);
-    Map<String,String> initArgs = new HashMap<String,String>(args);
+    Map<String,String> initArgs = new HashMap<>(args);
     initArgs.remove(CLASS_NAME); // consume the class arg 
 
     trueProperties = FieldProperties.parseProperties(initArgs,true,false);
@@ -427,6 +428,25 @@ public abstract class FieldType extends FieldProperties {
     return getClass().getName();
   }
 
+
+  /**
+   * Returns a Query instance for doing prefix searches on this field type.
+   * Also, other QueryParser implementations may have different semantics.
+   * <p/>
+   * Sub-classes should override this method to provide their own range query implementation.
+   *
+   * @param parser       the {@link org.apache.solr.search.QParser} calling the method
+   * @param sf           the schema field
+   * @param termStr      the term string for prefix query
+   * @return a Query instance to perform prefix search
+   *
+   */
+  public Query getPrefixQuery(QParser parser, SchemaField sf, String termStr) {
+    PrefixQuery query = new PrefixQuery(new Term(sf.getName(), termStr));
+    query.setRewriteMethod(sf.getType().getRewriteMethod(parser, sf));
+    return query;
+  }
+
   /**
    * Default analyzer for types that only produce 1 verbatim token...
    * A maximum size of chars to be read must be specified
@@ -439,8 +459,8 @@ public abstract class FieldType extends FieldProperties {
     }
 
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer ts = new Tokenizer(reader) {
+    public TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer ts = new Tokenizer() {
         final char[] cbuf = new char[maxChars];
         final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
         final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
@@ -765,7 +785,7 @@ public abstract class FieldType extends FieldProperties {
    * @param showDefaults if true, include default properties.
    */
   public SimpleOrderedMap<Object> getNamedPropertyValues(boolean showDefaults) {
-    SimpleOrderedMap<Object> namedPropertyValues = new SimpleOrderedMap<Object>();
+    SimpleOrderedMap<Object> namedPropertyValues = new SimpleOrderedMap<>();
     namedPropertyValues.add(TYPE_NAME, getTypeName());
     namedPropertyValues.add(CLASS_NAME, getClassArg());
     if (showDefaults) {
@@ -809,7 +829,7 @@ public abstract class FieldType extends FieldProperties {
         namedPropertyValues.add(DOC_VALUES_FORMAT, getDocValuesFormat());
       }
     } else { // Don't show defaults
-      Set<String> fieldProperties = new HashSet<String>();
+      Set<String> fieldProperties = new HashSet<>();
       for (String propertyName : FieldProperties.propertyNames) {
         fieldProperties.add(propertyName);
       }
@@ -841,7 +861,7 @@ public abstract class FieldType extends FieldProperties {
 
   /** Returns args to this field type that aren't standard field properties */
   protected Map<String,String> getNonFieldPropertyArgs() {
-    Map<String,String> initArgs =  new HashMap<String,String>(args);
+    Map<String,String> initArgs =  new HashMap<>(args);
     for (String prop : FieldProperties.propertyNames) {
       initArgs.remove(prop);
     }
@@ -854,16 +874,16 @@ public abstract class FieldType extends FieldProperties {
    * name and args.
    */
   protected static SimpleOrderedMap<Object> getAnalyzerProperties(Analyzer analyzer) {
-    SimpleOrderedMap<Object> analyzerProps = new SimpleOrderedMap<Object>();
+    SimpleOrderedMap<Object> analyzerProps = new SimpleOrderedMap<>();
 
     if (analyzer instanceof TokenizerChain) {
       Map<String,String> factoryArgs;
       TokenizerChain tokenizerChain = (TokenizerChain)analyzer;
       CharFilterFactory[] charFilterFactories = tokenizerChain.getCharFilterFactories();
       if (null != charFilterFactories && charFilterFactories.length > 0) {
-        List<SimpleOrderedMap<Object>> charFilterProps = new ArrayList<SimpleOrderedMap<Object>>();
+        List<SimpleOrderedMap<Object>> charFilterProps = new ArrayList<>();
         for (CharFilterFactory charFilterFactory : charFilterFactories) {
-          SimpleOrderedMap<Object> props = new SimpleOrderedMap<Object>();
+          SimpleOrderedMap<Object> props = new SimpleOrderedMap<>();
           props.add(CLASS_NAME, charFilterFactory.getClassArg());
           factoryArgs = charFilterFactory.getOriginalArgs();
           if (null != factoryArgs) {
@@ -884,7 +904,7 @@ public abstract class FieldType extends FieldProperties {
         analyzerProps.add(CHAR_FILTERS, charFilterProps);
       }
 
-      SimpleOrderedMap<Object> tokenizerProps = new SimpleOrderedMap<Object>();
+      SimpleOrderedMap<Object> tokenizerProps = new SimpleOrderedMap<>();
       TokenizerFactory tokenizerFactory = tokenizerChain.getTokenizerFactory();
       tokenizerProps.add(CLASS_NAME, tokenizerFactory.getClassArg());
       factoryArgs = tokenizerFactory.getOriginalArgs();
@@ -905,9 +925,9 @@ public abstract class FieldType extends FieldProperties {
 
       TokenFilterFactory[] filterFactories = tokenizerChain.getTokenFilterFactories();
       if (null != filterFactories && filterFactories.length > 0) {
-        List<SimpleOrderedMap<Object>> filterProps = new ArrayList<SimpleOrderedMap<Object>>();
+        List<SimpleOrderedMap<Object>> filterProps = new ArrayList<>();
         for (TokenFilterFactory filterFactory : filterFactories) {
-          SimpleOrderedMap<Object> props = new SimpleOrderedMap<Object>();
+          SimpleOrderedMap<Object> props = new SimpleOrderedMap<>();
           props.add(CLASS_NAME, filterFactory.getClassArg());
           factoryArgs = filterFactory.getOriginalArgs();
           if (null != factoryArgs) {
@@ -931,5 +951,21 @@ public abstract class FieldType extends FieldProperties {
       analyzerProps.add(CLASS_NAME, analyzer.getClass().getName());
     }
     return analyzerProps;
+  }
+  
+  /** 
+   * Convert a value used by the FieldComparator for this FieldType's SortField
+   * into a marshalable value for distributed sorting.
+   */
+  public Object marshalSortValue(Object value) {
+    return value;
+  }
+  
+  /**
+   * Convert a value marshaled via {@link #marshalSortValue} back 
+   * into a value usable by the FieldComparator for this FieldType's SortField
+   */
+  public Object unmarshalSortValue(Object value) {
+    return value;
   }
 }

@@ -17,15 +17,14 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.search.BooleanQuery.BooleanWeight;
+import org.apache.lucene.search.intervals.IntervalIterator;
+import org.apache.lucene.search.similarities.Similarity;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-
-import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.BooleanQuery.BooleanWeight;
-import org.apache.lucene.search.intervals.IntervalIterator;
-import org.apache.lucene.search.similarities.Similarity;
 
 /* See the description in BooleanScorer.java, comparing
  * BooleanScorer & BooleanScorer2 */
@@ -244,7 +243,7 @@ class BooleanScorer2 extends Scorer {
 
   private Scorer makeCountingSumScorerSomeReq(boolean disableCoord) throws IOException { // At least one required scorer.
     if (optionalScorers.size() == minNrShouldMatch) { // all optional scorers also required.
-      ArrayList<Scorer> allReq = new ArrayList<Scorer>(requiredScorers);
+      ArrayList<Scorer> allReq = new ArrayList<>(requiredScorers);
       allReq.addAll(optionalScorers);
       return addProhibitedScorers(countingConjunctionSumScorer(disableCoord, allReq));
     } else { // optionalScorers.size() > minNrShouldMatch, and at least one required scorer
@@ -285,27 +284,6 @@ class BooleanScorer2 extends Scorer {
                                 : new MinShouldMatchSumScorer(weight, prohibitedScorers)));
   }
 
-  /** Scores and collects all matching documents.
-   * @param collector The collector to which all matching documents are passed through.
-   */
-  @Override
-  public void score(Collector collector) throws IOException {
-    collector.setScorer(this);    
-    while ((doc = countingSumScorer.nextDoc()) != NO_MORE_DOCS) {
-      collector.collect(doc);
-    }
-  }
-  
-  @Override
-  public boolean score(Collector collector, int max, int firstDocID) throws IOException {
-    doc = firstDocID;
-    collector.setScorer(this);
-    while (doc < max) {
-      collector.collect(doc);
-      doc = countingSumScorer.nextDoc();
-    }
-    return doc != NO_MORE_DOCS;
-  }
 
   @Override
   public int docID() {
@@ -345,7 +323,7 @@ class BooleanScorer2 extends Scorer {
 
   @Override
   public Collection<ChildScorer> getChildren() {
-    ArrayList<ChildScorer> children = new ArrayList<ChildScorer>();
+    ArrayList<ChildScorer> children = new ArrayList<>();
     for (Scorer s : optionalScorers) {
       children.add(new ChildScorer(s, "SHOULD"));
     }

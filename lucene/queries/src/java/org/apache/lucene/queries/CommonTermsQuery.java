@@ -16,11 +16,6 @@ package org.apache.lucene.queries;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
@@ -30,24 +25,29 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.ToStringUtils;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 /**
  * A query that executes high-frequency terms in a optional sub-query to prevent
- * slow queries due to "common" terms like stopwords. This query basically
- * builds 2 queries off the {@link #add(Term) added} terms where low-frequency
+ * slow queries due to "common" terms like stopwords. This query
+ * builds 2 queries off the {@link #add(Term) added} terms: low-frequency
  * terms are added to a required boolean clause and high-frequency terms are
  * added to an optional boolean clause. The optional clause is only executed if
- * the required "low-frequency' clause matches. Scores produced by this query
- * will be slightly different to plain {@link BooleanQuery} scorer mainly due to
- * differences in the {@link Similarity#coord(int,int) number of leave queries}
- * in the required boolean clause. In the most cases high-frequency terms are
+ * the required "low-frequency" clause matches. Scores produced by this query
+ * will be slightly different than plain {@link BooleanQuery} scorer mainly due to
+ * differences in the {@link Similarity#coord(int,int) number of leaf queries}
+ * in the required boolean clause. In most cases, high-frequency terms are
  * unlikely to significantly contribute to the document score unless at least
- * one of the low-frequency terms are matched such that this query can improve
+ * one of the low-frequency terms are matched.  This query can improve
  * query execution times significantly if applicable.
  * <p>
  * {@link CommonTermsQuery} has several advantages over stopword filtering at
@@ -67,7 +67,7 @@ public class CommonTermsQuery extends Query {
    * rewrite to dismax rather than boolean. Yet, this can already be subclassed
    * to do so.
    */
-  protected final List<Term> terms = new ArrayList<Term>();
+  protected final List<Term> terms = new ArrayList<>();
   protected final boolean disableCoord;
   protected final float maxTermFrequency;
   protected final Occur lowFreqOccur;
@@ -149,7 +149,7 @@ public class CommonTermsQuery extends Query {
     if (this.terms.isEmpty()) {
       return new BooleanQuery();
     } else if (this.terms.size() == 1) {
-      final TermQuery tq = new TermQuery(this.terms.get(0));
+      final Query tq = newTermQuery(this.terms.get(0), null);
       tq.setBoost(getBoost());
       return tq;
     }
@@ -173,7 +173,7 @@ public class CommonTermsQuery extends Query {
     if (minNrShouldMatch >= 1.0f || minNrShouldMatch == 0.0f) {
       return (int) minNrShouldMatch;
     }
-    return (int) (Math.round(minNrShouldMatch * numOptional));
+    return Math.round(minNrShouldMatch * numOptional);
   }
   
   protected Query buildQuery(final int maxDoc,
@@ -186,15 +186,15 @@ public class CommonTermsQuery extends Query {
     for (int i = 0; i < queryTerms.length; i++) {
       TermContext termContext = contextArray[i];
       if (termContext == null) {
-        lowFreq.add(new TermQuery(queryTerms[i]), lowFreqOccur);
+        lowFreq.add(newTermQuery(queryTerms[i], null), lowFreqOccur);
       } else {
         if ((maxTermFrequency >= 1f && termContext.docFreq() > maxTermFrequency)
             || (termContext.docFreq() > (int) Math.ceil(maxTermFrequency
                 * (float) maxDoc))) {
           highFreq
-              .add(new TermQuery(queryTerms[i], termContext), highFreqOccur);
+              .add(newTermQuery(queryTerms[i], termContext), highFreqOccur);
         } else {
-          lowFreq.add(new TermQuery(queryTerms[i], termContext), lowFreqOccur);
+          lowFreq.add(newTermQuery(queryTerms[i], termContext), lowFreqOccur);
         }
       }
       
@@ -214,18 +214,13 @@ public class CommonTermsQuery extends Query {
        * if lowFreq is empty we rewrite the high freq terms in a conjunction to
        * prevent slow queries.
        */
-      if (highFreqOccur == Occur.MUST) {
-        highFreq.setBoost(getBoost());
-        return highFreq;
-      } else {
-        BooleanQuery highFreqConjunction = new BooleanQuery();
+      if (highFreq.getMinimumNumberShouldMatch() == 0 && highFreqOccur != Occur.MUST) {
         for (BooleanClause booleanClause : highFreq) {
-          highFreqConjunction.add(booleanClause.getQuery(), Occur.MUST);
+            booleanClause.setOccur(Occur.MUST);
         }
-        highFreqConjunction.setBoost(getBoost());
-        return highFreqConjunction;
-        
       }
+      highFreq.setBoost(getBoost());
+      return highFreq;
     } else if (highFreq.clauses().isEmpty()) {
       // only do low freq terms - we don't have high freq terms
       lowFreq.setBoost(getBoost());
@@ -356,7 +351,7 @@ public class CommonTermsQuery extends Query {
     }
     for (int i = 0; i < terms.size(); i++) {
       Term t = terms.get(i);
-      buffer.append(new TermQuery(t).toString());
+      buffer.append(newTermQuery(t, null).toString());
       
       if (i != terms.size() - 1) buffer.append(", ");
     }
@@ -416,5 +411,15 @@ public class CommonTermsQuery extends Query {
     } else if (!terms.equals(other.terms)) return false;
     return true;
   }
-  
+
+  /**
+   * Builds a new TermQuery instance.
+   * <p>This is intended for subclasses that wish to customize the generated queries.</p>
+   * @param term term
+   * @param context the TermContext to be used to create the low level term query. Can be <code>null</code>.
+   * @return new TermQuery instance
+   */
+  protected Query newTermQuery(Term term, TermContext context) {
+    return context == null ? new TermQuery(term) : new TermQuery(term, context);
+  }
 }

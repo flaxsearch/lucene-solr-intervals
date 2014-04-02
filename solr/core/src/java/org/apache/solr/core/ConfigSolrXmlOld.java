@@ -141,10 +141,16 @@ public class ConfigSolrXmlOld extends ConfigSolr {
     
     propMap.put(CfgProp.SOLR_ADMINHANDLER,
         config.getVal("solr/cores/@adminHandler", false));
+    propMap.put(CfgProp.SOLR_COLLECTIONSHANDLER, config.getVal("solr/cores/@collectionsHandler", false));
+    propMap.put(CfgProp.SOLR_INFOHANDLER, config.getVal("solr/cores/@infoHandler", false));
     propMap.put(CfgProp.SOLR_DISTRIBUPDATECONNTIMEOUT,
         config.getVal("solr/cores/@distribUpdateConnTimeout", false));
     propMap.put(CfgProp.SOLR_DISTRIBUPDATESOTIMEOUT,
         config.getVal("solr/cores/@distribUpdateSoTimeout", false));
+    propMap.put(CfgProp.SOLR_MAXUPDATECONNECTIONS,
+        config.getVal("solr/cores/@maxUpdateConnections", false));
+    propMap.put(CfgProp.SOLR_MAXUPDATECONNECTIONSPERHOST,
+        config.getVal("solr/cores/@maxUpdateConnectionsPerHost", false));
     propMap.put(CfgProp.SOLR_HOST, config.getVal("solr/cores/@host", false));
     propMap.put(CfgProp.SOLR_HOSTCONTEXT,
         config.getVal("solr/cores/@hostContext", false));
@@ -162,6 +168,7 @@ public class ConfigSolrXmlOld extends ConfigSolr {
         config.getVal("solr/cores/@transientCacheSize", false));
     propMap.put(CfgProp.SOLR_ZKCLIENTTIMEOUT,
         config.getVal("solr/cores/@zkClientTimeout", false));
+    propMap.put(CfgProp.SOLR_CONFIGSETBASEDIR, config.getVal("solr/cores/@configSetBaseDir", false));
 
     // These have no counterpart in 5.0, asking, for any of these in Solr 5.0
     // will result in an error being
@@ -180,8 +187,8 @@ public class ConfigSolrXmlOld extends ConfigSolr {
     coreNodes = (NodeList) config.evaluate("solr/cores/core",
         XPathConstants.NODESET);
     // Check a couple of error conditions
-    Set<String> names = new HashSet<String>(); // for duplicate names
-    Map<String,String> dirs = new HashMap<String,String>(); // for duplicate
+    Set<String> names = new HashSet<>(); // for duplicate names
+    Map<String,String> dirs = new HashMap<>(); // for duplicate
                                                             // data dirs.
     
     for (int idx = 0; idx < coreNodes.getLength(); ++idx) {
@@ -230,7 +237,7 @@ public class ConfigSolrXmlOld extends ConfigSolr {
   }
 
   public List<String> getAllCoreNames() {
-    List<String> ret = new ArrayList<String>();
+    List<String> ret = new ArrayList<>();
     
     synchronized (coreNodes) {
       for (int idx = 0; idx < coreNodes.getLength(); ++idx) {

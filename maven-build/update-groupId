@@ -1,0 +1,2 @@
+find . -name pom.xml | xargs perl -pi -e 's/>org.apache.lucene</>uk.co.flax.lucene-solr-intervals</'
+find . -name pom.xml | xargs perl -pi -e 's/>org.apache.solr</>uk.co.flax.lucene-solr-intervals</'

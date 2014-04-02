@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -34,13 +33,14 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.PostingsFormat;
-import org.apache.lucene.codecs.lucene45.Lucene45Codec;
+import org.apache.lucene.codecs.lucene46.Lucene46Codec;
 import org.apache.lucene.codecs.perfield.PerFieldPostingsFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -56,7 +56,7 @@ import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.RamUsageEstimator;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.TestUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
@@ -148,12 +148,12 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     public SeedPostings(long seed, int minDocFreq, int maxDocFreq, Bits liveDocs, IndexOptions options, boolean allowPayloads) {
       random = new Random(seed);
       docRandom = new Random(random.nextLong());
-      docFreq = _TestUtil.nextInt(random, minDocFreq, maxDocFreq);
+      docFreq = TestUtil.nextInt(random, minDocFreq, maxDocFreq);
       this.liveDocs = liveDocs;
       this.allowPayloads = allowPayloads;
 
       // TODO: more realistic to inversely tie this to numDocs:
-      maxDocSpacing = _TestUtil.nextInt(random, 1, 100);
+      maxDocSpacing = TestUtil.nextInt(random, 1, 100);
 
       if (random.nextInt(10) == 7) {
         // 10% of the time create big payloads:
@@ -192,21 +192,21 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
           docID++;
         } else {
           // TODO: sometimes have a biggish gap here!
-          docID += _TestUtil.nextInt(docRandom, 1, maxDocSpacing);
+          docID += TestUtil.nextInt(docRandom, 1, maxDocSpacing);
         }
 
         if (random.nextInt(200) == 17) {
-          freq = _TestUtil.nextInt(random, 1, 1000);
+          freq = TestUtil.nextInt(random, 1, 1000);
         } else if (random.nextInt(10) == 17) {
-          freq = _TestUtil.nextInt(random, 1, 20);
+          freq = TestUtil.nextInt(random, 1, 20);
         } else {
-          freq = _TestUtil.nextInt(random, 1, 4);
+          freq = TestUtil.nextInt(random, 1, 4);
         }
 
         pos = 0;
         offset = 0;
         posUpto = 0;
-        posSpacing = _TestUtil.nextInt(random, 1, 100);
+        posSpacing = TestUtil.nextInt(random, 1, 100);
 
         upto++;
         return docID;
@@ -238,7 +238,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
       } else if (posSpacing == 1) {
         pos++;
       } else {
-        pos += _TestUtil.nextInt(random, 1, posSpacing);
+        pos += TestUtil.nextInt(random, 1, posSpacing);
       }
 
       if (payloadSize != 0) {
@@ -341,9 +341,9 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
   public static void createPostings() throws IOException {
     totalPostings = 0;
     totalPayloadBytes = 0;
-    fields = new TreeMap<String,SortedMap<BytesRef,Long>>();
+    fields = new TreeMap<>();
 
-    final int numFields = _TestUtil.nextInt(random(), 1, 5);
+    final int numFields = TestUtil.nextInt(random(), 1, 5);
     if (VERBOSE) {
       System.out.println("TEST: " + numFields + " fields");
     }
@@ -352,7 +352,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     FieldInfo[] fieldInfoArray = new FieldInfo[numFields];
     int fieldUpto = 0;
     while (fieldUpto < numFields) {
-      String field = _TestUtil.randomSimpleString(random());
+      String field = TestUtil.randomSimpleString(random());
       if (fields.containsKey(field)) {
         continue;
       }
@@ -362,19 +362,19 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
                                                 null, DocValuesType.NUMERIC, null);
       fieldUpto++;
 
-      SortedMap<BytesRef,Long> postings = new TreeMap<BytesRef,Long>();
+      SortedMap<BytesRef,Long> postings = new TreeMap<>();
       fields.put(field, postings);
-      Set<String> seenTerms = new HashSet<String>();
+      Set<String> seenTerms = new HashSet<>();
 
       int numTerms;
       if (random().nextInt(10) == 7) {
         numTerms = atLeast(50);
       } else {
-        numTerms = _TestUtil.nextInt(random(), 2, 20);
+        numTerms = TestUtil.nextInt(random(), 2, 20);
       }
 
       for(int termUpto=0;termUpto<numTerms;termUpto++) {
-        String term = _TestUtil.randomSimpleString(random());
+        String term = TestUtil.randomSimpleString(random());
         if (seenTerms.contains(term)) {
           continue;
         }
@@ -422,7 +422,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
       }
     }
 
-    allTerms = new ArrayList<FieldAndTerm>();
+    allTerms = new ArrayList<>();
     for(Map.Entry<String,SortedMap<BytesRef,Long>> fieldEnt : fields.entrySet()) {
       String field = fieldEnt.getKey();
       for(Map.Entry<BytesRef,Long> termEnt : fieldEnt.getValue().entrySet()) {
@@ -527,6 +527,11 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     }
 
     @Override
+    public boolean hasFreqs() {
+      return fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
+    }
+
+    @Override
     public boolean hasOffsets() {
       return fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
     }
@@ -538,7 +543,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
   
     @Override
     public boolean hasPayloads() {
-      return fieldInfo.hasPayloads();
+      return allowPayloads && fieldInfo.hasPayloads();
     }
   }
 
@@ -628,15 +633,12 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
         throw new IllegalArgumentException("liveDocs must be null");
       }
       if (maxAllowed.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
-        System.out.println("no: max");
         return null;
       }
       if ((flags & DocsAndPositionsEnum.FLAG_OFFSETS) != 0 && maxAllowed.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) < 0) {
-        System.out.println("no: offsets");
         return null;
       }
       if ((flags & DocsAndPositionsEnum.FLAG_PAYLOADS) != 0 && allowPayloads == false) {
-        System.out.println("no: payloads");
         return null;
       }
       return getSeedPostings(current.getKey().utf8ToString(), current.getValue(), false, maxAllowed, allowPayloads);
@@ -651,7 +653,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
   // randomly index at lower IndexOption
   private FieldsProducer buildIndex(Directory dir, IndexOptions maxAllowed, boolean allowPayloads, boolean alwaysTestMax) throws IOException {
     Codec codec = getCodec();
-    SegmentInfo segmentInfo = new SegmentInfo(dir, Constants.LUCENE_MAIN_VERSION, "_0", maxDoc, false, codec, null, null);
+    SegmentInfo segmentInfo = new SegmentInfo(dir, Constants.LUCENE_MAIN_VERSION, "_0", maxDoc, false, codec, null);
 
     int maxIndexOption = Arrays.asList(IndexOptions.values()).indexOf(maxAllowed);
     if (VERBOSE) {
@@ -666,7 +668,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     for(int fieldUpto=0;fieldUpto<fields.size();fieldUpto++) {
       FieldInfo oldFieldInfo = fieldInfos.fieldInfo(fieldUpto);
 
-      String pf = _TestUtil.getPostingsFormat(codec, oldFieldInfo.name);
+      String pf = TestUtil.getPostingsFormat(codec, oldFieldInfo.name);
       int fieldMaxIndexOption;
       if (doesntSupportOffsets.contains(pf)) {
         fieldMaxIndexOption = Math.min(maxIndexOptionNoOffsets, maxIndexOption);
@@ -875,7 +877,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     }
 
     double skipChance = alwaysTestMax ? 0.5 : random().nextDouble();
-    int numSkips = expected.docFreq < 3 ? 1 : _TestUtil.nextInt(random(), 1, Math.min(20, expected.docFreq/3));
+    int numSkips = expected.docFreq < 3 ? 1 : TestUtil.nextInt(random(), 1, Math.min(20, expected.docFreq / 3));
     int skipInc = expected.docFreq/numSkips;
     int skipDocInc = maxDoc/numSkips;
 
@@ -918,7 +920,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
         int targetDocID = -1;
         if (expected.upto < stopAt && random().nextBoolean()) {
           // Pick target we know exists:
-          final int skipCount = _TestUtil.nextInt(random(), 1, skipInc);
+          final int skipCount = TestUtil.nextInt(random(), 1, skipInc);
           for(int skip=0;skip<skipCount;skip++) {
             if (expected.nextDoc() == DocsEnum.NO_MORE_DOCS) {
               break;
@@ -926,7 +928,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
           }
         } else {
           // Pick random target (might not exist):
-          final int skipDocIDs = _TestUtil.nextInt(random(), 1, skipDocInc);
+          final int skipDocIDs = TestUtil.nextInt(random(), 1, skipDocInc);
           if (skipDocIDs > 0) {
             targetDocID = expected.docID() + skipDocIDs;
             expected.advance(targetDocID);
@@ -1080,7 +1082,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
                          final boolean alwaysTestMax) throws Exception {
 
     if (options.contains(Option.THREADS)) {
-      int numThreads = _TestUtil.nextInt(random(), 2, 5);
+      int numThreads = TestUtil.nextInt(random(), 2, 5);
       Thread[] threads = new Thread[numThreads];
       for(int threadUpto=0;threadUpto<numThreads;threadUpto++) {
         threads[threadUpto] = new TestThread(this, fieldsSource, options, maxTestOptions, maxIndexOptions, alwaysTestMax);
@@ -1101,8 +1103,8 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     ThreadState threadState = new ThreadState();
 
     // Test random terms/fields:
-    List<TermState> termStates = new ArrayList<TermState>();
-    List<FieldAndTerm> termStateTerms = new ArrayList<FieldAndTerm>();
+    List<TermState> termStates = new ArrayList<>();
+    List<FieldAndTerm> termStateTerms = new ArrayList<>();
     
     Collections.shuffle(allTerms, random());
     int upto = 0;
@@ -1209,7 +1211,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
   /** Indexes all fields/terms at the specified
    *  IndexOptions, and fully tests at that IndexOptions. */
   private void testFull(IndexOptions options, boolean withPayloads) throws Exception {
-    File path = _TestUtil.getTempDir("testPostingsFormat.testExact");
+    File path = TestUtil.getTempDir("testPostingsFormat.testExact");
     Directory dir = newFSDirectory(path);
 
     // TODO test thread safety of buildIndex too
@@ -1230,7 +1232,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
 
     fieldsProducer.close();
     dir.close();
-    _TestUtil.rmDir(path);
+    TestUtil.rmDir(path);
   }
 
   public void testDocsOnly() throws Exception {
@@ -1262,7 +1264,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     int iters = 5;
 
     for(int iter=0;iter<iters;iter++) {
-      File path = _TestUtil.getTempDir("testPostingsFormat");
+      File path = TestUtil.getTempDir("testPostingsFormat");
       Directory dir = newFSDirectory(path);
 
       boolean indexPayloads = random().nextBoolean();
@@ -1279,7 +1281,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
       fieldsProducer = null;
 
       dir.close();
-      _TestUtil.rmDir(path);
+      TestUtil.rmDir(path);
     }
   }
   
@@ -1377,16 +1379,23 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
   // during flush/merge
   public void testInvertedWrite() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    MockAnalyzer analyzer = new MockAnalyzer(random());
+    analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
+    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
 
-    final Map<String,TermFreqs> termFreqs = new HashMap<String,TermFreqs>();
+    // Must be concurrent because thread(s) can be merging
+    // while up to one thread flushes, and each of those
+    // threads iterates over the map while the flushing
+    // thread might be adding to it:
+    final Map<String,TermFreqs> termFreqs = new ConcurrentHashMap<>();
+
     final AtomicLong sumDocFreq = new AtomicLong();
     final AtomicLong sumTotalTermFreq = new AtomicLong();
 
     // TODO: would be better to use / delegate to the current
     // Codec returned by getCodec()
 
-    iwc.setCodec(new Lucene45Codec() {
+    iwc.setCodec(new Lucene46Codec() {
         @Override
         public PostingsFormat getPostingsFormatForField(String field) {
 
@@ -1395,6 +1404,8 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
             p = ((PerFieldPostingsFormat) p).getPostingsFormatForField(field);
           }
           final PostingsFormat defaultPostingsFormat = p;
+
+          final Thread mainThread = Thread.currentThread();
 
           if (field.equals("body")) {
 
@@ -1418,6 +1429,15 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
 
                     boolean isMerge = state.context.context == IOContext.Context.MERGE;
 
+                    // We only use one thread for flushing
+                    // in this test:
+                    assert isMerge || Thread.currentThread() == mainThread;
+
+                    // We iterate the provided TermsEnum
+                    // twice, so we excercise this new freedom
+                    // with the inverted API; if
+                    // addOnSecondPass is true, we add up
+                    // term stats on the 2nd iteration:
                     boolean addOnSecondPass = random().nextBoolean();
 
                     //System.out.println("write isMerge=" + isMerge + " 2ndPass=" + addOnSecondPass);
@@ -1444,7 +1464,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
                         totalTermFreq += docs.freq();
                         if (docs instanceof DocsAndPositionsEnum) {
                           DocsAndPositionsEnum posEnum = (DocsAndPositionsEnum) docs;
-                          int limit = _TestUtil.nextInt(random(), 1, docs.freq());
+                          int limit = TestUtil.nextInt(random(), 1, docs.freq());
                           for(int i=0;i<limit;i++) {
                             posEnum.nextPosition();
                           }
@@ -1454,21 +1474,26 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
                       String termString = term.utf8ToString();
 
                       // During merge we should only see terms
-                      // we had already seen during flush:
+                      // we had already seen during a
+                      // previous flush:
                       assertTrue(isMerge==false || termFreqs.containsKey(termString));
 
-                      if (isMerge == false && addOnSecondPass == false) {
-                        TermFreqs tf = termFreqs.get(termString);
-                        if (tf == null) {
-                          tf = new TermFreqs();
-                          termFreqs.put(termString, tf);
+                      if (isMerge == false) {
+                        if (addOnSecondPass == false) {
+                          TermFreqs tf = termFreqs.get(termString);
+                          if (tf == null) {
+                            tf = new TermFreqs();
+                            termFreqs.put(termString, tf);
+                          }
+                          tf.docFreq += docFreq;
+                          tf.totalTermFreq += totalTermFreq;
+                          sumDocFreq.addAndGet(docFreq);
+                          sumTotalTermFreq.addAndGet(totalTermFreq);
+                        } else if (termFreqs.containsKey(termString) == false) {
+                          // Add placeholder (2nd pass will
+                          // set its counts):
+                          termFreqs.put(termString, new TermFreqs());
                         }
-                        tf.docFreq += docFreq;
-                        tf.totalTermFreq += totalTermFreq;
-                        sumDocFreq.addAndGet(docFreq);
-                        sumTotalTermFreq.addAndGet(totalTermFreq);
-                      } else if (termFreqs.containsKey(termString) == false) {
-                        termFreqs.put(termString, new TermFreqs());
                       }
                     }
 
@@ -1490,7 +1515,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
                           totalTermFreq += docs.freq();
                           if (docs instanceof DocsAndPositionsEnum) {
                             DocsAndPositionsEnum posEnum = (DocsAndPositionsEnum) docs;
-                            int limit = _TestUtil.nextInt(random(), 1, docs.freq());
+                            int limit = TestUtil.nextInt(random(), 1, docs.freq());
                             for(int i=0;i<limit;i++) {
                               posEnum.nextPosition();
                             }
@@ -1499,10 +1524,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
 
                         if (isMerge == false && addOnSecondPass) {
                           TermFreqs tf = termFreqs.get(term);
-                          if (tf == null) {
-                            tf = new TermFreqs();
-                            termFreqs.put(term, tf);
-                          }
+                          assert tf != null;
                           tf.docFreq += docFreq;
                           tf.totalTermFreq += totalTermFreq;
                           sumDocFreq.addAndGet(docFreq);

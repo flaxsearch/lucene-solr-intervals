@@ -20,14 +20,18 @@ package org.apache.lucene.queries.function;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.*;
+import org.apache.lucene.search.ComplexExplanation;
+import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
-import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.util.Bits;
 
 import java.io.IOException;
-import java.util.Set;
 import java.util.Map;
+import java.util.Set;
 
 
 /**
@@ -91,14 +95,13 @@ public class FunctionQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
-        boolean topScorer,  PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(AtomicReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
       return new AllScorer(context, acceptDocs, this, queryWeight);
     }
 
     @Override
     public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      return ((AllScorer)scorer(context, true, true, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs())).explain(doc);
+      return ((AllScorer)scorer(context, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs())).explain(doc);
     }
   }
 

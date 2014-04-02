@@ -132,7 +132,7 @@ public class TestMultiFieldQueryParser extends LuceneTestCase {
   }
   
   public void testBoostsSimple() throws Exception {
-      Map<String,Float> boosts = new HashMap<String,Float>();
+      Map<String,Float> boosts = new HashMap<>();
       boosts.put("b", Float.valueOf(5));
       boosts.put("t", Float.valueOf(10));
       String[] fields = {"b", "t"};
@@ -327,8 +327,8 @@ public class TestMultiFieldQueryParser extends LuceneTestCase {
     }
 
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      return stdAnalyzer.createComponents(fieldName, reader);
+    public TokenStreamComponents createComponents(String fieldName) {
+      return stdAnalyzer.createComponents(fieldName);
     }
   }
   

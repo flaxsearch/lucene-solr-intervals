@@ -35,7 +35,7 @@ import org.apache.lucene.util.BytesRef;
  *  PostingsFormat. */
 
 class FreqProxFields extends Fields {
-  final Map<String,FreqProxTermsWriterPerField> fields = new LinkedHashMap<String,FreqProxTermsWriterPerField>();
+  final Map<String,FreqProxTermsWriterPerField> fields = new LinkedHashMap<>();
 
   public FreqProxFields(List<FreqProxTermsWriterPerField> fieldList) {
     // NOTE: fields are already sorted by field name
@@ -103,6 +103,11 @@ class FreqProxFields extends Fields {
       throw new UnsupportedOperationException();
     }
   
+    @Override
+    public boolean hasFreqs() {
+      return terms.fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;      
+    }
+
     @Override
     public boolean hasOffsets() {
       // NOTE: the in-memory buffer may have indexed offsets

@@ -82,7 +82,7 @@ public final class DutchAnalyzer extends Analyzer {
         throw new RuntimeException("Unable to load default stopword set");
       }
       
-      DEFAULT_STEM_DICT = new CharArrayMap<String>(Version.LUCENE_CURRENT, 4, false);
+      DEFAULT_STEM_DICT = new CharArrayMap<>(Version.LUCENE_CURRENT, 4, false);
       DEFAULT_STEM_DICT.put("fiets", "fiets"); //otherwise fiet
       DEFAULT_STEM_DICT.put("bromfiets", "bromfiets"); //otherwise bromfiet
       DEFAULT_STEM_DICT.put("ei", "eier");
@@ -155,9 +155,8 @@ public final class DutchAnalyzer extends Analyzer {
    *   {@link StemmerOverrideFilter}, and {@link SnowballFilter}
    */
   @Override
-  protected TokenStreamComponents createComponents(String fieldName,
-      Reader aReader) {
-    final Tokenizer source = new StandardTokenizer(matchVersion, aReader);
+  protected TokenStreamComponents createComponents(String fieldName) {
+    final Tokenizer source = new StandardTokenizer(matchVersion);
     TokenStream result = new StandardFilter(matchVersion, source);
     result = new LowerCaseFilter(matchVersion, result);
     result = new StopFilter(matchVersion, result, stoptable);

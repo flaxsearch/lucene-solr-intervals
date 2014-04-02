@@ -109,14 +109,16 @@ public class AddUpdateCommand extends UpdateCommand implements Iterable<IndexDoc
    }
 
    public String getPrintableId() {
-     IndexSchema schema = req.getSchema();
-     SchemaField sf = schema.getUniqueKeyField();
-     if (solrDoc != null && sf != null) {
-       SolrInputField field = solrDoc.getField(sf.getName());
-       if (field != null) {
-         return field.getFirstValue().toString();
-       }
-     }
+    if (req != null) {
+      IndexSchema schema = req.getSchema();
+      SchemaField sf = schema.getUniqueKeyField();
+      if (solrDoc != null && sf != null) {
+        SolrInputField field = solrDoc.getField(sf.getName());
+        if (field != null) {
+          return field.getFirstValue().toString();
+        }
+      }
+    }
      return "(null)";
    }
 
@@ -191,7 +193,7 @@ public class AddUpdateCommand extends UpdateCommand implements Iterable<IndexDoc
   }
 
   private List<SolrInputDocument> flatten(SolrInputDocument root) {
-    List<SolrInputDocument> unwrappedDocs = new ArrayList<SolrInputDocument>();
+    List<SolrInputDocument> unwrappedDocs = new ArrayList<>();
     recUnwrapp(unwrappedDocs, root);
     return unwrappedDocs;
   }

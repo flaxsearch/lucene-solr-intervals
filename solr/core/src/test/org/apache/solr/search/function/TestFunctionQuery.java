@@ -103,7 +103,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
   void singleTest(String field, String funcTemplate, List<String> args, float... results) {
     String parseableQuery = func(field, funcTemplate);
 
-    List<String> nargs = new ArrayList<String>(Arrays.asList("q", parseableQuery
+    List<String> nargs = new ArrayList<>(Arrays.asList("q", parseableQuery
             ,"fl", "*,score"
             ,"indent","on"
             ,"rows","100"));
@@ -114,7 +114,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
       }
     }
 
-    List<String> tests = new ArrayList<String>();
+    List<String> tests = new ArrayList<>();
 
     // Construct xpaths like the following:
     // "//doc[./float[@name='foo_pf']='10.0' and ./float[@name='score']='10.0']"
@@ -172,6 +172,9 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
 
     singleTest(field,"map(\0,0,0,500)",10,10, -4,-4, 0,500);
     singleTest(field,"map(\0,-4,5,500)",100,100, -4,500, 0,500, 5,500, 10,10, 25,25);
+    singleTest(field,"map(\0,0,0,sum(\0,500))",10,10, -4,-4, 0,500);
+    singleTest(field,"map(\0,0,0,sum(\0,500),sum(\0,1))",10,11, -4,-3, 0,500);
+    singleTest(field,"map(\0,-4,5,sum(\0,1))",100,100, -4,-3, 0,1, 5,6, 10,10, 25,25);
 
     singleTest(field,"scale(\0,-1,1)",-4,-1, 100,1, 0,-0.9230769f);
     singleTest(field,"scale(\0,-10,1000)",-4,-10, 100,1000, 0,28.846153f);

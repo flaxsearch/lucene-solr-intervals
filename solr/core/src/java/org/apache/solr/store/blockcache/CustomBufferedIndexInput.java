@@ -23,9 +23,12 @@ import java.io.IOException;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 
+/**
+ * @lucene.experimental
+ */
 public abstract class CustomBufferedIndexInput extends IndexInput {
   
-  public static final int BUFFER_SIZE = 1024;
+  public static final int BUFFER_SIZE = 32768;
   
   private int bufferSize = BUFFER_SIZE;
   
@@ -34,6 +37,8 @@ public abstract class CustomBufferedIndexInput extends IndexInput {
   private long bufferStart = 0; // position in file of buffer
   private int bufferLength = 0; // end of valid bytes
   private int bufferPosition = 0; // next byte to read
+  
+  private Store store;
   
   @Override
   public byte readByte() throws IOException {
@@ -49,6 +54,7 @@ public abstract class CustomBufferedIndexInput extends IndexInput {
     super(resourceDesc);
     checkBufferSize(bufferSize);
     this.bufferSize = bufferSize;
+    this.store = BufferStore.instance(bufferSize);
   }
   
   private void checkBufferSize(int bufferSize) {
@@ -179,7 +185,7 @@ public abstract class CustomBufferedIndexInput extends IndexInput {
     if (newLength <= 0) throw new EOFException("read past EOF");
     
     if (buffer == null) {
-      buffer = BufferStore.takeBuffer(bufferSize);
+      buffer = store.takeBuffer(bufferSize);
       seekInternal(bufferStart);
     }
     readInternal(buffer, 0, newLength);
@@ -191,7 +197,7 @@ public abstract class CustomBufferedIndexInput extends IndexInput {
   @Override
   public final void close() throws IOException {
     closeInternal();
-    BufferStore.putBuffer(buffer);
+    store.putBuffer(buffer);
     buffer = null;
   }
   

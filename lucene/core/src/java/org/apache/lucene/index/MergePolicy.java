@@ -17,17 +17,17 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.MergeInfo;
+import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.SetOnce;
+import org.apache.lucene.util.SetOnce.AlreadySetException;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.MergeInfo;
-import org.apache.lucene.util.FixedBitSet;
-import org.apache.lucene.util.SetOnce.AlreadySetException;
-import org.apache.lucene.util.SetOnce;
 
 /**
  * <p>Expert: a MergePolicy determines the sequence of
@@ -92,7 +92,7 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
 
   public static class OneMerge {
 
-    SegmentInfoPerCommit info;      // used by IndexWriter
+    SegmentCommitInfo info;      // used by IndexWriter
     boolean registerDone;           // used by IndexWriter
     long mergeGen;                  // used by IndexWriter
     boolean isExternal;             // used by IndexWriter
@@ -107,7 +107,7 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
     List<SegmentReader> readers;        // used by IndexWriter
 
     /** Segments to be merged. */
-    public final List<SegmentInfoPerCommit> segments;
+    public final List<SegmentCommitInfo> segments;
 
     /** Number of documents in the merged segment. */
     public final int totalDocCount;
@@ -116,15 +116,15 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
     boolean paused;
 
     /** Sole constructor.
-     * @param segments List of {@link SegmentInfoPerCommit}s
+     * @param segments List of {@link SegmentCommitInfo}s
      *        to be merged. */
-    public OneMerge(List<SegmentInfoPerCommit> segments) {
+    public OneMerge(List<SegmentCommitInfo> segments) {
       if (0 == segments.size())
         throw new RuntimeException("segments must include at least one segment");
       // clone the list, as the in list may be based off original SegmentInfos and may be modified
-      this.segments = new ArrayList<SegmentInfoPerCommit>(segments);
+      this.segments = new ArrayList<>(segments);
       int count = 0;
-      for(SegmentInfoPerCommit info : segments) {
+      for(SegmentCommitInfo info : segments) {
         count += info.info.getDocCount();
       }
       totalDocCount = count;
@@ -140,7 +140,7 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
       if (readers == null) {
         throw new IllegalStateException("IndexWriter has not initialized readers from the segment infos yet");
       }
-      final List<AtomicReader> readers = new ArrayList<AtomicReader>(this.readers.size());
+      final List<AtomicReader> readers = new ArrayList<>(this.readers.size());
       for (AtomicReader reader : this.readers) {
         if (reader.numDocs() > 0) {
           readers.add(reader);
@@ -150,10 +150,10 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
     }
     
     /**
-     * Expert: Sets the {@link SegmentInfoPerCommit} of this {@link OneMerge}.
+     * Expert: Sets the {@link SegmentCommitInfo} of this {@link OneMerge}.
      * Allows sub-classes to e.g. set diagnostics properties.
      */
-    public void setInfo(SegmentInfoPerCommit info) {
+    public void setInfo(SegmentCommitInfo info) {
       this.info = info;
     }
 
@@ -271,7 +271,7 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
      * */
     public int totalNumDocs() throws IOException {
       int total = 0;
-      for (SegmentInfoPerCommit info : segments) {
+      for (SegmentCommitInfo info : segments) {
         total += info.info.getDocCount();
       }
       return total;
@@ -295,7 +295,7 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
      * The subset of segments to be included in the primitive merge.
      */
 
-    public final List<OneMerge> merges = new ArrayList<OneMerge>();
+    public final List<OneMerge> merges = new ArrayList<>();
 
     /** Sole constructor.  Use {@link
      *  #add(MergePolicy.OneMerge)} to add merges. */
@@ -393,7 +393,7 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
       // should not happen
       throw new RuntimeException(e);
     }
-    clone.writer = new SetOnce<IndexWriter>();
+    clone.writer = new SetOnce<>();
     return clone;
   }
 
@@ -412,7 +412,7 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
    * defaults than the {@link MergePolicy}
    */
   protected MergePolicy(double defaultNoCFSRatio, long defaultMaxCFSSegmentSize) {
-    writer = new SetOnce<IndexWriter>();
+    writer = new SetOnce<>();
     this.noCFSRatio = defaultNoCFSRatio;
     this.maxCFSSegmentSize = defaultMaxCFSSegmentSize;
   }
@@ -462,7 +462,7 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
    *          produced by a cascaded merge.
    */
   public abstract MergeSpecification findForcedMerges(
-          SegmentInfos segmentInfos, int maxSegmentCount, Map<SegmentInfoPerCommit,Boolean> segmentsToMerge)
+          SegmentInfos segmentInfos, int maxSegmentCount, Map<SegmentCommitInfo,Boolean> segmentsToMerge)
       throws IOException;
 
   /**
@@ -488,7 +488,7 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
    * {@link #getMaxCFSSegmentSizeMB()} and the size is less or equal to the
    * TotalIndexSize * {@link #getNoCFSRatio()} otherwise <code>false</code>.
    */
-  public boolean useCompoundFile(SegmentInfos infos, SegmentInfoPerCommit mergedInfo) throws IOException {
+  public boolean useCompoundFile(SegmentInfos infos, SegmentCommitInfo mergedInfo) throws IOException {
     if (getNoCFSRatio() == 0.0) {
       return false;
     }
@@ -500,16 +500,16 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
       return true;
     }
     long totalSize = 0;
-    for (SegmentInfoPerCommit info : infos) {
+    for (SegmentCommitInfo info : infos) {
       totalSize += size(info);
     }
     return mergedInfoSize <= getNoCFSRatio() * totalSize;
   }
   
   /** Return the byte size of the provided {@link
-   *  SegmentInfoPerCommit}, pro-rated by percentage of
+   *  SegmentCommitInfo}, pro-rated by percentage of
    *  non-deleted documents is set. */
-  protected long size(SegmentInfoPerCommit info) throws IOException {
+  protected long size(SegmentCommitInfo info) throws IOException {
     long byteSize = info.sizeInBytes();
     int delCount = writer.get().numDeletedDocs(info);
     double delRatio = (info.info.getDocCount() <= 0 ? 0.0f : ((float)delCount / (float)info.info.getDocCount()));
@@ -520,13 +520,13 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
   /** Returns true if this single info is already fully merged (has no
    *  pending deletes, is in the same dir as the
    *  writer, and matches the current compound file setting */
-  protected final boolean isMerged(SegmentInfoPerCommit info) {
+  protected final boolean isMerged(SegmentInfos infos, SegmentCommitInfo info) throws IOException {
     IndexWriter w = writer.get();
     assert w != null;
     boolean hasDeletions = w.numDeletedDocs(info) > 0;
     return !hasDeletions &&
       info.info.dir == w.getDirectory() &&
-      ((noCFSRatio > 0.0 && noCFSRatio < 1.0) || maxCFSSegmentSize < Long.MAX_VALUE);
+      useCompoundFile(infos, info) == info.info.getUseCompoundFile();
   }
   
   /** Returns current {@code noCFSRatio}.
@@ -566,29 +566,4 @@ public abstract class MergePolicy implements java.io.Closeable, Cloneable {
     this.maxCFSSegmentSize = (v > Long.MAX_VALUE) ? Long.MAX_VALUE : (long) v;
   }
 
-  /**
-   * MergeTrigger is passed to
-   * {@link MergePolicy#findMerges(MergeTrigger, SegmentInfos)} to indicate the
-   * event that triggered the merge.
-   */
-  public static enum MergeTrigger {
-    /**
-     * Merge was triggered by a segment flush.
-     */
-    SEGMENT_FLUSH, 
-    /**
-     * Merge was triggered by a full flush. Full flushes
-     * can be caused by a commit, NRT reader reopen or a close call on the index writer.
-     */
-    FULL_FLUSH,
-    /**
-     * Merge has been triggered explicitly by the user.
-     */
-    EXPLICIT,
-    
-    /**
-     * Merge was triggered by a successfully finished merge.
-     */
-    MERGE_FINISHED,
-  }
 }

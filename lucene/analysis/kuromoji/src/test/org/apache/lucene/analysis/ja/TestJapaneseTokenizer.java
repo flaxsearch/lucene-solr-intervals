@@ -35,8 +35,8 @@ import org.apache.lucene.analysis.ja.dict.UserDictionary;
 import org.apache.lucene.analysis.ja.tokenattributes.*;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.UnicodeUtil;
-import org.apache.lucene.util._TestUtil;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 
 @Slow
@@ -61,32 +61,32 @@ public class TestJapaneseTokenizer extends BaseTokenStreamTestCase {
 
   private Analyzer analyzer = new Analyzer() {
     @Override
-    protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tokenizer = new JapaneseTokenizer(reader, readDict(), false, Mode.SEARCH);
+    protected TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer tokenizer = new JapaneseTokenizer(readDict(), false, Mode.SEARCH);
       return new TokenStreamComponents(tokenizer, tokenizer);
     }
   };
 
   private Analyzer analyzerNormal = new Analyzer() {
     @Override
-    protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tokenizer = new JapaneseTokenizer(reader, readDict(), false, Mode.NORMAL);
+    protected TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer tokenizer = new JapaneseTokenizer(readDict(), false, Mode.NORMAL);
       return new TokenStreamComponents(tokenizer, tokenizer);
     }
   };
 
   private Analyzer analyzerNoPunct = new Analyzer() {
     @Override
-    protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tokenizer = new JapaneseTokenizer(reader, readDict(), true, Mode.SEARCH);
+    protected TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer tokenizer = new JapaneseTokenizer(readDict(), true, Mode.SEARCH);
       return new TokenStreamComponents(tokenizer, tokenizer);
     }
   };
 
   private Analyzer extendedModeAnalyzerNoPunct = new Analyzer() {
     @Override
-    protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tokenizer = new JapaneseTokenizer(reader, readDict(), true, Mode.EXTENDED);
+    protected TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer tokenizer = new JapaneseTokenizer(readDict(), true, Mode.EXTENDED);
       return new TokenStreamComponents(tokenizer, tokenizer);
     }
   };
@@ -141,13 +141,13 @@ public class TestJapaneseTokenizer extends BaseTokenStreamTestCase {
    * ideally the test would actually fail instead of hanging...
    */
   public void testDecomposition5() throws Exception {
-    TokenStream ts = analyzer.tokenStream("bogus", "くよくよくよくよくよくよくよくよくよくよくよくよくよくよくよくよくよくよくよくよ");
-    ts.reset();
-    while (ts.incrementToken()) {
+    try (TokenStream ts = analyzer.tokenStream("bogus", "くよくよくよくよくよくよくよくよくよくよくよくよくよくよくよくよくよくよくよくよ")) {
+      ts.reset();
+      while (ts.incrementToken()) {
       
+      }
+      ts.end();
     }
-    ts.end();
-    ts.close();
   }
 
   /*
@@ -201,8 +201,8 @@ public class TestJapaneseTokenizer extends BaseTokenStreamTestCase {
     checkRandomData(random,
                     new Analyzer() {
                       @Override
-                      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-                        Tokenizer tokenizer = new JapaneseTokenizer(reader, readDict(), false, Mode.SEARCH);
+                      protected TokenStreamComponents createComponents(String fieldName) {
+                        Tokenizer tokenizer = new JapaneseTokenizer(readDict(), false, Mode.SEARCH);
                         TokenStream graph = new MockGraphTokenFilter(random(), tokenizer);
                         return new TokenStreamComponents(tokenizer, graph);
                       }
@@ -212,10 +212,12 @@ public class TestJapaneseTokenizer extends BaseTokenStreamTestCase {
 
   public void testLargeDocReliability() throws Exception {
     for (int i = 0; i < 100; i++) {
-      String s = _TestUtil.randomUnicodeString(random(), 10000);
-      TokenStream ts = analyzer.tokenStream("foo", s);
-      ts.reset();
-      while (ts.incrementToken()) {
+      String s = TestUtil.randomUnicodeString(random(), 10000);
+      try (TokenStream ts = analyzer.tokenStream("foo", s)) {
+        ts.reset();
+        while (ts.incrementToken()) {
+        }
+        ts.end();
       }
     }
   }
@@ -233,28 +235,32 @@ public class TestJapaneseTokenizer extends BaseTokenStreamTestCase {
       if (VERBOSE) {
         System.out.println("\nTEST: iter=" + i);
       }
-      String s = _TestUtil.randomUnicodeString(random(), 100);
-      TokenStream ts = analyzer.tokenStream("foo", s);
-      CharTermAttribute termAtt = ts.addAttribute(CharTermAttribute.class);
-      ts.reset();
-      while (ts.incrementToken()) {
-        assertTrue(UnicodeUtil.validUTF16String(termAtt));
+      String s = TestUtil.randomUnicodeString(random(), 100);
+      try (TokenStream ts = analyzer.tokenStream("foo", s)) {
+        CharTermAttribute termAtt = ts.addAttribute(CharTermAttribute.class);
+        ts.reset();
+        while (ts.incrementToken()) {
+          assertTrue(UnicodeUtil.validUTF16String(termAtt));
+        }
+        ts.end();
       }
     }
   }
 
   public void testOnlyPunctuation() throws IOException {
-    TokenStream ts = analyzerNoPunct.tokenStream("foo", "。、。。");
-    ts.reset();
-    assertFalse(ts.incrementToken());
-    ts.end();
+    try (TokenStream ts = analyzerNoPunct.tokenStream("foo", "。、。。")) {
+      ts.reset();
+      assertFalse(ts.incrementToken());
+      ts.end();
+    }
   }
 
   public void testOnlyPunctuationExtended() throws IOException {
-    TokenStream ts = extendedModeAnalyzerNoPunct.tokenStream("foo", "......");
-    ts.reset();
-    assertFalse(ts.incrementToken());
-    ts.end();
+    try (TokenStream ts = extendedModeAnalyzerNoPunct.tokenStream("foo", "......")) {
+      ts.reset();
+      assertFalse(ts.incrementToken());
+      ts.end();
+    }
   }
   
   // note: test is kinda silly since kuromoji emits punctuation tokens.
@@ -345,8 +351,8 @@ public class TestJapaneseTokenizer extends BaseTokenStreamTestCase {
     final GraphvizFormatter gv2 = new GraphvizFormatter(ConnectionCosts.getInstance());
     final Analyzer analyzer = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        JapaneseTokenizer tokenizer = new JapaneseTokenizer(reader, readDict(), false, Mode.SEARCH);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        JapaneseTokenizer tokenizer = new JapaneseTokenizer(readDict(), false, Mode.SEARCH);
         tokenizer.setGraphvizFormatter(gv2);
         return new TokenStreamComponents(tokenizer, tokenizer);
       }
@@ -365,75 +371,81 @@ public class TestJapaneseTokenizer extends BaseTokenStreamTestCase {
   }
 
   private void assertReadings(String input, String... readings) throws IOException {
-    TokenStream ts = analyzer.tokenStream("ignored", input);
-    ReadingAttribute readingAtt = ts.addAttribute(ReadingAttribute.class);
-    ts.reset();
-    for(String reading : readings) {
-      assertTrue(ts.incrementToken());
-      assertEquals(reading, readingAtt.getReading());
+    try (TokenStream ts = analyzer.tokenStream("ignored", input)) {
+      ReadingAttribute readingAtt = ts.addAttribute(ReadingAttribute.class);
+      ts.reset();
+      for(String reading : readings) {
+        assertTrue(ts.incrementToken());
+        assertEquals(reading, readingAtt.getReading());
+      }
+      assertFalse(ts.incrementToken());
+      ts.end();
     }
-    assertFalse(ts.incrementToken());
-    ts.end();
   }
 
   private void assertPronunciations(String input, String... pronunciations) throws IOException {
-    TokenStream ts = analyzer.tokenStream("ignored", input);
-    ReadingAttribute readingAtt = ts.addAttribute(ReadingAttribute.class);
-    ts.reset();
-    for(String pronunciation : pronunciations) {
-      assertTrue(ts.incrementToken());
-      assertEquals(pronunciation, readingAtt.getPronunciation());
+    try (TokenStream ts = analyzer.tokenStream("ignored", input)) {
+      ReadingAttribute readingAtt = ts.addAttribute(ReadingAttribute.class);
+      ts.reset();
+      for(String pronunciation : pronunciations) {
+        assertTrue(ts.incrementToken());
+        assertEquals(pronunciation, readingAtt.getPronunciation());
+      }
+      assertFalse(ts.incrementToken());
+      ts.end();
     }
-    assertFalse(ts.incrementToken());
-    ts.end();
   }
   
   private void assertBaseForms(String input, String... baseForms) throws IOException {
-    TokenStream ts = analyzer.tokenStream("ignored", input);
-    BaseFormAttribute baseFormAtt = ts.addAttribute(BaseFormAttribute.class);
-    ts.reset();
-    for(String baseForm : baseForms) {
-      assertTrue(ts.incrementToken());
-      assertEquals(baseForm, baseFormAtt.getBaseForm());
+    try (TokenStream ts = analyzer.tokenStream("ignored", input)) {
+      BaseFormAttribute baseFormAtt = ts.addAttribute(BaseFormAttribute.class);
+      ts.reset();
+      for(String baseForm : baseForms) {
+        assertTrue(ts.incrementToken());
+        assertEquals(baseForm, baseFormAtt.getBaseForm());
+      }
+      assertFalse(ts.incrementToken());
+      ts.end();
     }
-    assertFalse(ts.incrementToken());
-    ts.end();
   }
 
   private void assertInflectionTypes(String input, String... inflectionTypes) throws IOException {
-    TokenStream ts = analyzer.tokenStream("ignored", input);
-    InflectionAttribute inflectionAtt = ts.addAttribute(InflectionAttribute.class);
-    ts.reset();
-    for(String inflectionType : inflectionTypes) {
-      assertTrue(ts.incrementToken());
-      assertEquals(inflectionType, inflectionAtt.getInflectionType());
+    try (TokenStream ts = analyzer.tokenStream("ignored", input)) {
+      InflectionAttribute inflectionAtt = ts.addAttribute(InflectionAttribute.class);
+      ts.reset();
+      for(String inflectionType : inflectionTypes) {
+        assertTrue(ts.incrementToken());
+        assertEquals(inflectionType, inflectionAtt.getInflectionType());
+      }
+      assertFalse(ts.incrementToken());
+      ts.end();
     }
-    assertFalse(ts.incrementToken());
-    ts.end();
   }
 
   private void assertInflectionForms(String input, String... inflectionForms) throws IOException {
-    TokenStream ts = analyzer.tokenStream("ignored", input);
-    InflectionAttribute inflectionAtt = ts.addAttribute(InflectionAttribute.class);
-    ts.reset();
-    for(String inflectionForm : inflectionForms) {
-      assertTrue(ts.incrementToken());
-      assertEquals(inflectionForm, inflectionAtt.getInflectionForm());
+    try (TokenStream ts = analyzer.tokenStream("ignored", input)) {
+      InflectionAttribute inflectionAtt = ts.addAttribute(InflectionAttribute.class);
+      ts.reset();
+      for(String inflectionForm : inflectionForms) {
+        assertTrue(ts.incrementToken());
+        assertEquals(inflectionForm, inflectionAtt.getInflectionForm());
+      }
+      assertFalse(ts.incrementToken());
+      ts.end();
     }
-    assertFalse(ts.incrementToken());
-    ts.end();
   }
   
   private void assertPartsOfSpeech(String input, String... partsOfSpeech) throws IOException {
-    TokenStream ts = analyzer.tokenStream("ignored", input);
-    PartOfSpeechAttribute partOfSpeechAtt = ts.addAttribute(PartOfSpeechAttribute.class);
-    ts.reset();
-    for(String partOfSpeech : partsOfSpeech) {
-      assertTrue(ts.incrementToken());
-      assertEquals(partOfSpeech, partOfSpeechAtt.getPartOfSpeech());
+    try (TokenStream ts = analyzer.tokenStream("ignored", input)) {
+      PartOfSpeechAttribute partOfSpeechAtt = ts.addAttribute(PartOfSpeechAttribute.class);
+      ts.reset();
+      for(String partOfSpeech : partsOfSpeech) {
+        assertTrue(ts.incrementToken());
+        assertEquals(partOfSpeech, partOfSpeechAtt.getPartOfSpeech());
+      }
+      assertFalse(ts.incrementToken());
+      ts.end();
     }
-    assertFalse(ts.incrementToken());
-    ts.end();
   }
   
   public void testReadings() throws Exception {
@@ -627,9 +639,11 @@ public class TestJapaneseTokenizer extends BaseTokenStreamTestCase {
 
     long totalStart = System.currentTimeMillis();
     for (int i = 0; i < numIterations; i++) {
-      final TokenStream ts = analyzer.tokenStream("ignored", line);
-      ts.reset();
-      while(ts.incrementToken());
+      try (TokenStream ts = analyzer.tokenStream("ignored", line)) {
+        ts.reset();
+        while(ts.incrementToken());
+        ts.end();
+      }
     }
     String[] sentences = line.split("、|。");
     if (VERBOSE) {
@@ -639,9 +653,11 @@ public class TestJapaneseTokenizer extends BaseTokenStreamTestCase {
     totalStart = System.currentTimeMillis();
     for (int i = 0; i < numIterations; i++) {
       for (String sentence: sentences) {
-        final TokenStream ts = analyzer.tokenStream("ignored", sentence);
-        ts.reset();
-        while(ts.incrementToken());
+        try (TokenStream ts = analyzer.tokenStream("ignored", sentence)) {
+          ts.reset();
+          while(ts.incrementToken());
+          ts.end();
+        }
       }
     }
     if (VERBOSE) {

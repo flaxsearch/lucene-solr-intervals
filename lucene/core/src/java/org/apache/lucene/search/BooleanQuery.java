@@ -61,12 +61,13 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
    * Default value is 1024.
    */
   public static void setMaxClauseCount(int maxClauseCount) {
-    if (maxClauseCount < 1)
+    if (maxClauseCount < 1) {
       throw new IllegalArgumentException("maxClauseCount must be >= 1");
+    }
     BooleanQuery.maxClauseCount = maxClauseCount;
   }
 
-  private ArrayList<BooleanClause> clauses = new ArrayList<BooleanClause>();
+  private ArrayList<BooleanClause> clauses = new ArrayList<>();
   private final boolean disableCoord;
 
   /** Constructs an empty boolean query. */
@@ -137,8 +138,9 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
    * @see #getMaxClauseCount()
    */
   public void add(BooleanClause clause) {
-    if (clauses.size() >= maxClauseCount)
+    if (clauses.size() >= maxClauseCount) {
       throw new TooManyClauses();
+    }
 
     clauses.add(clause);
   }
@@ -162,8 +164,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
    * Expert: the Weight for BooleanQuery, used to
    * normalize, score and explain these queries.
    *
-   * <p>NOTE: this API and implementation is subject to
-   * change suddenly in the next release.</p>
+   * @lucene.experimental
    */
   protected class BooleanWeight extends Weight {
     /** The Similarity implementation. */
@@ -176,12 +177,14 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
       throws IOException {
       this.similarity = searcher.getSimilarity();
       this.disableCoord = disableCoord;
-      weights = new ArrayList<Weight>(clauses.size());
+      weights = new ArrayList<>(clauses.size());
       for (int i = 0 ; i < clauses.size(); i++) {
         BooleanClause c = clauses.get(i);
         Weight w = c.getQuery().createWeight(searcher);
         weights.add(w);
-        if (!c.isProhibited()) maxCoord++;
+        if (!c.isProhibited()) {
+          maxCoord++;
+        }
       }
     }
 
@@ -194,9 +197,10 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
       for (int i = 0 ; i < weights.size(); i++) {
         // call sumOfSquaredWeights for all clauses in case of side effects
         float s = weights.get(i).getValueForNormalization();         // sum sub weights
-        if (!clauses.get(i).isProhibited())
+        if (!clauses.get(i).isProhibited()) {
           // only add to sum for non-prohibited clauses
           sum += s;
+        }
       }
 
       sum *= getBoost() * getBoost();             // boost each sub-weight
@@ -236,7 +240,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
       for (Iterator<Weight> wIter = weights.iterator(); wIter.hasNext();) {
         Weight w = wIter.next();
         BooleanClause c = cIter.next();
-        if (w.scorer(context, true, true, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs()) == null) {
+        if (w.scorer(context, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs()) == null) {
           if (c.isRequired()) {
             fail = true;
             Explanation r = new Explanation(0.0f, "no match on required clause (" + c.getQuery().toString() + ")");
@@ -257,8 +261,9 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
             sumExpl.addDetail(r);
             fail = true;
           }
-          if (c.getOccur() == Occur.SHOULD)
+          if (c.getOccur() == Occur.SHOULD) {
             shouldMatchCount++;
+          }
         } else if (c.isRequired()) {
           Explanation r = new Explanation(0.0f, "no match on required clause (" + c.getQuery().toString() + ")");
           r.addDetail(e);
@@ -298,16 +303,51 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
-        boolean topScorer, PostingFeatures flags, Bits acceptDocs)
-        throws IOException {
-      List<Scorer> required = new ArrayList<Scorer>();
-      List<Scorer> prohibited = new ArrayList<Scorer>();
-      List<Scorer> optional = new ArrayList<Scorer>();
+    public BulkScorer bulkScorer(AtomicReaderContext context, boolean scoreDocsInOrder,
+                                 PostingFeatures flags, Bits acceptDocs) throws IOException {
+
+      if (scoreDocsInOrder || minNrShouldMatch > 1) {
+        // TODO: (LUCENE-4872) in some cases BooleanScorer may be faster for minNrShouldMatch
+        // but the same is even true of pure conjunctions...
+        return super.bulkScorer(context, scoreDocsInOrder, flags, acceptDocs);
+      }
+
+      List<BulkScorer> prohibited = new ArrayList<BulkScorer>();
+      List<BulkScorer> optional = new ArrayList<BulkScorer>();
       Iterator<BooleanClause> cIter = clauses.iterator();
       for (Weight w  : weights) {
         BooleanClause c =  cIter.next();
-        Scorer subScorer = w.scorer(context, true, false, flags, acceptDocs);
+        BulkScorer subScorer = w.bulkScorer(context, false, flags, acceptDocs);
+        if (subScorer == null) {
+          if (c.isRequired()) {
+            return null;
+          }
+        } else if (c.isRequired()) {
+          // TODO: there are some cases where BooleanScorer
+          // would handle conjunctions faster than
+          // BooleanScorer2...
+          return super.bulkScorer(context, scoreDocsInOrder, flags, acceptDocs);
+        } else if (c.isProhibited()) {
+          prohibited.add(subScorer);
+        } else {
+          optional.add(subScorer);
+        }
+      }
+
+      // Check if we can and should return a BooleanScorer
+      return new BooleanScorer(this, disableCoord, minNrShouldMatch, optional, prohibited, maxCoord);
+    }
+
+    @Override
+    public Scorer scorer(AtomicReaderContext context, PostingFeatures flags, Bits acceptDocs)
+        throws IOException {
+      List<Scorer> required = new ArrayList<>();
+      List<Scorer> prohibited = new ArrayList<>();
+      List<Scorer> optional = new ArrayList<>();
+      Iterator<BooleanClause> cIter = clauses.iterator();
+      for (Weight w  : weights) {
+        BooleanClause c =  cIter.next();
+        Scorer subScorer = w.scorer(context, flags, acceptDocs);
         if (subScorer == null) {
           if (c.isRequired()) {
             return null;
@@ -321,21 +361,6 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
         }
       }
 
-      // NOTE: we could also use BooleanScorer, if we knew
-      // this BooleanQuery was embedded in another
-      // BooleanQuery that was also using BooleanScorer (ie,
-      // BooleanScorer can nest).  But this is hard to
-      // detect and we never do so today... (ie, we only
-      // return BooleanScorer for topScorer):
-
-      // Check if we can and should return a BooleanScorer
-      // TODO: (LUCENE-4872) in some cases BooleanScorer may be faster for minNrShouldMatch
-      // but the same is even true of pure conjunctions...
-      if (!scoreDocsInOrder && flags == PostingFeatures.DOCS_AND_FREQS && topScorer
-          && required.size() == 0 && minNrShouldMatch <= 1) {
-        return new BooleanScorer(this, disableCoord, minNrShouldMatch, optional, prohibited, maxCoord);
-      }
-      
       if (required.size() == 0 && optional.size() == 0) {
         // no required and optional clauses.
         return null;
@@ -367,9 +392,14 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
     
     @Override
     public boolean scoresDocsOutOfOrder() {
+      if (minNrShouldMatch > 1) {
+        // BS2 (in-order) will be used by scorer()
+        return false;
+      }
       for (BooleanClause c : clauses) {
         if (c.isRequired()) {
-          return false; // BS2 (in-order) will be used by scorer()
+          // BS2 (in-order) will be used by scorer()
+          return false;
         }
       }
       
@@ -422,8 +452,9 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
     }
     if (clone != null) {
       return clone;                               // some clauses rewrote
-    } else
+    } else {
       return this;                                // no clauses rewrote
+    }
   }
 
   // inherit javadoc
@@ -447,17 +478,18 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
   @Override
   public String toString(String field) {
     StringBuilder buffer = new StringBuilder();
-    boolean needParens=(getBoost() != 1.0) || (getMinimumNumberShouldMatch()>0) ;
+    boolean needParens= getBoost() != 1.0 || getMinimumNumberShouldMatch() > 0;
     if (needParens) {
       buffer.append("(");
     }
 
     for (int i = 0 ; i < clauses.size(); i++) {
       BooleanClause c = clauses.get(i);
-      if (c.isProhibited())
+      if (c.isProhibited()) {
         buffer.append("-");
-      else if (c.isRequired())
+      } else if (c.isRequired()) {
         buffer.append("+");
+      }
 
       Query subQuery = c.getQuery();
       if (subQuery != null) {
@@ -472,8 +504,9 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
         buffer.append("null");
       }
 
-      if (i != clauses.size()-1)
+      if (i != clauses.size()-1) {
         buffer.append(" ");
+      }
     }
 
     if (needParens) {
@@ -485,8 +518,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
       buffer.append(getMinimumNumberShouldMatch());
     }
 
-    if (getBoost() != 1.0f)
-    {
+    if (getBoost() != 1.0f) {
       buffer.append(ToStringUtils.boost(getBoost()));
     }
 
@@ -496,10 +528,11 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
   /** Returns true iff <code>o</code> is equal to this. */
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof BooleanQuery))
+    if (!(o instanceof BooleanQuery)) {
       return false;
+    }
     BooleanQuery other = (BooleanQuery)o;
-    return (this.getBoost() == other.getBoost())
+    return this.getBoost() == other.getBoost()
         && this.clauses.equals(other.clauses)
         && this.getMinimumNumberShouldMatch() == other.getMinimumNumberShouldMatch()
         && this.disableCoord == other.disableCoord;

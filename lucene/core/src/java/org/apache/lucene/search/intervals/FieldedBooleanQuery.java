@@ -32,13 +32,18 @@ public class FieldedBooleanQuery extends FieldedQuery {
     this.bq = bq;
   }
 
-  private static String extractFieldName(BooleanQuery bq) {
+  public FieldedBooleanQuery(String field, BooleanQuery bq) {
+    super(field);
+    this.bq = bq;
+  }
+
+  public static String extractFieldName(BooleanQuery bq) {
     String field = null;
     for (BooleanClause clause : bq.getClauses()) {
       FieldedQuery fq = toFieldedQuery(clause.getQuery());
       if (field == null)
         field = fq.getField();
-      if (!field.equals(fq.getField())) {
+      if (field != null && !field.equals(fq.getField())) {
         throw new IllegalArgumentException("Cannot create single-field boolean query from mixed-field subqueries, "
             + "found fields [" + field + "] and [" + fq.getField() + "]");
       }

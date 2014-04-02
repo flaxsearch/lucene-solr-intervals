@@ -98,17 +98,17 @@ public abstract class AnalyzerWrapper extends Analyzer {
   }
   
   @Override
-  protected final TokenStreamComponents createComponents(String fieldName, Reader aReader) {
-    return wrapComponents(fieldName, getWrappedAnalyzer(fieldName).createComponents(fieldName, aReader));
+  protected final TokenStreamComponents createComponents(String fieldName) {
+    return wrapComponents(fieldName, getWrappedAnalyzer(fieldName).createComponents(fieldName));
   }
 
   @Override
-  public final int getPositionIncrementGap(String fieldName) {
+  public int getPositionIncrementGap(String fieldName) {
     return getWrappedAnalyzer(fieldName).getPositionIncrementGap(fieldName);
   }
 
   @Override
-  public final int getOffsetGap(String fieldName) {
+  public int getOffsetGap(String fieldName) {
     return getWrappedAnalyzer(fieldName).getOffsetGap(fieldName);
   }
 

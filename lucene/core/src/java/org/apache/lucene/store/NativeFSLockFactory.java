@@ -107,7 +107,7 @@ public class NativeFSLockFactory extends FSLockFactory {
       // NOTE: makeLock fixes the lock name by prefixing it w/ lockPrefix.
       // Therefore it should be called before the code block next which prefixes
       // the given name.
-      makeLock(lockName).release();
+      makeLock(lockName).close();
 
       if (lockPrefix != null) {
         lockName = lockPrefix + "-" + lockName;
@@ -146,7 +146,7 @@ class NativeFSLock extends Lock {
    * (same FileChannel instance or not), so we may want to 
    * change this when Lucene moves to Java 1.6.
    */
-  private static HashSet<String> LOCK_HELD = new HashSet<String>();
+  private static HashSet<String> LOCK_HELD = new HashSet<>();
 
   public NativeFSLock(File lockDir, String lockFileName) {
     this.lockDir = lockDir;
@@ -259,7 +259,7 @@ class NativeFSLock extends Lock {
   }
 
   @Override
-  public synchronized void release() throws IOException {
+  public synchronized void close() throws IOException {
     if (lockExists()) {
       try {
         lock.release();
@@ -298,7 +298,7 @@ class NativeFSLock extends Lock {
         }
       } finally {
         if (obtained) {
-          release();
+          close();
         }
       }
     }
@@ -317,7 +317,7 @@ class NativeFSLock extends Lock {
     // Try to obtain and release (if was locked) the lock
     try {
       boolean obtained = obtain();
-      if (obtained) release();
+      if (obtained) close();
       return !obtained;
     } catch (IOException ioe) {
       return false;

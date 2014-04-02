@@ -72,8 +72,8 @@ public class ParseBooleanFieldUpdateProcessorFactory extends FieldMutatingUpdate
   private static final String FALSE_VALUES_PARAM = "falseValue";
   private static final String CASE_SENSITIVE_PARAM = "caseSensitive";
   
-  private Set<String> trueValues = new HashSet<String>(Arrays.asList(new String[] { "true" }));
-  private Set<String> falseValues = new HashSet<String>(Arrays.asList(new String[] { "false" }));
+  private Set<String> trueValues = new HashSet<>(Arrays.asList(new String[] { "true" }));
+  private Set<String> falseValues = new HashSet<>(Arrays.asList(new String[] { "false" }));
   private boolean caseSensitive = false;
 
   @Override
@@ -112,7 +112,7 @@ public class ParseBooleanFieldUpdateProcessorFactory extends FieldMutatingUpdate
       }
     }
 
-    Collection<String> trueValuesParam = oneOrMany(args, TRUE_VALUES_PARAM);
+    Collection<String> trueValuesParam = args.removeConfigArgs(TRUE_VALUES_PARAM);
     if ( ! trueValuesParam.isEmpty()) {
       trueValues.clear();
       for (String trueVal : trueValuesParam) {
@@ -120,7 +120,7 @@ public class ParseBooleanFieldUpdateProcessorFactory extends FieldMutatingUpdate
       }
     }
 
-    Collection<String> falseValuesParam = oneOrMany(args, FALSE_VALUES_PARAM);
+    Collection<String> falseValuesParam = args.removeConfigArgs(FALSE_VALUES_PARAM);
     if ( ! falseValuesParam.isEmpty()) {
       falseValues.clear();
       for (String val : falseValuesParam) {

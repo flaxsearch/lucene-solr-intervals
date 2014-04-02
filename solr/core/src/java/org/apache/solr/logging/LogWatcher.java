@@ -152,7 +152,7 @@ public abstract class LogWatcher<E> {
       slf4jImpl = StaticLoggerBinder.getSingleton().getLoggerFactoryClassStr();
       log.info("SLF4J impl is " + slf4jImpl);
       if (fname == null) {
-        if (slf4jImpl.indexOf("Log4j") > 0) {
+        if ("org.slf4j.impl.Log4jLoggerFactory".equals(slf4jImpl)) {
           fname = "Log4j";
         } else if (slf4jImpl.indexOf("JDK") > 0) {
           fname = "JUL";
@@ -161,6 +161,9 @@ public abstract class LogWatcher<E> {
     }
     catch (Throwable e) {
       log.warn("Unable to read SLF4J version.  LogWatcher will be disabled: " + e);
+      if (e instanceof OutOfMemoryError) {
+        throw (OutOfMemoryError) e;
+      }
       return null;
     }
 
@@ -179,6 +182,9 @@ public abstract class LogWatcher<E> {
     }
     catch (Throwable e) {
       log.warn("Unable to load LogWatcher {}: {}", fname, e);
+      if (e instanceof OutOfMemoryError) {
+        throw (OutOfMemoryError) e;
+      }
     }
 
     return null;

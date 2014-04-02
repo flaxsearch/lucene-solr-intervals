@@ -16,12 +16,6 @@
  */
 package org.apache.lucene.classification;
 
-import java.io.IOException;
-import java.io.StringReader;
-import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -29,17 +23,26 @@ import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.StorableField;
 import org.apache.lucene.index.StoredDocument;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.MatchAllDocsQuery;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.PositiveIntOutputs;
 import org.apache.lucene.util.fst.Util;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 /**
  * A perceptron (see <code>http://en.wikipedia.org/wiki/Perceptron</code>) based
@@ -91,20 +94,19 @@ public class BooleanPerceptronClassifier implements Classifier<Boolean> {
       throw new IOException("You must first call Classifier#train");
     }
     Long output = 0l;
-    TokenStream tokenStream = analyzer.tokenStream(textFieldName,
-        new StringReader(text));
-    CharTermAttribute charTermAttribute = tokenStream
+    try (TokenStream tokenStream = analyzer.tokenStream(textFieldName, text)) {
+      CharTermAttribute charTermAttribute = tokenStream
         .addAttribute(CharTermAttribute.class);
-    tokenStream.reset();
-    while (tokenStream.incrementToken()) {
-      String s = charTermAttribute.toString();
-      Long d = Util.get(fst, new BytesRef(s));
-      if (d != null) {
-        output += d;
+      tokenStream.reset();
+      while (tokenStream.incrementToken()) {
+        String s = charTermAttribute.toString();
+        Long d = Util.get(fst, new BytesRef(s));
+        if (d != null) {
+          output += d;
+        }
       }
+      tokenStream.end();
     }
-    tokenStream.end();
-    tokenStream.close();
 
     return new ClassificationResult<>(output >= threshold, output.doubleValue());
   }
@@ -114,7 +116,16 @@ public class BooleanPerceptronClassifier implements Classifier<Boolean> {
    */
   @Override
   public void train(AtomicReader atomicReader, String textFieldName,
-      String classFieldName, Analyzer analyzer) throws IOException {
+                    String classFieldName, Analyzer analyzer) throws IOException {
+    train(atomicReader, textFieldName, classFieldName, analyzer, null);
+  }
+
+  /**
+   * {@inheritDoc}
+   */
+  @Override
+  public void train(AtomicReader atomicReader, String textFieldName,
+      String classFieldName, Analyzer analyzer, Query query) throws IOException {
     this.textTerms = MultiFields.getTerms(atomicReader, textFieldName);
 
     if (textTerms == null) {
@@ -152,8 +163,13 @@ public class BooleanPerceptronClassifier implements Classifier<Boolean> {
 
     int batchCount = 0;
 
-    // do a *:* search and use stored field values
-    for (ScoreDoc scoreDoc : indexSearcher.search(new MatchAllDocsQuery(),
+    BooleanQuery q = new BooleanQuery();
+    q.add(new BooleanClause(new WildcardQuery(new Term(classFieldName, "*")), BooleanClause.Occur.MUST));
+    if (query != null) {
+      q.add(new BooleanClause(query, BooleanClause.Occur.MUST));
+    }
+    // run the search and use stored field values
+    for (ScoreDoc scoreDoc : indexSearcher.search(q,
         Integer.MAX_VALUE).scoreDocs) {
       StoredDocument doc = indexSearcher.doc(scoreDoc.doc);
 
@@ -174,6 +190,11 @@ public class BooleanPerceptronClassifier implements Classifier<Boolean> {
       batchCount++;
     }
     weights.clear(); // free memory while waiting for GC
+  }
+
+  @Override
+  public void train(AtomicReader atomicReader, String[] textFieldNames, String classFieldName, Analyzer analyzer, Query query) throws IOException {
+    throw new IOException("training with multiple fields not supported by boolean perceptron classifier");
   }
 
   private TermsEnum updateWeights(AtomicReader atomicReader, TermsEnum reuse,

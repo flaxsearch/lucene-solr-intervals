@@ -51,10 +51,10 @@ final class DocumentsWriterFlushControl  {
   private int numDocsSinceStalled = 0; // only with assert
   final AtomicBoolean flushDeletes = new AtomicBoolean(false);
   private boolean fullFlush = false;
-  private final Queue<DocumentsWriterPerThread> flushQueue = new LinkedList<DocumentsWriterPerThread>();
+  private final Queue<DocumentsWriterPerThread> flushQueue = new LinkedList<>();
   // only for safety reasons if a DWPT is close to the RAM limit
-  private final Queue<BlockedFlush> blockedFlushes = new LinkedList<BlockedFlush>();
-  private final IdentityHashMap<DocumentsWriterPerThread, Long> flushingWriters = new IdentityHashMap<DocumentsWriterPerThread, Long>();
+  private final Queue<BlockedFlush> blockedFlushes = new LinkedList<>();
+  private final IdentityHashMap<DocumentsWriterPerThread, Long> flushingWriters = new IdentityHashMap<>();
 
 
   double maxConfiguredRamBuffer = 0;
@@ -68,10 +68,10 @@ final class DocumentsWriterFlushControl  {
   private boolean closed = false;
   private final DocumentsWriter documentsWriter;
   private final LiveIndexWriterConfig config;
-  private final BufferedDeletesStream bufferedDeletesStream;
+  private final BufferedUpdatesStream bufferedUpdatesStream;
   private final InfoStream infoStream;
 
-  DocumentsWriterFlushControl(DocumentsWriter documentsWriter, LiveIndexWriterConfig config, BufferedDeletesStream bufferedDeletesStream) {
+  DocumentsWriterFlushControl(DocumentsWriter documentsWriter, LiveIndexWriterConfig config, BufferedUpdatesStream bufferedUpdatesStream) {
     this.infoStream = config.getInfoStream();
     this.stallControl = new DocumentsWriterStallControl();
     this.perThreadPool = documentsWriter.perThreadPool;
@@ -79,7 +79,7 @@ final class DocumentsWriterFlushControl  {
     this.config = config;
     this.hardMaxBytesPerDWPT = config.getRAMPerThreadHardLimitMB() * 1024 * 1024;
     this.documentsWriter = documentsWriter;
-    this.bufferedDeletesStream = bufferedDeletesStream;
+    this.bufferedUpdatesStream = bufferedUpdatesStream;
   }
 
   public synchronized long activeBytes() {
@@ -418,18 +418,18 @@ final class DocumentsWriterFlushControl  {
    * Returns the number of delete terms in the global pool
    */
   public int getNumGlobalTermDeletes() {
-    return documentsWriter.deleteQueue.numGlobalTermDeletes() + bufferedDeletesStream.numTerms();
+    return documentsWriter.deleteQueue.numGlobalTermDeletes() + bufferedUpdatesStream.numTerms();
   }
   
   public long getDeleteBytesUsed() {
-    return documentsWriter.deleteQueue.bytesUsed() + bufferedDeletesStream.bytesUsed();
+    return documentsWriter.deleteQueue.bytesUsed() + bufferedUpdatesStream.bytesUsed();
   }
 
   synchronized int numFlushingDWPT() {
     return flushingWriters.size();
   }
   
-  public boolean doApplyAllDeletes() {
+  public boolean getAndResetApplyAllDeletes() {
     return flushDeletes.getAndSet(false);
   }
 
@@ -531,7 +531,7 @@ final class DocumentsWriterFlushControl  {
     return true;
   }
 
-  private final List<DocumentsWriterPerThread> fullFlushBuffer = new ArrayList<DocumentsWriterPerThread>();
+  private final List<DocumentsWriterPerThread> fullFlushBuffer = new ArrayList<>();
 
   void addFlushableState(ThreadState perThread) {
     if (infoStream.isEnabled("DWFC")) {

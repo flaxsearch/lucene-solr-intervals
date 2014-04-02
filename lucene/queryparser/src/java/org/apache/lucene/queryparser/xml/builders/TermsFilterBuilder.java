@@ -50,12 +50,11 @@ public class TermsFilterBuilder implements FilterBuilder {
     */
   @Override
   public Filter getFilter(Element e) throws ParserException {
-    List<BytesRef> terms = new ArrayList<BytesRef>();
+    List<BytesRef> terms = new ArrayList<>();
     String text = DOMUtils.getNonBlankTextOrFail(e);
     String fieldName = DOMUtils.getAttributeWithInheritanceOrFail(e, "fieldName");
 
-    try {
-      TokenStream ts = analyzer.tokenStream(fieldName, text);
+    try (TokenStream ts = analyzer.tokenStream(fieldName, text)) {
       TermToBytesRefAttribute termAtt = ts.addAttribute(TermToBytesRefAttribute.class);
       BytesRef bytes = termAtt.getBytesRef();
       ts.reset();
@@ -64,7 +63,6 @@ public class TermsFilterBuilder implements FilterBuilder {
         terms.add(BytesRef.deepCopyOf(bytes));
       }
       ts.end();
-      ts.close();
     }
     catch (IOException ioe) {
       throw new RuntimeException("Error constructing terms from index:" + ioe);

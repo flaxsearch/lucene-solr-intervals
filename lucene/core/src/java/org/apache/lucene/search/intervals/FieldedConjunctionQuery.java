@@ -1,12 +1,16 @@
 package org.apache.lucene.search.intervals;
 
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FieldedQuery;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Weight;
 
 import java.io.IOException;
+import java.util.Set;
 
 /**
  * Copyright (c) 2013 Lemur Consulting Ltd.
@@ -42,7 +46,20 @@ public class FieldedConjunctionQuery extends FieldedQuery {
 
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
-    return bq.rewrite(reader);
+    Query rewritten = bq.rewrite(reader);
+    if (rewritten == bq)
+      return this;
+    return FieldedBooleanQuery.toFieldedQuery(rewritten);
+  }
+
+  @Override
+  public Weight createWeight(IndexSearcher searcher) throws IOException {
+    return bq.createWeight(searcher);
+  }
+
+  @Override
+  public void extractTerms(Set<Term> terms) {
+    bq.extractTerms(terms);
   }
 
   @Override

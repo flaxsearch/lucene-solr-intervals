@@ -25,7 +25,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesFormat;
-import org.apache.lucene.codecs.lucene45.Lucene45Codec;
+import org.apache.lucene.codecs.lucene46.Lucene46Codec;
 import org.apache.lucene.document.BinaryDocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -46,7 +46,8 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.TestUtil;
+import org.apache.lucene.util.TestUtil;
 
 /**
  * Basic tests of PerFieldDocValuesFormat
@@ -67,7 +68,7 @@ public class TestPerFieldDocValuesFormat extends BaseDocValuesFormatTestCase {
 
   @Override
   protected boolean codecAcceptsHugeBinaryValues(String field) {
-    return _TestUtil.fieldSupportsHugeBinaryDocValues(field);
+    return TestUtil.fieldSupportsHugeBinaryDocValues(field);
   }
   
   // just a simple trivial test
@@ -81,7 +82,7 @@ public class TestPerFieldDocValuesFormat extends BaseDocValuesFormatTestCase {
     IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
     final DocValuesFormat fast = DocValuesFormat.forName("Lucene45");
     final DocValuesFormat slow = DocValuesFormat.forName("SimpleText");
-    iwc.setCodec(new Lucene45Codec() {
+    iwc.setCodec(new Lucene46Codec() {
       @Override
       public DocValuesFormat getDocValuesFormatForField(String field) {
         if ("dv1".equals(field)) {

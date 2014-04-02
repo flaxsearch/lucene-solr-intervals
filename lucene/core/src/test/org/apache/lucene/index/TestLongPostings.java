@@ -33,7 +33,8 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.FixedBitSet;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.TestUtil;
+import org.apache.lucene.util.TestUtil;
 
 @SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 public class TestLongPostings extends LuceneTestCase {
@@ -43,34 +44,33 @@ public class TestLongPostings extends LuceneTestCase {
   private String getRandomTerm(String other) throws IOException {
     Analyzer a = new MockAnalyzer(random());
     while(true) {
-      String s = _TestUtil.randomRealisticUnicodeString(random());
+      String s = TestUtil.randomRealisticUnicodeString(random());
       if (other != null && s.equals(other)) {
         continue;
       }
-      final TokenStream ts = a.tokenStream("foo", s);
-      final TermToBytesRefAttribute termAtt = ts.getAttribute(TermToBytesRefAttribute.class);
-      final BytesRef termBytes = termAtt.getBytesRef();
-      ts.reset();
+      try (TokenStream ts = a.tokenStream("foo", s)) {
+        final TermToBytesRefAttribute termAtt = ts.getAttribute(TermToBytesRefAttribute.class);
+        final BytesRef termBytes = termAtt.getBytesRef();
+        ts.reset();
 
-      int count = 0;
-      boolean changed = false;
+        int count = 0;
+        boolean changed = false;
 
-      while(ts.incrementToken()) {
-        termAtt.fillBytesRef();
-        if (count == 0 && !termBytes.utf8ToString().equals(s)) {
-          // The value was changed during analysis.  Keep iterating so the
-          // tokenStream is exhausted.
-          changed = true;
+        while(ts.incrementToken()) {
+          termAtt.fillBytesRef();
+          if (count == 0 && !termBytes.utf8ToString().equals(s)) {
+            // The value was changed during analysis.  Keep iterating so the
+            // tokenStream is exhausted.
+            changed = true;
+          }
+          count++;
         }
-        count++;
-      }
 
-      ts.end();
-      ts.close();
-
-      // Did we iterate just once and the value was unchanged?
-      if (!changed && count == 1) {
-        return s;
+        ts.end();
+        // Did we iterate just once and the value was unchanged?
+        if (!changed && count == 1) {
+          return s;
+        }
       }
     }
   }
@@ -78,7 +78,7 @@ public class TestLongPostings extends LuceneTestCase {
   public void testLongPostings() throws Exception {
     // Don't use _TestUtil.getTempDir so that we own the
     // randomness (ie same seed will point to same dir):
-    Directory dir = newFSDirectory(_TestUtil.getTempDir("longpostings" + "." + random().nextLong()));
+    Directory dir = newFSDirectory(TestUtil.getTempDir("longpostings" + "." + random().nextLong()));
 
     final int NUM_DOCS = atLeast(2000);
 
@@ -120,7 +120,7 @@ public class TestLongPostings extends LuceneTestCase {
       final Document doc = new Document();
       String s = isS1.get(idx) ? s1 : s2;
       final Field f = newTextField("field", s, Field.Store.NO);
-      final int count = _TestUtil.nextInt(random(), 1, 4);
+      final int count = TestUtil.nextInt(random(), 1, 4);
       for(int ct=0;ct<count;ct++) {
         doc.add(f);
       }
@@ -220,7 +220,7 @@ public class TestLongPostings extends LuceneTestCase {
           if (docID == -1) {
             targetDocID = random().nextInt(NUM_DOCS+1);
           } else {
-            targetDocID = docID + _TestUtil.nextInt(random(), 1, NUM_DOCS - docID);
+            targetDocID = docID + TestUtil.nextInt(random(), 1, NUM_DOCS - docID);
           }
           if (VERBOSE) {
             System.out.println("TEST: docID=" + docID + "; do advance(" + targetDocID + ")");
@@ -275,7 +275,7 @@ public class TestLongPostings extends LuceneTestCase {
   public void doTestLongPostingsNoPositions(IndexOptions options) throws Exception {
     // Don't use _TestUtil.getTempDir so that we own the
     // randomness (ie same seed will point to same dir):
-    Directory dir = newFSDirectory(_TestUtil.getTempDir("longpostings" + "." + random().nextLong()));
+    Directory dir = newFSDirectory(TestUtil.getTempDir("longpostings" + "." + random().nextLong()));
 
     final int NUM_DOCS = atLeast(2000);
 
@@ -320,7 +320,7 @@ public class TestLongPostings extends LuceneTestCase {
         final Document doc = new Document();
         String s = isS1.get(idx) ? s1 : s2;
         final Field f = newField("field", s, ft);
-        final int count = _TestUtil.nextInt(random(), 1, 4);
+        final int count = TestUtil.nextInt(random(), 1, 4);
         for(int ct=0;ct<count;ct++) {
           doc.add(f);
         }
@@ -375,10 +375,10 @@ public class TestLongPostings extends LuceneTestCase {
       final DocsEnum postings;
 
       if (options == IndexOptions.DOCS_ONLY) {
-        docs = _TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, DocsEnum.FLAG_NONE);
+        docs = TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, DocsEnum.FLAG_NONE);
         postings = null;
       } else {
-        docs = postings = _TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, DocsEnum.FLAG_FREQS);
+        docs = postings = TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, DocsEnum.FLAG_FREQS);
         assert postings != null;
       }
       assert docs != null;
@@ -421,7 +421,7 @@ public class TestLongPostings extends LuceneTestCase {
           if (docID == -1) {
             targetDocID = random().nextInt(NUM_DOCS+1);
           } else {
-            targetDocID = docID + _TestUtil.nextInt(random(), 1, NUM_DOCS - docID);
+            targetDocID = docID + TestUtil.nextInt(random(), 1, NUM_DOCS - docID);
           }
           if (VERBOSE) {
             System.out.println("TEST: docID=" + docID + "; do advance(" + targetDocID + ")");

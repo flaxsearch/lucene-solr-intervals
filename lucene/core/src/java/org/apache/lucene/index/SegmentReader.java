@@ -31,11 +31,11 @@ import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.TermVectorsReader;
 import org.apache.lucene.index.FieldInfo.DocValuesType;
 import org.apache.lucene.search.FieldCache;
+import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.CloseableThreadLocal;
-import org.apache.lucene.util.RefCount;
 
 /**
  * IndexReader implementation over a single segment. 
@@ -46,7 +46,7 @@ import org.apache.lucene.util.RefCount;
  */
 public final class SegmentReader extends AtomicReader {
 
-  private final SegmentInfoPerCommit si;
+  private final SegmentCommitInfo si;
   private final Bits liveDocs;
 
   // Normally set to si.docCount - si.delDocCount, unless we
@@ -55,34 +55,46 @@ public final class SegmentReader extends AtomicReader {
   private final int numDocs;
 
   final SegmentCoreReaders core;
-
+  final SegmentDocValues segDocValues;
+  
   final CloseableThreadLocal<Map<String,Object>> docValuesLocal = new CloseableThreadLocal<Map<String,Object>>() {
     @Override
     protected Map<String,Object> initialValue() {
-      return new HashMap<String,Object>();
+      return new HashMap<>();
     }
   };
 
   final CloseableThreadLocal<Map<String,Bits>> docsWithFieldLocal = new CloseableThreadLocal<Map<String,Bits>>() {
     @Override
     protected Map<String,Bits> initialValue() {
-      return new HashMap<String,Bits>();
+      return new HashMap<>();
     }
   };
 
-  final Map<String,DocValuesProducer> dvProducers = new HashMap<String,DocValuesProducer>();
-  final Map<Long,RefCount<DocValuesProducer>> genDVProducers = new HashMap<Long,RefCount<DocValuesProducer>>();
+  final Map<String,DocValuesProducer> dvProducers = new HashMap<>();
+  
+  final FieldInfos fieldInfos;
 
+  private final List<Long> dvGens = new ArrayList<>();
+  
   /**
    * Constructs a new SegmentReader with a new core.
    * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    */
   // TODO: why is this public?
-  public SegmentReader(SegmentInfoPerCommit si, IOContext context) throws IOException {
+  public SegmentReader(SegmentCommitInfo si, IOContext context) throws IOException {
     this.si = si;
+    // TODO if the segment uses CFS, we may open the CFS file twice: once for
+    // reading the FieldInfos (if they are not gen'd) and second time by
+    // SegmentCoreReaders. We can open the CFS here and pass to SCR, but then it
+    // results in less readable code (resource not closed where it was opened).
+    // Best if we could somehow read FieldInfos in SCR but not keep it there, but
+    // constructors don't allow returning two things...
+    fieldInfos = readFieldInfos(si);
     core = new SegmentCoreReaders(this, si.info.dir, si, context);
-
+    segDocValues = new SegmentDocValues();
+    
     boolean success = false;
     final Codec codec = si.info.getCodec();
     try {
@@ -95,28 +107,8 @@ public final class SegmentReader extends AtomicReader {
       }
       numDocs = si.info.getDocCount() - si.getDelCount();
       
-      if (core.fieldInfos.hasDocValues()) {
-        final Directory dir = core.cfsReader != null ? core.cfsReader : si.info.dir;
-        final DocValuesFormat dvFormat = codec.docValuesFormat();
-        // initialize the per generation numericDVProducers and put the correct
-        // DVProducer for each field
-        final Map<Long,List<FieldInfo>> genInfos = getGenInfos(si);
-        
-//        System.out.println("[" + Thread.currentThread().getName() + "] SR.init: new reader: " + si + "; gens=" + genInfos.keySet());
-
-        for (Entry<Long,List<FieldInfo>> e : genInfos.entrySet()) {
-          Long gen = e.getKey();
-          List<FieldInfo> infos = e.getValue();
-          RefCount<DocValuesProducer> dvp = genDVProducers.get(gen);
-          if (dvp == null) {
-            dvp = newDocValuesProducer(si, context, dir, dvFormat, gen, infos);
-            assert dvp != null;
-            genDVProducers.put(gen, dvp);
-          }
-          for (FieldInfo fi : infos) {
-            dvProducers.put(fi.name, dvp.get());
-          }
-        }
+      if (fieldInfos.hasDocValues()) {
+        initDocValuesProducers(codec);
       }
 
       success = true;
@@ -135,7 +127,7 @@ public final class SegmentReader extends AtomicReader {
   /** Create new SegmentReader sharing core from a previous
    *  SegmentReader and loading new live docs from a new
    *  deletes file.  Used by openIfChanged. */
-  SegmentReader(SegmentInfoPerCommit si, SegmentReader sr) throws IOException {
+  SegmentReader(SegmentCommitInfo si, SegmentReader sr) throws IOException {
     this(si, sr,
          si.info.getCodec().liveDocsFormat().readLiveDocs(si.info.dir, si, IOContext.READONCE),
          si.info.getDocCount() - si.getDelCount());
@@ -145,48 +137,28 @@ public final class SegmentReader extends AtomicReader {
    *  SegmentReader and using the provided in-memory
    *  liveDocs.  Used by IndexWriter to provide a new NRT
    *  reader */
-  SegmentReader(SegmentInfoPerCommit si, SegmentReader sr, Bits liveDocs, int numDocs) throws IOException {
+  SegmentReader(SegmentCommitInfo si, SegmentReader sr, Bits liveDocs, int numDocs) throws IOException {
     this.si = si;
     this.liveDocs = liveDocs;
     this.numDocs = numDocs;
     this.core = sr.core;
     core.incRef();
+    this.segDocValues = sr.segDocValues;
     
 //    System.out.println("[" + Thread.currentThread().getName() + "] SR.init: sharing reader: " + sr + " for gens=" + sr.genDVProducers.keySet());
     
     // increment refCount of DocValuesProducers that are used by this reader
     boolean success = false;
     try {
-      if (core.fieldInfos.hasDocValues()) {
-        final Codec codec = si.info.getCodec();
-        final Directory dir = core.cfsReader != null ? core.cfsReader : si.info.dir;
-        
-        final DocValuesFormat dvFormat = codec.docValuesFormat();
-        final Map<Long,List<FieldInfo>> genInfos = getGenInfos(si);
-        
-        for (Entry<Long,List<FieldInfo>> e : genInfos.entrySet()) {
-          Long gen = e.getKey();
-          List<FieldInfo> infos = e.getValue();
-          RefCount<DocValuesProducer> dvp = genDVProducers.get(gen);
-          if (dvp == null) {
-            // check if this DVP gen is used by the given reader
-            dvp = sr.genDVProducers.get(gen);
-            if (dvp != null) {
-              // gen used by given reader, incRef its DVP
-              dvp.incRef();
-//              System.out.println("[" + Thread.currentThread().getName() + "] SR.init: sharing DVP for gen=" + gen + " refCount=" + dvp.getRefCount());
-            } else {
-              // this gen is not used by given reader, initialize a new one
-              dvp = newDocValuesProducer(si, IOContext.READ, dir, dvFormat, gen, infos);
-//              System.out.println("[" + Thread.currentThread().getName() + "] SR.init: new DVP for gen=" + gen + " refCount=" + dvp.getRefCount());
-            }
-            assert dvp != null;
-            genDVProducers.put(gen, dvp);
-          }
-          for (FieldInfo fi : infos) {
-            dvProducers.put(fi.name, dvp.get());
-          }
-        }
+      final Codec codec = si.info.getCodec();
+      if (si.getFieldInfosGen() == -1) {
+        fieldInfos = sr.fieldInfos;
+      } else {
+        fieldInfos = readFieldInfos(si);
+      }
+      
+      if (fieldInfos.hasDocValues()) {
+        initDocValuesProducers(codec);
       }
       success = true;
     } finally {
@@ -196,41 +168,73 @@ public final class SegmentReader extends AtomicReader {
     }
   }
 
+  // initialize the per-field DocValuesProducer
+  private void initDocValuesProducers(Codec codec) throws IOException {
+    final Directory dir = core.cfsReader != null ? core.cfsReader : si.info.dir;
+    final DocValuesFormat dvFormat = codec.docValuesFormat();
+    final Map<Long,List<FieldInfo>> genInfos = getGenInfos();
+    
+//      System.out.println("[" + Thread.currentThread().getName() + "] SR.initDocValuesProducers: segInfo=" + si + "; gens=" + genInfos.keySet());
+    
+    for (Entry<Long,List<FieldInfo>> e : genInfos.entrySet()) {
+      Long gen = e.getKey();
+      List<FieldInfo> infos = e.getValue();
+      DocValuesProducer dvp = segDocValues.getDocValuesProducer(gen, si, IOContext.READ, dir, dvFormat, infos);
+      for (FieldInfo fi : infos) {
+        dvProducers.put(fi.name, dvp);
+      }
+    }
+    
+    dvGens.addAll(genInfos.keySet());
+  }
+  
+  /**
+   * Reads the most recent {@link FieldInfos} of the given segment info.
+   * 
+   * @lucene.internal
+   */
+  static FieldInfos readFieldInfos(SegmentCommitInfo info) throws IOException {
+    final Directory dir;
+    final boolean closeDir;
+    if (info.getFieldInfosGen() == -1 && info.info.getUseCompoundFile()) {
+      // no fieldInfos gen and segment uses a compound file
+      dir = new CompoundFileDirectory(info.info.dir,
+          IndexFileNames.segmentFileName(info.info.name, "", IndexFileNames.COMPOUND_FILE_EXTENSION),
+          IOContext.READONCE,
+          false);
+      closeDir = true;
+    } else {
+      // gen'd FIS are read outside CFS, or the segment doesn't use a compound file
+      dir = info.info.dir;
+      closeDir = false;
+    }
+    
+    try {
+      final String segmentSuffix = info.getFieldInfosGen() == -1 ? "" : Long.toString(info.getFieldInfosGen(), Character.MAX_RADIX);
+      return info.info.getCodec().fieldInfosFormat().getFieldInfosReader().read(dir, info.info.name, segmentSuffix, IOContext.READONCE);
+    } finally {
+      if (closeDir) {
+        dir.close();
+      }
+    }
+  }
+  
   // returns a gen->List<FieldInfo> mapping. Fields without DV updates have gen=-1
-  private Map<Long,List<FieldInfo>> getGenInfos(SegmentInfoPerCommit si) {
-    final Map<Long,List<FieldInfo>> genInfos = new HashMap<Long,List<FieldInfo>>();
-    for (FieldInfo fi : core.fieldInfos) {
+  private Map<Long,List<FieldInfo>> getGenInfos() {
+    final Map<Long,List<FieldInfo>> genInfos = new HashMap<>();
+    for (FieldInfo fi : fieldInfos) {
       if (fi.getDocValuesType() == null) {
         continue;
       }
-      long gen = si.getDocValuesGen(fi.number);
+      long gen = fi.getDocValuesGen();
       List<FieldInfo> infos = genInfos.get(gen);
       if (infos == null) {
-        infos = new ArrayList<FieldInfo>();
+        infos = new ArrayList<>();
         genInfos.put(gen, infos);
       }
       infos.add(fi);
     }
     return genInfos;
-  }
-
-  private RefCount<DocValuesProducer> newDocValuesProducer(SegmentInfoPerCommit si, IOContext context, Directory dir, 
-      DocValuesFormat dvFormat, Long gen, List<FieldInfo> infos) throws IOException {
-    Directory dvDir = dir;
-    String segmentSuffix = "";
-    if (gen.longValue() != -1) {
-      dvDir = si.info.dir; // gen'd files are written outside CFS, so use SegInfo directory
-      segmentSuffix = Long.toString(gen.longValue(), Character.MAX_RADIX);
-    }
-
-    // set SegmentReadState to list only the fields that are relevant to that gen
-    SegmentReadState srs = new SegmentReadState(dvDir, si.info, new FieldInfos(infos.toArray(new FieldInfo[infos.size()])), context, segmentSuffix);
-    return new RefCount<DocValuesProducer>(dvFormat.fieldsProducer(srs)) {
-      @Override
-      protected void release() throws IOException {
-        object.close();
-      }
-    };
   }
 
   @Override
@@ -245,29 +249,17 @@ public final class SegmentReader extends AtomicReader {
     try {
       core.decRef();
     } finally {
-      Throwable t = null;
-      for (RefCount<DocValuesProducer> dvp : genDVProducers.values()) {
-        try {
-          dvp.decRef();
-        } catch (Throwable th) {
-          if (t != null) {
-            t = th;
-          }
-        }
-      }
-      if (t != null) {
-        if (t instanceof IOException) throw (IOException) t;
-        if (t instanceof RuntimeException) throw (RuntimeException) t;
-        if (t instanceof Error) throw (Error) t;
-        throw new RuntimeException(t);
-      }
+      dvProducers.clear();
+      docValuesLocal.close();
+      docsWithFieldLocal.close();
+      segDocValues.decRef(dvGens);
     }
   }
 
   @Override
   public FieldInfos getFieldInfos() {
     ensureOpen();
-    return core.fieldInfos;
+    return fieldInfos;
   }
 
   /** Expert: retrieve thread-private {@link
@@ -343,7 +335,7 @@ public final class SegmentReader extends AtomicReader {
   /**
    * Return the SegmentInfoPerCommit of the segment this reader is reading.
    */
-  public SegmentInfoPerCommit getSegmentInfo() {
+  public SegmentCommitInfo getSegmentInfo() {
     return si;
   }
 
@@ -360,6 +352,9 @@ public final class SegmentReader extends AtomicReader {
   // same entry in the FieldCache.  See LUCENE-1579.
   @Override
   public Object getCoreCacheKey() {
+    // NOTE: if this ever changes, be sure to fix
+    // SegmentCoreReader.notifyCoreClosedListeners to match!
+    // Today it passes "this" as its coreCacheKey:
     return core;
   }
 
@@ -372,7 +367,7 @@ public final class SegmentReader extends AtomicReader {
   // null if the field does not exist, or not indexed as the requested
   // DovDocValuesType.
   private FieldInfo getDVField(String field, DocValuesType type) {
-    FieldInfo fi = core.fieldInfos.fieldInfo(field);
+    FieldInfo fi = fieldInfos.fieldInfo(field);
     if (fi == null) {
       // Field does not exist
       return null;
@@ -414,7 +409,7 @@ public final class SegmentReader extends AtomicReader {
   @Override
   public Bits getDocsWithField(String field) throws IOException {
     ensureOpen();
-    FieldInfo fi = core.fieldInfos.fieldInfo(field);
+    FieldInfo fi = fieldInfos.fieldInfo(field);
     if (fi == null) {
       // Field does not exist
       return null;
@@ -507,7 +502,12 @@ public final class SegmentReader extends AtomicReader {
   @Override
   public NumericDocValues getNormValues(String field) throws IOException {
     ensureOpen();
-    return core.getNormValues(field);
+    FieldInfo fi = fieldInfos.fieldInfo(field);
+    if (fi == null || !fi.hasNorms()) {
+      // Field does not exist or does not index norms
+      return null;
+    }
+    return core.getNormValues(fi);
   }
 
   /**
@@ -524,9 +524,9 @@ public final class SegmentReader extends AtomicReader {
    * @lucene.experimental
    */
   public static interface CoreClosedListener {
-    /** Invoked when the shared core of the provided {@link
+    /** Invoked when the shared core of the original {@code
      *  SegmentReader} has closed. */
-    public void onClose(SegmentReader owner);
+    public void onClose(Object ownerCoreCacheKey);
   }
   
   /** Expert: adds a CoreClosedListener to this reader's shared core */
@@ -541,18 +541,13 @@ public final class SegmentReader extends AtomicReader {
     core.removeCoreClosedListener(listener);
   }
   
-  private long dvRamBytesUsed() {
-    long ramBytesUsed = 0;
-    for (RefCount<DocValuesProducer> dvp : genDVProducers.values()) {
-      ramBytesUsed += dvp.get().ramBytesUsed();
-    }
-    return ramBytesUsed;
-  }
-
   /** Returns approximate RAM Bytes used */
   public long ramBytesUsed() {
     ensureOpen();
-    long ramBytesUsed = dvRamBytesUsed();
+    long ramBytesUsed = 0;
+    if (segDocValues != null) {
+      ramBytesUsed += segDocValues.ramBytesUsed();
+    }
     if (core != null) {
       ramBytesUsed += core.ramBytesUsed();
     }

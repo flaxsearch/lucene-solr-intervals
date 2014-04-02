@@ -79,13 +79,8 @@ public class TermQuery extends FieldedQuery {
     }
     
     @Override
-    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
-        boolean topScorer, PostingFeatures flags, Bits acceptDocs) throws IOException {
-      assert termStates.topReaderContext == ReaderUtil
-          .getTopLevelContext(context) : "The top-reader used to create Weight ("
-          + termStates.topReaderContext
-          + ") is not the same as the current reader's top-reader ("
-          + ReaderUtil.getTopLevelContext(context);
+    public Scorer scorer(AtomicReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
+      assert termStates.topReaderContext == ReaderUtil.getTopLevelContext(context) : "The top-reader used to create Weight (" + termStates.topReaderContext + ") is not the same as the current reader's top-reader (" + ReaderUtil.getTopLevelContext(context);
       final TermsEnum termsEnum = getTermsEnum(context);
       if (termsEnum == null) {
         return null;
@@ -126,10 +121,8 @@ public class TermQuery extends FieldedQuery {
     }
     
     @Override
-    public Explanation explain(AtomicReaderContext context, int doc)
-        throws IOException {
-      Scorer scorer = scorer(context, true, false, PostingFeatures.DOCS_AND_FREQS, context.reader()
-              .getLiveDocs());
+    public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
+      Scorer scorer = scorer(context, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {

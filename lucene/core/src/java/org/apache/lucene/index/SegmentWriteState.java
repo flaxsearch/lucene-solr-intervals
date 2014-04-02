@@ -48,12 +48,13 @@ public class SegmentWriteState {
    *  segment. */
   public int delCountOnFlush;
 
-  /** Deletes to apply while we are flushing the segment.  A
-   *  Term is enrolled in here if it was deleted at one
-   *  point, and it's mapped to the docIDUpto, meaning any
-   *  docID &lt; docIDUpto containing this term should be
-   *  deleted. */
-  public final BufferedDeletes segDeletes;
+  /**
+   * Deletes and updates to apply while we are flushing the segment. A Term is
+   * enrolled in here if it was deleted/updated at one point, and it's mapped to
+   * the docIDUpto, meaning any docID &lt; docIDUpto containing this term should
+   * be deleted/updated.
+   */
+  public final BufferedUpdates segUpdates;
 
   /** {@link MutableBits} recording live documents; this is
    *  only set if there is one or more deleted documents. */
@@ -71,32 +72,27 @@ public class SegmentWriteState {
    *  to {@link Directory#createOutput(String,IOContext)}. */
   public final IOContext context;
 
-  /** True is this instance represents a field update. */
-  public final boolean isFieldUpdate; // TODO (DVU_FIELDINFOS_GEN) once we gen FieldInfos, get rid of this
-  
   /** Sole constructor. */
   public SegmentWriteState(InfoStream infoStream, Directory directory, SegmentInfo segmentInfo, FieldInfos fieldInfos,
-      BufferedDeletes segDeletes, IOContext context) {
-    this(infoStream, directory, segmentInfo, fieldInfos, segDeletes, context, "", false);
+      BufferedUpdates segUpdates, IOContext context) {
+    this(infoStream, directory, segmentInfo, fieldInfos, segUpdates, context, "");
   }
 
   /**
-   * Constructor which takes segment suffix and isFieldUpdate in addition to the
-   * other parameters.
+   * Constructor which takes segment suffix.
    * 
    * @see #SegmentWriteState(InfoStream, Directory, SegmentInfo, FieldInfos,
-   *      BufferedDeletes, IOContext)
+   *      BufferedUpdates, IOContext)
    */
   public SegmentWriteState(InfoStream infoStream, Directory directory, SegmentInfo segmentInfo, FieldInfos fieldInfos,
-      BufferedDeletes segDeletes, IOContext context, String segmentSuffix, boolean isFieldUpdate) {
+      BufferedUpdates segUpdates, IOContext context, String segmentSuffix) {
     this.infoStream = infoStream;
-    this.segDeletes = segDeletes;
+    this.segUpdates = segUpdates;
     this.directory = directory;
     this.segmentInfo = segmentInfo;
     this.fieldInfos = fieldInfos;
     this.segmentSuffix = segmentSuffix;
     this.context = context;
-    this.isFieldUpdate = isFieldUpdate;
   }
   
   /** Create a shallow copy of {@link SegmentWriteState} with a new segment suffix. */
@@ -107,8 +103,7 @@ public class SegmentWriteState {
     fieldInfos = state.fieldInfos;
     context = state.context;
     this.segmentSuffix = segmentSuffix;
-    segDeletes = state.segDeletes;
+    segUpdates = state.segUpdates;
     delCountOnFlush = state.delCountOnFlush;
-    isFieldUpdate = state.isFieldUpdate;
   }
 }

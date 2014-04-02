@@ -77,8 +77,8 @@ public class TransactionLog {
   protected volatile boolean deleteOnClose = true;  // we can delete old tlogs since they are currently only used for real-time-get (and in the future, recovery)
 
   AtomicInteger refcount = new AtomicInteger(1);
-  Map<String,Integer> globalStringMap = new HashMap<String, Integer>();
-  List<String> globalStringList = new ArrayList<String>();
+  Map<String,Integer> globalStringMap = new HashMap<>();
+  List<String> globalStringList = new ArrayList<>();
 
   long snapshot_size;
   int snapshot_numRecords;
@@ -271,7 +271,7 @@ public class TransactionLog {
 
     synchronized (this) {
       globalStringList = (List<String>)header.get("strings");
-      globalStringMap = new HashMap<String, Integer>(globalStringList.size());
+      globalStringMap = new HashMap<>(globalStringList.size());
       for (int i=0; i<globalStringList.size(); i++) {
         globalStringMap.put( globalStringList.get(i), i+1);
       }
@@ -295,7 +295,7 @@ public class TransactionLog {
 
   Collection<String> getGlobalStrings() {
     synchronized (this) {
-      return new ArrayList<String>(globalStringList);
+      return new ArrayList<>(globalStringList);
     }
   }
 
@@ -563,6 +563,13 @@ public class TransactionLog {
     return "tlog{file=" + tlogFile.toString() + " refcount=" + refcount.get() + "}";
   }
 
+  public long getLogSize() {
+    if (tlogFile != null) {
+      return tlogFile.length();
+    }
+    return 0;
+  }
+
   /** Returns a reader that can be used while a log is still in use.
    * Currently only *one* LogReader may be outstanding, and that log may only
    * be used from a single thread. */
@@ -574,7 +581,6 @@ public class TransactionLog {
   public ReverseReader getReverseReader() throws IOException {
     return new FSReverseReader();
   }
-
 
   public class LogReader {
     private ChannelFastInputStream fis;
