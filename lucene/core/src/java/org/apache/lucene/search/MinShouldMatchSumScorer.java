@@ -224,7 +224,7 @@ class MinShouldMatchSumScorer extends Scorer {
   public IntervalIterator intervals(boolean collectIntervals) throws IOException {
     if (mm > 1) {
       return new ConjunctionIntervalIterator(this,
-          collectIntervals, mm, pullIterators(collectIntervals, sortedSubScorers));
+          collectIntervals, false, mm, pullIterators(collectIntervals, sortedSubScorers));
     }
     return new DisjunctionIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, sortedSubScorers));
   }

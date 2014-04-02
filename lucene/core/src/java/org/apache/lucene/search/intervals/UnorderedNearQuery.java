@@ -37,26 +37,20 @@ public class UnorderedNearQuery extends IntervalFilterQuery {
   private final int slop;
 
   /**
-   * Constructs an OrderedNearQuery
+   * Constructs an UnorderedNearQuery
    * @param slop the maximum distance between the subquery matches
-   * @param collectLeaves false if only the parent interval should be collected
    * @param subqueries the subqueries to match.
    */
   public UnorderedNearQuery(int slop, boolean collectLeaves, FieldedQuery... subqueries) {
     this(slop, collectLeaves, new FieldedConjunctionQuery(subqueries));
   }
 
-  /**
-   * Constructs an OrderedNearQuery
-   * @param slop the maximum distance between the subquery matches
-   * @param subqueries the subqueries to match.
-   */
   public UnorderedNearQuery(int slop, FieldedQuery... subqueries) {
-    this(slop, true, new FieldedConjunctionQuery(subqueries));
+    this(slop, false, subqueries);
   }
 
   public UnorderedNearQuery(int slop, boolean collectLeaves, FieldedConjunctionQuery subqueries) {
-    super(subqueries, new WithinIntervalFilter(slop + subqueries.queryCount() - 2, collectLeaves));
+    super(subqueries, new WithinUnorderedFilter(slop + subqueries.queryCount() - 2, collectLeaves));
     this.slop = slop;
   }
 

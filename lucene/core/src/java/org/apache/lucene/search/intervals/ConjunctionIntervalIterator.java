@@ -38,7 +38,7 @@ public final class ConjunctionIntervalIterator extends IntervalIterator {
   private SnapshotPositionCollector snapshot;
   private final IntervalIterator[] iterators;
   private int rightExtremeBegin;
-
+  private final boolean collectLeaves;
 
   /**
    * Create a new ConjunctionIntervalIterator over a set of subiterators
@@ -47,9 +47,9 @@ public final class ConjunctionIntervalIterator extends IntervalIterator {
    * @param iterators a list of iterators to combine
    * @throws IOException if a low level I/O exception occurs
    */
-  public ConjunctionIntervalIterator(Scorer scorer, boolean collectIntervals,
-      IntervalIterator... iterators) throws IOException {
-    this(scorer, collectIntervals, iterators.length, iterators);
+  public ConjunctionIntervalIterator(Scorer scorer, boolean collectIntervals, boolean collectLeaves,
+      IntervalIterator... iterators) {
+    this(scorer, collectIntervals, collectLeaves, iterators.length, iterators);
   }
 
   /**
@@ -62,13 +62,13 @@ public final class ConjunctionIntervalIterator extends IntervalIterator {
    * @param iterators a list of iterators to combine
    * @throws IOException if an low level I/O exception occurs
    */
-  public ConjunctionIntervalIterator(Scorer scorer, boolean collectIntervals,
-      int minimuNumShouldMatch, IntervalIterator... iterators)
-      throws IOException {
+  public ConjunctionIntervalIterator(Scorer scorer, boolean collectIntervals, boolean collectLeaves,
+      int minimuNumShouldMatch, IntervalIterator... iterators) {
     super(scorer, collectIntervals);
     this.iterators = iterators;
     this.queue = new IntervalQueueAnd(iterators.length);
     this.nrMustMatch = minimuNumShouldMatch;
+    this.collectLeaves = collectLeaves;
   }
   
   private void advance() throws IOException {
@@ -149,11 +149,12 @@ public final class ConjunctionIntervalIterator extends IntervalIterator {
   
   private void collectInternal(IntervalCollector collector) {
     assert collectIntervals;
-    //collector.collectComposite(scorer, queue.currentCandidate, docID());
-    for (IntervalIterator iter : iterators) {
-      iter.collect(collector);
+    collector.collectComposite(scorer, queue.currentCandidate, docID());
+    if (collectLeaves) {
+      for (IntervalIterator iter : iterators) {
+        iter.collect(collector);
+      }
     }
-    
   }
   
   @Override

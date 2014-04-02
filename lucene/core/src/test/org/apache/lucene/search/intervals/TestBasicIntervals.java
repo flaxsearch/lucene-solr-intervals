@@ -51,13 +51,13 @@ public class TestBasicIntervals extends IntervalTestBase {
       "u2 xx u1 u2",//8
       "u1 u2 xx u2",//9
       "u2 u1 xx u2",//10
-      "t1 t2 t1 t3 t2 t3",
-      "a b x x c"};//11
+      "t1 t2 t1 t3 t2 t3", //11
+      "a b x x c"};//12
 
   public void testOverlappingWithinDisjunctions() throws Exception {
     Query q = makeOrQuery(
-        new UnorderedNearQuery(6, false, makeTermQuery("a"), makeTermQuery("c")),
-        new UnorderedNearQuery(6, false, makeTermQuery("b"), makeTermQuery("c"))
+        new UnorderedNearQuery(6, makeTermQuery("a"), makeTermQuery("c")),
+        new UnorderedNearQuery(6, makeTermQuery("b"), makeTermQuery("c"))
     );
     checkIntervals(q, searcher, new int[][]{
         { 12, 0, 4, 1, 4 }
@@ -66,8 +66,8 @@ public class TestBasicIntervals extends IntervalTestBase {
 
   public void testSameStartPositionWithinDisjunctions() throws Exception {
     Query q = makeOrQuery(
-        new UnorderedNearQuery(6, false, makeTermQuery("a"), makeTermQuery("b")),
-        new UnorderedNearQuery(6, false, makeTermQuery("a"), makeTermQuery("c"))
+        new UnorderedNearQuery(6, true, makeTermQuery("a"), makeTermQuery("b")),
+        new UnorderedNearQuery(6, true, makeTermQuery("a"), makeTermQuery("c"))
     );
     checkIntervals(q, searcher, new int[][]{
         { 12, 0, 4, 0, 1 }
@@ -189,7 +189,7 @@ public class TestBasicIntervals extends IntervalTestBase {
   }
   
   public void testNearUnordered() throws Exception {
-    Query q = new UnorderedNearQuery(0, false, makeTermQuery("u1"), makeTermQuery("u2"));
+    Query q = new UnorderedNearQuery(0, makeTermQuery("u1"), makeTermQuery("u2"));
     checkIntervals(q, searcher, new int[][]{
         { 4, 1, 2 },
         { 5, 2, 3 },
@@ -216,7 +216,7 @@ public class TestBasicIntervals extends IntervalTestBase {
   // ((u1 near u2) near xx)
   public void testNestedNear() throws Exception {
 
-    Query q = new UnorderedNearQuery(0, false, makeTermQuery("u1"), makeTermQuery("u2"));
+    Query q = new UnorderedNearQuery(0, makeTermQuery("u1"), makeTermQuery("u2"));
     BooleanQuery topq = new BooleanQuery();
     topq.add(q, Occur.MUST);
     topq.add(makeTermQuery("xx"), Occur.MUST);

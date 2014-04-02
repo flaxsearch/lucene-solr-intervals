@@ -38,11 +38,11 @@ public class SloppyIntervalIterator extends IntervalIterator {
    * @throws IOException if an low level I/O exception occurs
    */
   public SloppyIntervalIterator(Scorer scorer, int maxLength,
-      boolean collectIntervals, IntervalIterator... iterators)
+      boolean collectIntervals, boolean collectLeaves, IntervalIterator... iterators)
       throws IOException {
     super(scorer, collectIntervals);
     this.maxLen = maxLength;
-    this.iterator = new ConjunctionIntervalIterator(scorer, collectIntervals, iterators);
+    this.iterator = new ConjunctionIntervalIterator(scorer, collectIntervals, collectLeaves, iterators);
   }
   
   @Override

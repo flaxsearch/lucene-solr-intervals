@@ -645,7 +645,7 @@ final class SloppyPhraseScorer extends Scorer {
     for (IterAndOffsets iterAndOffsets : values) {
       iters[i++] = SloppyIntervalIterator.create(this, collectIntervals, iterAndOffsets.iter, iterAndOffsets.toIntArray());
     }
-    return new AdvancingIntervalIterator(this, collectIntervals, enums.toArray(new DocsAndPositionsEnum[enums.size()]), new SloppyIntervalIterator(this, slop, collectIntervals, iters));
+    return new AdvancingIntervalIterator(this, collectIntervals, enums.toArray(new DocsAndPositionsEnum[enums.size()]), new SloppyIntervalIterator(this, slop, collectIntervals, false, iters));
   }
 
   private final static class IterAndOffsets {

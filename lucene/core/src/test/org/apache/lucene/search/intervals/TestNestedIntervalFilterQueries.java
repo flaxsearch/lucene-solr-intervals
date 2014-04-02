@@ -86,8 +86,8 @@ public class TestNestedIntervalFilterQueries extends IntervalTestBase {
 
   // or(w2 within/2 w1, w10 within/3 w1)
   public void testUnorderedNearNearQuery() throws IOException {
-    Query near1 = new UnorderedNearQuery(2, false, makeTermQuery("w2"), makeTermQuery("w1"));
-    Query near2 = new UnorderedNearQuery(3, false, makeTermQuery("w10"), makeTermQuery("w1"));
+    Query near1 = new UnorderedNearQuery(2, makeTermQuery("w2"), makeTermQuery("w1"));
+    Query near2 = new UnorderedNearQuery(3, makeTermQuery("w10"), makeTermQuery("w1"));
     BooleanQuery bq = new BooleanQuery();
     bq.add(near1, BooleanClause.Occur.SHOULD);
     bq.add(near2, BooleanClause.Occur.SHOULD);
@@ -100,8 +100,8 @@ public class TestNestedIntervalFilterQueries extends IntervalTestBase {
 
   // (a pre/2 b) pre/6 (c pre/2 d)
   public void testNearNearNearQuery() throws IOException {
-    FieldedQuery near1 = new OrderedNearQuery(2, false, makeTermQuery("w1"), makeTermQuery("w4"));
-    FieldedQuery near2 = new OrderedNearQuery(2, false, makeTermQuery("w10"), makeTermQuery("w12"));
+    FieldedQuery near1 = new OrderedNearQuery(2, makeTermQuery("w1"), makeTermQuery("w4"));
+    FieldedQuery near2 = new OrderedNearQuery(2, makeTermQuery("w10"), makeTermQuery("w12"));
     Query near3 = new OrderedNearQuery(6, near1, near2);
     checkIntervals(near3, searcher, new int[][]{
         { 0, 0, 11, 0, 3, 9, 11 }

@@ -59,7 +59,7 @@ public class Interval implements Cloneable {
    * will always compare as less than any other Interval.
    */
   public Interval() {
-    this(null);
+    this("");
   }
 
   public Interval(String field) {
@@ -141,6 +141,12 @@ public class Interval implements Cloneable {
   public boolean overlaps(Interval other) {
     //assert field == other.field;
     return this.contains(other) || other.contains(this);
+  }
+
+  public boolean strictlyLessThan(Interval other) {
+    return this.field.compareTo(other.field) < 0
+        || this.field.equals(other.field) && this.begin < other.begin
+        || this.begin == other.begin && this.end <= other.end;
   }
 
   /**
