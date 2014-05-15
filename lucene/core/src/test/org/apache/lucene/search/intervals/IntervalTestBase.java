@@ -135,8 +135,8 @@ public abstract class IntervalTestBase extends LuceneTestCase {
         Match match = matchIt.next();
         System.out.println(match);
         Assert.assertEquals("Incorrect docid", docid, match.docid);
-        Assert.assertEquals("Incorrect match start position", docMatches[j], match.start);
-        Assert.assertEquals("Incorrect match end position", docMatches[j + 1], match.end);
+        Assert.assertEquals("Incorrect match start position for doc " + docid, docMatches[j], match.start);
+        Assert.assertEquals("Incorrect match end position for doc " + docid, docMatches[j + 1], match.end);
       }
     }
     Assert.assertFalse("Unexpected matches!", matchIt.hasNext());
@@ -175,8 +175,10 @@ public abstract class IntervalTestBase extends LuceneTestCase {
     super.tearDown();
   }
 
+  public static final String FIELD = "f";
+
   public TermQuery makeTermQuery(String text) {
-    return new TermQuery(new Term(TestBasicIntervals.field, text));
+    return new TermQuery(new Term(FIELD, text));
   }
 
   protected Query makeOrQuery(Query... queries) {

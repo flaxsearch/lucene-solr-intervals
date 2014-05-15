@@ -28,13 +28,11 @@ import java.io.IOException;
 
 public class TestBasicIntervals extends IntervalTestBase {
 
-  public static final String field = "field";
-
   @Override
   protected void addDocs(RandomIndexWriter writer) throws IOException {
     for (String content : docFields) {
       Document doc = new Document();
-      doc.add(newField(field, content, TextField.TYPE_NOT_STORED));
+      doc.add(newField(FIELD, content, TextField.TYPE_NOT_STORED));
       writer.addDocument(doc);
     }
   }
