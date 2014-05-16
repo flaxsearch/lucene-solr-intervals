@@ -61,7 +61,7 @@ import java.io.IOException;
  * MultiTermQueries using {@link
  * #CONSTANT_SCORE_AUTO_REWRITE_DEFAULT} by default.
  */
-public abstract class MultiTermQuery extends FieldedQuery {
+public abstract class MultiTermQuery extends Query {
 
   protected RewriteMethod rewriteMethod = CONSTANT_SCORE_AUTO_REWRITE_DEFAULT;
 
@@ -243,15 +243,17 @@ public abstract class MultiTermQuery extends FieldedQuery {
     }
   };
 
+  protected final String field;
+
   /**
    * Constructs a query matching terms that cannot be represented with a single
    * Term.
    */
   public MultiTermQuery(final String field) {
-    super(field);
     if (field == null) {
       throw new IllegalArgumentException("field must not be null");
     }
+    this.field = field;
   }
 
   /** Returns the field name for this query */

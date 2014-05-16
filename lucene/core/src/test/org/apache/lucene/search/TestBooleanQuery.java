@@ -31,7 +31,6 @@ import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Weight.PostingFeatures;
-import org.apache.lucene.search.intervals.FieldedConjunctionQuery;
 import org.apache.lucene.search.intervals.IntervalFilterQuery;
 import org.apache.lucene.search.intervals.WithinIntervalFilter;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
@@ -323,14 +322,13 @@ public class TestBooleanQuery extends LuceneTestCase {
      IndexSearcher searcher = new IndexSearcher(reader);
      writer.close();
 
-     FieldedQuery query = new FieldedConjunctionQuery(
-      new TermQuery(new Term("field", "porridge")),
-      new TermQuery(new Term("field", "pease")),
-      new TermQuery(new Term("field", "hot!"))
-     );
+     BooleanQuery bq = new BooleanQuery();
+     bq.add(new TermQuery(new Term("field", "porridge")), BooleanClause.Occur.MUST);
+     bq.add(new TermQuery(new Term("field", "pease")),BooleanClause.Occur.MUST);
+     bq.add(new TermQuery(new Term("field", "hot!")), BooleanClause.Occur.MUST);
 
      {
-       IntervalFilterQuery filter = new IntervalFilterQuery(query, new WithinIntervalFilter(3));
+       IntervalFilterQuery filter = new IntervalFilterQuery(bq, new WithinIntervalFilter(3));
        TopDocs search = searcher.search(filter, 10);
        ScoreDoc[] scoreDocs = search.scoreDocs;
        assertEquals(2, search.totalHits);

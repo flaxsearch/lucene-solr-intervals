@@ -22,7 +22,6 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.intervals.FieldedBooleanQuery;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
@@ -110,7 +109,7 @@ class ConstantScoreAutoRewrite extends TermCollectingRewrite<BooleanQuery> {
         }
       }
       // Strip scores
-      final Query result = ConstantScoreQuery.fromFieldedQuery(new FieldedBooleanQuery(query.field, bq));
+      final Query result = new ConstantScoreQuery(query.getField(), bq);
       result.setBoost(query.getBoost());
       return result;
     }

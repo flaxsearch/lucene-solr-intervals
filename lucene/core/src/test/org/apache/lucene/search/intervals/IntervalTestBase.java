@@ -175,7 +175,7 @@ public abstract class IntervalTestBase extends LuceneTestCase {
     super.tearDown();
   }
 
-  public static final String FIELD = "f";
+  public static final String FIELD = "field";
 
   public TermQuery makeTermQuery(String text) {
     return new TermQuery(new Term(FIELD, text));
@@ -185,6 +185,14 @@ public abstract class IntervalTestBase extends LuceneTestCase {
     BooleanQuery q = new BooleanQuery();
     for (Query subquery : queries) {
       q.add(subquery, BooleanClause.Occur.SHOULD);
+    }
+    return q;
+  }
+
+  protected Query makeAndQuery(Query... queries) {
+    BooleanQuery q = new BooleanQuery();
+    for (Query subquery : queries) {
+      q.add(subquery, BooleanClause.Occur.MUST);
     }
     return q;
   }

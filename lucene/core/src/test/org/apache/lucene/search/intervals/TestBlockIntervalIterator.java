@@ -15,10 +15,12 @@ package org.apache.lucene.search.intervals;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 
 import java.io.IOException;
@@ -49,7 +51,7 @@ public class TestBlockIntervalIterator extends IntervalTestBase {
 
   public void testMatchingBlockIntervalFilter() throws IOException {
 
-    FieldedConjunctionQuery query = new FieldedConjunctionQuery(
+    Query query = makeAndQuery(
             new TermQuery(new Term("field", "pease")),
             new TermQuery(new Term("field", "porridge")),
             new TermQuery(new Term("field", "hot!"))
@@ -65,7 +67,7 @@ public class TestBlockIntervalIterator extends IntervalTestBase {
 
   public void testPartialMatchingBlockIntervalFilter() throws IOException {
 
-    FieldedConjunctionQuery query = new FieldedConjunctionQuery(
+    Query query = makeAndQuery(
           new TermQuery(new Term("field", "pease")),
           new TermQuery(new Term("field", "porridge")),
           new TermQuery(new Term("field", "hot!")),
@@ -84,7 +86,7 @@ public class TestBlockIntervalIterator extends IntervalTestBase {
 
   public void testNonMatchingBlockIntervalFilter() throws IOException {
 
-    FieldedConjunctionQuery query = new FieldedConjunctionQuery(
+    Query query = makeAndQuery(
             new TermQuery(new Term("field", "pease")),
             new TermQuery(new Term("field", "hot!"))
     );

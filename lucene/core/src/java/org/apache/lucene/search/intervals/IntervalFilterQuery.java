@@ -21,9 +21,10 @@ import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.Explanation;
-import org.apache.lucene.search.FieldedQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
@@ -47,7 +48,31 @@ import java.util.TreeSet;
  *
  * @lucene.experimental
  */
-public class IntervalFilterQuery extends FieldedQuery implements Cloneable {
+public class IntervalFilterQuery extends Query implements Cloneable {
+
+  public static BooleanQuery createFieldConjunction(Query... subqueries) {
+    if (subqueries.length == 0)
+      throw new IllegalArgumentException("Cannot create empty conjunction");
+    String field = subqueries[0].getField();
+    if (field == null)
+      throw new IllegalArgumentException("Cannot create interval conjunction over null field");
+    BooleanQuery bq = new BooleanQuery();
+    for (Query query : subqueries) {
+      if (!field.equals(query.getField()))
+        throw new IllegalArgumentException("Cannot create interval conjunction over multiple fields: found "
+                                              + field + " and " + query.getField());
+      bq.add(query, BooleanClause.Occur.MUST);
+    }
+    return bq;
+  }
+
+  public static BooleanQuery createConjunction(Query... subqueries) {
+    BooleanQuery bq = new BooleanQuery();
+    for (Query query : subqueries) {
+      bq.add(query, BooleanClause.Occur.MUST);
+    }
+    return bq;
+  }
 
   private Query inner;
   private final IntervalFilter filter;
@@ -57,8 +82,7 @@ public class IntervalFilterQuery extends FieldedQuery implements Cloneable {
    * @param inner the query to wrap
    * @param filter the filter to restrict results by
    */
-  public IntervalFilterQuery(FieldedQuery inner, IntervalFilter filter) {
-    super(inner.getField());
+  public IntervalFilterQuery(Query inner, IntervalFilter filter) {
     this.inner = inner;
     this.filter = filter;
   }
@@ -66,6 +90,11 @@ public class IntervalFilterQuery extends FieldedQuery implements Cloneable {
   @Override
   public void extractTerms(Set<Term> terms) {
     inner.extractTerms(terms);
+  }
+
+  @Override
+  public String getField() {
+    return inner.getField();
   }
 
   @Override

@@ -18,17 +18,23 @@ import java.io.IOException;
  * limitations under the License.
  */
 
-public class MaxFrequencyFilter implements IntervalFilter {
+public class RangeFrequencyFilter implements IntervalFilter {
 
   private final int maxFreq;
+  private final int minFreq;
 
-  public MaxFrequencyFilter(int maxFreq) {
+  public RangeFrequencyFilter(int minFreq, int maxFreq) {
+    if (minFreq < 0)
+      throw new IllegalArgumentException("minFreq must be greater than 0");
+    if (maxFreq < minFreq)
+      throw new IllegalArgumentException("maxFreq must be greater than minFreq");
     this.maxFreq = maxFreq;
+    this.minFreq = minFreq;
   }
 
   @Override
   public IntervalIterator filter(boolean collectIntervals, IntervalIterator iter) {
-    return new MaxFrequencyIntervalIterator(maxFreq, iter, collectIntervals);
+    return new MaxFrequencyIntervalIterator(minFreq, maxFreq, iter, collectIntervals);
   }
 
   public static class MaxFrequencyIntervalIterator extends IntervalIterator {
@@ -36,12 +42,14 @@ public class MaxFrequencyFilter implements IntervalFilter {
     private final IntervalIterator subIter;
     private final Interval[] intervalCache;
     private final int[] distanceCache;
+    private final int minFreq;
 
     private int cachePos = -1;
     private int freq = -1;
 
-    public MaxFrequencyIntervalIterator(int maxFreq, IntervalIterator iter, boolean collectIntervals) {
+    public MaxFrequencyIntervalIterator(int minFreq, int maxFreq, IntervalIterator iter, boolean collectIntervals) {
       super(iter == null ? null : iter.scorer, collectIntervals);
+      this.minFreq = minFreq;
       this.subIter = iter;
       this.intervalCache = new Interval[maxFreq];
       for (int i = 0; i < maxFreq; i++) {
@@ -60,7 +68,7 @@ public class MaxFrequencyFilter implements IntervalFilter {
     public Interval next() throws IOException {
       if (cachePos == -1)
         freq = loadIntervalCache();
-      if (freq == -1)
+      if (freq == -1 || freq < minFreq)
         return null;
       cachePos++;
       if (cachePos < freq)

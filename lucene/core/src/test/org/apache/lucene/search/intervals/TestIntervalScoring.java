@@ -23,7 +23,6 @@ import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.FieldedQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.RegexpQuery;
 import org.apache.lucene.search.TermQuery;
@@ -33,7 +32,6 @@ import org.junit.Assert;
 import java.io.IOException;
 
 import static org.hamcrest.core.Is.is;
-import static org.hamcrest.core.IsInstanceOf.instanceOf;
 
 public class TestIntervalScoring extends IntervalTestBase {
 
@@ -70,8 +68,7 @@ public class TestIntervalScoring extends IntervalTestBase {
     OrderedNearQuery q = new OrderedNearQuery(10, new RegexpQuery(new Term("field", "bar.*")),
         new RegexpQuery(new Term("field", "foo.*")));
     Query rewritten = q.rewrite(searcher.getIndexReader());
-    assertThat(rewritten, instanceOf(FieldedQuery.class));
-    assertThat(((FieldedQuery)rewritten).getField(), is("field"));
+    assertThat(rewritten.getField(), is("field"));
   }
 
   public void testRewrittenEmptyBooleans() throws IOException {
@@ -81,9 +78,8 @@ public class TestIntervalScoring extends IntervalTestBase {
     BooleanQuery bq = new BooleanQuery();
     bq.add(oq, BooleanClause.Occur.SHOULD);
     bq.add(tq, BooleanClause.Occur.SHOULD);
-    FieldedBooleanQuery fbq = new FieldedBooleanQuery(bq);
 
-    checkScores(fbq, searcher, 3, 1, 0);
+    checkScores(bq.rewrite(searcher.getIndexReader()), searcher, 3, 1, 0);
   }
 
 }

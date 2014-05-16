@@ -17,7 +17,7 @@ package org.apache.lucene.search.intervals;
  * limitations under the License.
  */
 
-import org.apache.lucene.search.FieldedQuery;
+import org.apache.lucene.search.Query;
 
 /**
  * A query that matches if a set of subqueries also match, and are within
@@ -41,8 +41,8 @@ public class OrderedNearQuery extends IntervalFilterQuery {
    * @param collectLeaves false if only the master interval should be collected
    * @param subqueries the subqueries to match.
    */
-  public OrderedNearQuery(int slop, boolean collectLeaves, FieldedQuery... subqueries) {
-    this(slop, collectLeaves, new FieldedConjunctionQuery(subqueries));
+  public OrderedNearQuery(int slop, boolean collectLeaves, Query... subqueries) {
+    super(createFieldConjunction(subqueries), new WithinOrderedFilter(subqueries[0].getField(), slop, collectLeaves));
   }
 
   /**
@@ -50,12 +50,8 @@ public class OrderedNearQuery extends IntervalFilterQuery {
    * @param slop the maximum distance between the subquery matches
    * @param subqueries the subqueries to match.
    */
-  public OrderedNearQuery(int slop, FieldedQuery... subqueries) {
-    this(slop, true, new FieldedConjunctionQuery(subqueries));
-  }
-
-  public OrderedNearQuery(int slop, boolean collectLeaves, FieldedConjunctionQuery subqueries) {
-    super(subqueries, new WithinOrderedFilter(subqueries.getField(), slop, collectLeaves));
+  public OrderedNearQuery(int slop, Query... subqueries) {
+    this(slop, true, subqueries);
   }
 
 }

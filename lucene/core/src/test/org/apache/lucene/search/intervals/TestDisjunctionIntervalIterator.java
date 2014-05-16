@@ -24,7 +24,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.FieldedQuery;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 
 import java.io.IOException;
@@ -83,7 +83,7 @@ public class TestDisjunctionIntervalIterator extends IntervalTestBase {
 
   public void testDisjunctionRangePositionsBooleanQuery() throws IOException {
 
-    FieldedQuery query = new FieldedDisjunctionQuery(
+    Query query = makeOrQuery(
           new TermQuery(new Term("field", "porridge")),
           new TermQuery(new Term("field", "pease")),
           new TermQuery(new Term("field", "hot!"))

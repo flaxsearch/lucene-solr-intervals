@@ -4,9 +4,9 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.FieldedQuery;
 import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.PrefixQuery;
+import org.apache.lucene.search.Query;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -49,6 +49,15 @@ public class TestFreqFilterQueries extends IntervalTestBase {
   };
 
   @Test
+  public void testExactFrequencyFilterQuery() throws IOException {
+    IntervalFilterQuery query = new IntervalFilterQuery(makeTermQuery("apple"), new RangeFrequencyFilter(5, 5));
+    checkIntervals(query, searcher, new int[][]{
+        { 1, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4 },
+        { 4, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5 }
+    });
+  }
+
+  @Test
   public void testMinimumFrequencyFilterQuery() throws IOException {
     IntervalFilterQuery query = new IntervalFilterQuery(makeTermQuery("apple"), new MinFrequencyFilter(5));
     checkIntervals(query, searcher, new int[][]{
@@ -60,7 +69,7 @@ public class TestFreqFilterQueries extends IntervalTestBase {
 
   @Test
   public void testMaximumFrequencyFilterQuery() throws IOException {
-    IntervalFilterQuery query = new IntervalFilterQuery(makeTermQuery("apple"), new MaxFrequencyFilter(5));
+    IntervalFilterQuery query = new IntervalFilterQuery(makeTermQuery("apple"), new RangeFrequencyFilter(1, 5));
     checkIntervals(query, searcher, new int[][]{
         { 0, 2, 2 },
         { 1, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4 },
@@ -71,7 +80,7 @@ public class TestFreqFilterQueries extends IntervalTestBase {
 
   @Test
   public void testMinFreqOverDisjunction() throws IOException {
-    FieldedQuery q = FieldedBooleanQuery.toFieldedQuery(makeOrQuery(makeTermQuery("banana"), makeTermQuery("plum")));
+    Query q = makeOrQuery(makeTermQuery("banana"), makeTermQuery("plum"));
     checkIntervals(new IntervalFilterQuery(q, new MinFrequencyFilter(2)), searcher, new int[][]{
         { 0, 0, 0, 1, 1 },
         { 2, 4, 4, 7, 7 },
@@ -83,7 +92,7 @@ public class TestFreqFilterQueries extends IntervalTestBase {
   public void testMinFreqOverWildcard() throws IOException {
     PrefixQuery fq = new PrefixQuery(new Term(FIELD, "straw"));
     fq.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
-    
+
     checkIntervals(fq, searcher, new int[][]{
         {2, 6, 6},
         {5, 0, 0, 1, 1, 2, 2}

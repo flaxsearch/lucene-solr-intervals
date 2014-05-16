@@ -34,13 +34,10 @@ import java.util.Set;
  * query boost for every document that matches the filter or query.
  * For queries it therefore simply strips of all scores and returns a constant one.
  */
-public class ConstantScoreQuery extends FieldedQuery {
+public class ConstantScoreQuery extends Query {
   protected final Filter filter;
   protected final Query query;
-
-  public static ConstantScoreQuery fromFieldedQuery(FieldedQuery query) {
-    return new ConstantScoreQuery(query.getField(), query);
-  }
+  protected final String field;
 
   /** Strips off scores from the passed in Query. The hits will get a constant score
    * dependent on the boost factor of this query. */
@@ -49,11 +46,11 @@ public class ConstantScoreQuery extends FieldedQuery {
   }
 
   public ConstantScoreQuery(String field, Query query) {
-    super(field);
     if (query == null)
       throw new NullPointerException("Query may not be null");
     this.filter = null;
     this.query = query;
+    this.field = field;
   }
 
   /** Wraps a Filter as a Query. The hits will get a constant score
@@ -63,11 +60,11 @@ public class ConstantScoreQuery extends FieldedQuery {
    * use {@link #ConstantScoreQuery(Query)}!
    */
   public ConstantScoreQuery(Filter filter) {
-    super(null);
     if (filter == null)
       throw new NullPointerException("Filter may not be null");
     this.filter = filter;
     this.query = null;
+    this.field = null;
   }
 
   /** Returns the encapsulated filter, returns {@code null} if a query is wrapped. */
@@ -81,11 +78,16 @@ public class ConstantScoreQuery extends FieldedQuery {
   }
 
   @Override
+  public String getField() {
+    return field;
+  }
+
+  @Override
   public Query rewrite(IndexReader reader) throws IOException {
     if (query != null) {
       Query rewritten = query.rewrite(reader);
       if (rewritten != query) {
-        rewritten = new ConstantScoreQuery(field, rewritten);
+        rewritten = new ConstantScoreQuery(rewritten);
         rewritten.setBoost(this.getBoost());
         return rewritten;
       }
@@ -96,7 +98,7 @@ public class ConstantScoreQuery extends FieldedQuery {
       // QueryWrapperFilter was used to wrap queries.
       if (filter instanceof QueryWrapperFilter) {
         final QueryWrapperFilter qwf = (QueryWrapperFilter) filter;
-        final Query rewritten = new ConstantScoreQuery(field, qwf.getQuery().rewrite(reader));
+        final Query rewritten = new ConstantScoreQuery(qwf.getQuery().rewrite(reader));
         rewritten.setBoost(this.getBoost());
         return rewritten;
       }
