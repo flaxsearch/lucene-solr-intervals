@@ -3,6 +3,10 @@ package org.apache.lucene.search.intervals;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.RandomIndexWriter;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.FieldedQuery;
+import org.apache.lucene.search.MultiTermQuery;
+import org.apache.lucene.search.PrefixQuery;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -41,7 +45,7 @@ public class TestFreqFilterQueries extends IntervalTestBase {
       "apple apple apple apple banana apple strawberry banana apple",
       "banana plum apple",
       "plum apple apple apple apple apple",
-      "chicken"
+      "strawberry strawhat strawman"
   };
 
   @Test
@@ -62,6 +66,30 @@ public class TestFreqFilterQueries extends IntervalTestBase {
         { 1, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4 },
         { 3, 2, 2 },
         { 4, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5 },
+    });
+  }
+
+  @Test
+  public void testMinFreqOverDisjunction() throws IOException {
+    FieldedQuery q = FieldedBooleanQuery.toFieldedQuery(makeOrQuery(makeTermQuery("banana"), makeTermQuery("plum")));
+    checkIntervals(new IntervalFilterQuery(q, new MinFrequencyFilter(2)), searcher, new int[][]{
+        { 0, 0, 0, 1, 1 },
+        { 2, 4, 4, 7, 7 },
+        { 3, 0, 0, 1, 1 }
+    });
+  }
+
+  @Test
+  public void testMinFreqOverWildcard() throws IOException {
+    PrefixQuery fq = new PrefixQuery(new Term(FIELD, "straw"));
+    fq.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
+    
+    checkIntervals(fq, searcher, new int[][]{
+        {2, 6, 6},
+        {5, 0, 0, 1, 1, 2, 2}
+    });
+    checkIntervals(new IntervalFilterQuery(fq, new MinFrequencyFilter(2)), searcher, new int[][]{
+        { 5, 0, 0, 1, 1, 2, 2 }
     });
   }
 
