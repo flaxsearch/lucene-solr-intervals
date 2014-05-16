@@ -4,9 +4,12 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.TermQuery;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -35,6 +38,7 @@ public class TestFreqFilterQueries extends IntervalTestBase {
     for (String content : DOCS) {
       Document doc = new Document();
       doc.add(newField(FIELD, content, TextField.TYPE_NOT_STORED));
+      doc.add(newField("field2", "plum", TextField.TYPE_NOT_STORED));
       writer.addDocument(doc);
     }
   }
@@ -99,6 +103,19 @@ public class TestFreqFilterQueries extends IntervalTestBase {
     });
     checkIntervals(new IntervalFilterQuery(fq, new MinFrequencyFilter(2)), searcher, new int[][]{
         { 5, 0, 0, 1, 1, 2, 2 }
+    });
+  }
+
+  @Test
+  public void testMinFreqOverMultipleFields() throws IOException {
+    BooleanQuery bq = new BooleanQuery();
+    bq.add(new TermQuery(new Term(FIELD, "plum")), BooleanClause.Occur.SHOULD);
+    bq.add(new TermQuery(new Term("field2", "plum")), BooleanClause.Occur.SHOULD);
+
+    checkFieldIntervals(new IntervalFilterQuery(bq, new MinFrequencyFilter(2)), searcher, new Object[][]{
+        { 0, "field", 1, 1, "field2", 0, 0 },
+        { 3, "field", 1, 1, "field2", 0, 0 },
+        { 4, "field", 0, 0, "field2", 0, 0 }
     });
   }
 
