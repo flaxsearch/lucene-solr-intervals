@@ -389,7 +389,7 @@ public class IntervalFilterQuery extends Query implements Cloneable {
 
   @Override
   public String toString(String field) {
-    return "Filtered(" + inner.toString() + ")";
+    return "Filtered/" + filter.toString() + "(" + inner.toString() + ")";
   }
   
   @Override

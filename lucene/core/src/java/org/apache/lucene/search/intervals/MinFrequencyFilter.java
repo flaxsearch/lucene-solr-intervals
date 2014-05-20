@@ -96,4 +96,9 @@ public class MinFrequencyFilter implements IntervalFilter {
       return subIter.matchDistance();
     }
   }
+
+  @Override
+  public String toString() {
+    return "MINFREQ(" + minFreq + ")";
+  }
 }

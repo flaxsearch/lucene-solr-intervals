@@ -52,7 +52,7 @@ public class WithinOrderedFilter implements IntervalFilter {
 
   @Override
   public String toString() {
-    return "WithinOrderedFilter[" + this.innerFilter.getSlop() + "]";
+    return "ORDEREDWITHIN(" + this.innerFilter.getSlop() + ")";
   }
 
 }

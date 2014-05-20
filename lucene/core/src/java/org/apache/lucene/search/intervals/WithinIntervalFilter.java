@@ -114,4 +114,8 @@ public class WithinIntervalFilter implements IntervalFilter {
 
   }
 
+  @Override
+  public String toString() {
+    return "WITHIN(" + slop + ")";
+  }
 }

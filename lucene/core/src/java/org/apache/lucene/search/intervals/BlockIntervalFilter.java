@@ -33,4 +33,8 @@ public class BlockIntervalFilter implements IntervalFilter {
     return new BlockIntervalIterator(collectIntervals, collectLeaves, iter);
   }
 
+  @Override
+  public String toString() {
+    return "BLOCK";
+  }
 }

@@ -94,4 +94,8 @@ public class RangeIntervalFilter implements IntervalFilter {
 
   }
 
+  @Override
+  public String toString() {
+    return "RANGE(" + start + "," + end + ")";
+  }
 }

@@ -103,4 +103,9 @@ public class RangeFrequencyFilter implements IntervalFilter {
       return distanceCache[cachePos];
     }
   }
+
+  @Override
+  public String toString() {
+    return "RANGEFREQ(" + minFreq + "," + maxFreq + ")";
+  }
 }
