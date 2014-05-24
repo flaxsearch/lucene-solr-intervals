@@ -19,13 +19,15 @@ package org.apache.solr.handler.component;
 
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.SortedDocValues;
+import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.TopDocsCollector;
@@ -39,6 +41,7 @@ import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.search.CollapsingQParserPlugin;
 import org.apache.solr.search.DocIterator;
 import org.apache.solr.search.DocList;
+import org.apache.solr.search.QParser;
 import org.apache.solr.search.QueryParsing;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.common.params.SolrParams;
@@ -51,10 +54,11 @@ import org.apache.solr.util.plugin.PluginInfoInitialized;
 import org.apache.solr.util.plugin.SolrCoreAware;
 import org.apache.solr.core.PluginInfo;
 import org.apache.solr.core.SolrCore;
-
+import com.carrotsearch.hppc.IntObjectMap;
 import com.carrotsearch.hppc.IntObjectOpenHashMap;
 import com.carrotsearch.hppc.IntOpenHashSet;
 import com.carrotsearch.hppc.cursors.IntObjectCursor;
+import com.carrotsearch.hppc.cursors.ObjectCursor;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -64,7 +68,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Vector;
 
 /**
   * The ExpandComponent is designed to work with the CollapsingPostFilter.
@@ -75,9 +78,11 @@ import java.util.Vector;
   * http parameters:
   * <p/>
   * expand=true <br/>
-  * expand.rows=5 </br>
-  * expand.sort=field asc|desc
-  *
+  * expand.rows=5 <br/>
+  * expand.sort=field asc|desc<br/>
+  * expand.q=*:* (optional, overrides the main query)<br/>
+  * expand.fq=type:child (optional, overrides the main filter queries)<br/>
+  * expand.field=field (mandatory if the not used with the CollapsingQParserPlugin)<br/>
   **/
     
 public class ExpandComponent extends SearchComponent implements PluginInfoInitialized, SolrCoreAware {
@@ -117,8 +122,26 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       return;
     }
 
-    String field = null;
+    String field = params.get(ExpandParams.EXPAND_FIELD);
+    if(field == null) {
+      List<Query> filters = rb.getFilters();
+      if(filters != null) {
+        for(Query q : filters) {
+          if(q instanceof CollapsingQParserPlugin.CollapsingPostFilter) {
+              CollapsingQParserPlugin.CollapsingPostFilter cp = (CollapsingQParserPlugin.CollapsingPostFilter)q;
+              field = cp.getField();
+          }
+        }
+      }
+    }
+
+    if(field == null) {
+      throw new IOException("Expand field is null.");
+    }
+
     String sortParam = params.get(ExpandParams.EXPAND_SORT);
+    String[] fqs = params.getParams(ExpandParams.EXPAND_FQ);
+    String qs = params.get(ExpandParams.EXPAND_Q);
     int limit = params.getInt(ExpandParams.EXPAND_ROWS, 5);
 
     Sort sort = null;
@@ -127,25 +150,45 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       sort = QueryParsing.parseSortSpec(sortParam, rb.req).getSort();
     }
 
-    Query query = rb.getQuery();
-    List<Query> filters = rb.getFilters();
-    List<Query> newFilters = new ArrayList();
-    for(Query q : filters) {
-      if(!(q instanceof CollapsingQParserPlugin.CollapsingPostFilter)) {
-        newFilters.add(q);
-      } else {
-        CollapsingQParserPlugin.CollapsingPostFilter cp = (CollapsingQParserPlugin.CollapsingPostFilter)q;
-        field = cp.getField();
+    Query query = null;
+    if(qs == null) {
+      query = rb.getQuery();
+    } else {
+      try {
+        QParser parser = QParser.getParser(qs, null, req);
+        query = parser.getQuery();
+      } catch(Exception e) {
+        throw new IOException(e);
       }
     }
 
-    if(field == null) {
-      throw new IOException("Expand field is null.");
+    List<Query> newFilters = new ArrayList();
+
+    if(fqs == null) {
+      List<Query> filters = rb.getFilters();
+      if(filters != null) {
+        for(Query q : filters) {
+          if(!(q instanceof CollapsingQParserPlugin.CollapsingPostFilter)) {
+            newFilters.add(q);
+          }
+        }
+      }
+    } else {
+      try {
+        for (String fq : fqs) {
+          if (fq != null && fq.trim().length()!=0 && !fq.equals("*:*")) {
+            QParser fqp = QParser.getParser(fq, null, req);
+            newFilters.add(fqp.getQuery());
+          }
+        }
+      } catch(Exception e) {
+        throw new IOException(e);
+      }
     }
 
     SolrIndexSearcher searcher = req.getSearcher();
     AtomicReader reader = searcher.getAtomicReader();
-    SortedDocValues values = FieldCache.DEFAULT.getTermsIndex(reader, field);
+    SortedDocValues values = DocValues.getSorted(reader, field);
     FixedBitSet groupBits = new FixedBitSet(values.getValueCount());
     DocList docList = rb.getResults().docList;
     IntOpenHashSet collapsedSet = new IntOpenHashSet(docList.size()*2);
@@ -172,9 +215,9 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
     }
 
     searcher.search(query, pfilter.filter, collector);
-    IntObjectOpenHashMap groups = groupExpandCollector.getGroups();
+    IntObjectMap groups = groupExpandCollector.getGroups();
     Iterator<IntObjectCursor> it = groups.iterator();
-    Map<String, DocSlice> outMap = new HashMap();
+    Map<String, DocSlice> outMap = new HashMap<>();
     BytesRef bytesRef = new BytesRef();
     CharsRef charsRef = new CharsRef();
     FieldType fieldType = searcher.getSchema().getField(field).getType();
@@ -254,24 +297,21 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
     rb.rsp.add("expanded", expanded);
   }
 
-  private class GroupExpandCollector extends Collector {
+  private class GroupExpandCollector implements Collector {
     private SortedDocValues docValues;
-    private IntObjectOpenHashMap groups;
+    private IntObjectMap<Collector> groups;
     private int docBase;
     private FixedBitSet groupBits;
     private IntOpenHashSet collapsedSet;
-    private List<Collector> collectors;
 
     public GroupExpandCollector(SortedDocValues docValues, FixedBitSet groupBits, IntOpenHashSet collapsedSet, int limit, Sort sort) throws IOException {
       int numGroups = collapsedSet.size();
-      groups = new IntObjectOpenHashMap(numGroups*2);
-      collectors = new ArrayList();
+      groups = new IntObjectOpenHashMap<>(numGroups*2);
       DocIdSetIterator iterator = groupBits.iterator();
       int group = -1;
       while((group = iterator.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
         Collector collector = (sort == null) ? TopScoreDocCollector.create(limit, true) : TopFieldCollector.create(sort,limit, false, false,false, true);
         groups.put(group, collector);
-        collectors.add(collector);
       }
 
       this.collapsedSet = collapsedSet;
@@ -279,35 +319,42 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       this.docValues = docValues;
     }
 
-    public IntObjectOpenHashMap getGroups() {
-      return this.groups;
-    }
-
-    public boolean acceptsDocsOutOfOrder() {
-      return false;
-    }
-
-    public void collect(int docId) throws IOException {
-      int doc = docId+docBase;
-      int ord = docValues.getOrd(doc);
-      if(ord > -1 && groupBits.get(ord) && !collapsedSet.contains(doc)) {
-        Collector c = (Collector)groups.get(ord);
-        c.collect(docId);
+    public LeafCollector getLeafCollector(AtomicReaderContext context) throws IOException {
+      final int docBase = context.docBase;
+      final IntObjectMap<LeafCollector> leafCollectors = new IntObjectOpenHashMap<>();
+      for (IntObjectCursor<Collector> entry : groups) {
+        leafCollectors.put(entry.key, entry.value.getLeafCollector(context));
       }
+      return new LeafCollector() {
+        
+        @Override
+        public void setScorer(Scorer scorer) throws IOException {
+          for (ObjectCursor<LeafCollector> c : leafCollectors.values()) {
+            c.value.setScorer(scorer);
+          }
+        }
+        
+        @Override
+        public void collect(int docId) throws IOException {
+          int doc = docId+docBase;
+          int ord = docValues.getOrd(doc);
+          if(ord > -1 && groupBits.get(ord) && !collapsedSet.contains(doc)) {
+            LeafCollector c = leafCollectors.get(ord);
+            c.collect(docId);
+          }
+        }
+        
+        @Override
+        public boolean acceptsDocsOutOfOrder() {
+          return false;
+        }
+      };
     }
 
-    public void setNextReader(AtomicReaderContext context) throws IOException {
-      this.docBase = context.docBase;
-      for(Collector c : collectors) {
-        c.setNextReader(context);
-      }
+    public IntObjectMap<Collector> getGroups() {
+      return groups;
     }
 
-    public void setScorer(Scorer scorer) throws IOException {
-      for(Collector c : collectors) {
-        c.setScorer(scorer);
-      }
-    }
   }
 
   ////////////////////////////////////////////

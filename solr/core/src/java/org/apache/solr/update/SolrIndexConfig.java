@@ -78,6 +78,8 @@ public class SolrIndexConfig {
   public final static String LOCK_TYPE_SINGLE = "single";
   public final static String LOCK_TYPE_NONE   = "none";
 
+  public final boolean checkIntegrityAtMerge;
+
   /**
    * Internal constructor for setting defaults based on Lucene Version
    */
@@ -96,6 +98,7 @@ public class SolrIndexConfig {
     mergeSchedulerInfo = null;
     defaultMergePolicyClassName = TieredMergePolicy.class.getName();
     mergedSegmentWarmerInfo = null;
+    checkIntegrityAtMerge = false;
   }
   
   /**
@@ -122,7 +125,7 @@ public class SolrIndexConfig {
     luceneVersion = solrConfig.luceneMatchVersion;
 
     // Assert that end-of-life parameters or syntax is not in our config.
-    // Warn for luceneMatchVersion's before LUCENE_36, fail fast above
+    // Warn for luceneMatchVersion's before LUCENE_3_6, fail fast above
     assertWarnOrFail("The <mergeScheduler>myclass</mergeScheduler> syntax is no longer supported in solrconfig.xml. Please use syntax <mergeScheduler class=\"myclass\"/> instead.",
         !((solrConfig.getNode(prefix+"/mergeScheduler",false) != null) && (solrConfig.get(prefix+"/mergeScheduler/@class",null) == null)),
         true);
@@ -167,6 +170,8 @@ public class SolrIndexConfig {
     if (mergedSegmentWarmerInfo != null && solrConfig.nrtMode == false) {
       throw new IllegalArgumentException("Supplying a mergedSegmentWarmer will do nothing since nrtMode is false");
     }
+
+    checkIntegrityAtMerge = solrConfig.getBool(prefix + "/checkIntegrityAtMerge", def.checkIntegrityAtMerge);
   }
 
   /*
@@ -226,6 +231,8 @@ public class SolrIndexConfig {
                                                                         new Object[] { iwc.getInfoStream() });
       iwc.setMergedSegmentWarmer(warmer);
     }
+
+    iwc.setCheckIntegrityAtMerge(checkIntegrityAtMerge);
 
     return iwc;
   }

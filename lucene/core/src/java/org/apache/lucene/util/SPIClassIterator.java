@@ -22,6 +22,7 @@ import java.io.InputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -89,9 +90,9 @@ public final class SPIClassIterator<S> implements Iterator<Class<? extends S>> {
       final URL url = profilesEnum.nextElement();
       try {
         final InputStream in = url.openStream();
-        IOException priorE = null;
+        boolean success = false;
         try {
-          final BufferedReader reader = new BufferedReader(new InputStreamReader(in, IOUtils.CHARSET_UTF_8));
+          final BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
           String line;
           while ((line = reader.readLine()) != null) {
             final int pos = line.indexOf('#');
@@ -103,10 +104,13 @@ public final class SPIClassIterator<S> implements Iterator<Class<? extends S>> {
               lines.add(line);
             }
           }
-        } catch (IOException ioe) {
-          priorE = ioe;
+          success = true;
         } finally {
-          IOUtils.closeWhileHandlingException(priorE, in);
+          if (success) {
+            IOUtils.close(in);
+          } else {
+            IOUtils.closeWhileHandlingException(in);
+          }
         }
       } catch (IOException ioe) {
         throw new ServiceConfigurationError("Error loading SPI class list from URL: " + url, ioe);

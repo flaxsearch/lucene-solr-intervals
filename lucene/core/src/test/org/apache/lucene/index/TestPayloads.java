@@ -20,6 +20,7 @@ package org.apache.lucene.index;
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -72,10 +73,10 @@ public class TestPayloads extends LuceneTestCase {
         // enabled in only some documents
         d.add(newTextField("f3", "This field has payloads in some docs", Field.Store.NO));
         // only add payload data for field f2
-        analyzer.setPayloadData("f2", "somedata".getBytes("UTF-8"), 0, 1);
+        analyzer.setPayloadData("f2", "somedata".getBytes(StandardCharsets.UTF_8), 0, 1);
         writer.addDocument(d);
         // flush
-        writer.close();
+        writer.shutdown();
 
       SegmentReader reader = getOnlySegmentReader(DirectoryReader.open(ram));
         FieldInfos fi = reader.getFieldInfos();
@@ -95,14 +96,14 @@ public class TestPayloads extends LuceneTestCase {
         d.add(newTextField("f2", "This field has payloads in all docs", Field.Store.NO));
         d.add(newTextField("f3", "This field has payloads in some docs", Field.Store.NO));
         // add payload data for field f2 and f3
-        analyzer.setPayloadData("f2", "somedata".getBytes("UTF-8"), 0, 1);
-        analyzer.setPayloadData("f3", "somedata".getBytes("UTF-8"), 0, 3);
+        analyzer.setPayloadData("f2", "somedata".getBytes(StandardCharsets.UTF_8), 0, 1);
+        analyzer.setPayloadData("f3", "somedata".getBytes(StandardCharsets.UTF_8), 0, 3);
         writer.addDocument(d);
 
         // force merge
         writer.forceMerge(1);
         // flush
-        writer.close();
+        writer.shutdown();
 
       reader = getOnlySegmentReader(DirectoryReader.open(ram));
         fi = reader.getFieldInfos();
@@ -172,7 +173,7 @@ public class TestPayloads extends LuceneTestCase {
         
         writer.forceMerge(1);
         // flush
-        writer.close();
+        writer.shutdown();
         
         
         /*
@@ -277,7 +278,7 @@ public class TestPayloads extends LuceneTestCase {
         
         writer.forceMerge(1);
         // flush
-        writer.close();
+        writer.shutdown();
         
         reader = DirectoryReader.open(dir);
         tp = MultiFields.getTermPositionsEnum(reader,
@@ -297,7 +298,8 @@ public class TestPayloads extends LuceneTestCase {
         
     }
     
-    static final Charset utf8 = Charset.forName("UTF-8");
+    static final Charset utf8 = StandardCharsets.UTF_8;
+    
     private void generateRandomData(byte[] data) {
       // this test needs the random data to be valid unicode
       String s = TestUtil.randomFixedByteLengthUnicodeString(random(), data.length);
@@ -477,7 +479,7 @@ public class TestPayloads extends LuceneTestCase {
         for (int i = 0; i < numThreads; i++) {
           ingesters[i].join();
         }
-        writer.close();
+        writer.shutdown();
         IndexReader reader = DirectoryReader.open(dir);
         TermsEnum terms = MultiFields.getFields(reader).terms(field).iterator(null);
         Bits liveDocs = MultiFields.getLiveDocs(reader);
@@ -565,7 +567,7 @@ public class TestPayloads extends LuceneTestCase {
     Document doc = new Document();
     doc.add(new TextField("hasMaybepayload", "here we go", Field.Store.YES));
     writer.addDocument(doc);
-    writer.close();
+    writer.shutdown();
 
     writer = new RandomIndexWriter(random(), dir,
                                    new MockAnalyzer(random(), MockTokenizer.WHITESPACE, true));
@@ -574,7 +576,7 @@ public class TestPayloads extends LuceneTestCase {
     writer.addDocument(doc);
     writer.addDocument(doc);
     writer.forceMerge(1);
-    writer.close();
+    writer.shutdown();
 
     dir.close();
   }
@@ -589,7 +591,6 @@ public class TestPayloads extends LuceneTestCase {
     Field field = new TextField("field", "", Field.Store.NO);
     TokenStream ts = new MockTokenizer(MockTokenizer.WHITESPACE, true);
     ((Tokenizer)ts).setReader(new StringReader("here we go"));
-    assertFalse(ts.hasAttribute(PayloadAttribute.class));
     field.setTokenStream(ts);
     doc.add(field);
     writer.addDocument(doc);
@@ -601,7 +602,6 @@ public class TestPayloads extends LuceneTestCase {
     writer.addDocument(doc);
     ts = new MockTokenizer(MockTokenizer.WHITESPACE, true);
     ((Tokenizer)ts).setReader(new StringReader("another"));
-    assertFalse(ts.hasAttribute(PayloadAttribute.class));
     field.setTokenStream(ts);
     writer.addDocument(doc);
     DirectoryReader reader = writer.getReader();
@@ -610,7 +610,7 @@ public class TestPayloads extends LuceneTestCase {
     de.nextDoc();
     de.nextPosition();
     assertEquals(new BytesRef("test"), de.getPayload());
-    writer.close();
+    writer.shutdown();
     reader.close();
     dir.close();
   }
@@ -623,7 +623,6 @@ public class TestPayloads extends LuceneTestCase {
     Field field = new TextField("field", "", Field.Store.NO);
     TokenStream ts = new MockTokenizer(MockTokenizer.WHITESPACE, true);
     ((Tokenizer)ts).setReader(new StringReader("here we go"));
-    assertFalse(ts.hasAttribute(PayloadAttribute.class));
     field.setTokenStream(ts);
     doc.add(field);
     Field field2 = new TextField("field", "", Field.Store.NO);
@@ -636,8 +635,6 @@ public class TestPayloads extends LuceneTestCase {
     Field field3 = new TextField("field", "", Field.Store.NO);
     ts = new MockTokenizer(MockTokenizer.WHITESPACE, true);
     ((Tokenizer)ts).setReader(new StringReader("nopayload"));
-
-    assertFalse(ts.hasAttribute(PayloadAttribute.class));
     field3.setTokenStream(ts);
     doc.add(field3);
     writer.addDocument(doc);
@@ -647,7 +644,7 @@ public class TestPayloads extends LuceneTestCase {
     de.nextDoc();
     de.nextPosition();
     assertEquals(new BytesRef("test"), de.getPayload());
-    writer.close();
+    writer.shutdown();
     reader.close();
     dir.close();
   }

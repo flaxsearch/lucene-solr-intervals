@@ -44,9 +44,7 @@ public class TestManagedStopFilterFactory extends RestTestBase {
 
   @Before
   public void before() throws Exception {
-    createTempDir();
-    tmpSolrHome = new File(TEMP_DIR + File.separator + TestManagedStopFilterFactory.class.getSimpleName()
-                          + System.currentTimeMillis());
+    tmpSolrHome = createTempDir();
     tmpConfDir = new File(tmpSolrHome, confDir);
     FileUtils.copyDirectory(new File(TEST_HOME()), tmpSolrHome.getAbsoluteFile());
 
@@ -66,7 +64,6 @@ public class TestManagedStopFilterFactory extends RestTestBase {
   private void after() throws Exception {
     jetty.stop();
     jetty = null;
-    FileUtils.deleteDirectory(tmpSolrHome);
     System.clearProperty("managed.schema.mutable");
     System.clearProperty("enable.update.log");
   }

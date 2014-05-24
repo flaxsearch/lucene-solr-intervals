@@ -31,14 +31,14 @@ public class Test2BDocs extends LuceneTestCase {
   
   @BeforeClass
   public static void beforeClass() throws Exception {
-    dir = newFSDirectory(TestUtil.getTempDir("2Bdocs"));
+    dir = newFSDirectory(createTempDir("2Bdocs"));
     IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null));
     Document doc = new Document();
     for (int i = 0; i < 262144; i++) {
       iw.addDocument(doc);
     }
     iw.forceMerge(1);
-    iw.close();
+    iw.shutdown();
   }
   
   @AfterClass
@@ -61,13 +61,13 @@ public class Test2BDocs extends LuceneTestCase {
   }
   
   public void testExactlyAtLimit() throws Exception {
-    Directory dir2 = newFSDirectory(TestUtil.getTempDir("2BDocs2"));
+    Directory dir2 = newFSDirectory(createTempDir("2BDocs2"));
     IndexWriter iw = new IndexWriter(dir2, new IndexWriterConfig(TEST_VERSION_CURRENT, null));
     Document doc = new Document();
     for (int i = 0; i < 262143; i++) {
       iw.addDocument(doc);
     }
-    iw.close();
+    iw.shutdown();
     DirectoryReader ir = DirectoryReader.open(dir);
     DirectoryReader ir2 = DirectoryReader.open(dir2);
     IndexReader subReaders[] = new IndexReader[8192];

@@ -31,6 +31,7 @@ import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -114,7 +115,7 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
     indexSearcher = newSearcher(directoryReader);
     result = indexSearcher.search(new MatchAllDocsQuery(), 2);
     assertEquals(2, result.totalHits);
-    writer.close();
+    writer.shutdown();
     indexSearcher.getIndexReader().close();
     dir.close();
   }

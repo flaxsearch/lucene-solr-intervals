@@ -76,14 +76,14 @@ public class IntervalHighlighterTest extends LuceneTestCase {
   
   private static final String PORRIDGE_VERSE = "Pease porridge hot! Pease porridge cold! Pease porridge in the pot nine days old! Some like it hot, some"
       + " like it cold, Some like it in the pot nine days old! Pease porridge hot! Pease porridge cold!";
-  
+
   public void setUp() throws Exception {
     super.setUp();
     iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)).setOpenMode(OpenMode.CREATE);
     analyzer = iwc.getAnalyzer();
     dir = newDirectory();
   }
-  
+
   public void close() throws IOException {
     if (searcher != null) {
       searcher.getIndexReader().close();
@@ -107,10 +107,7 @@ public class IntervalHighlighterTest extends LuceneTestCase {
       doc.add(f);
       writer.addDocument(doc);
     }
-    writer.close();
-    if (searcher != null) {
-      searcher.getIndexReader().close();
-    }
+    writer.shutdown();
     searcher = new IndexSearcher(DirectoryReader.open(dir));
   }
 

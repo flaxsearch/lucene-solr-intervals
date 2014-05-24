@@ -219,10 +219,15 @@ public class TestBufferedIndexInput extends LuceneTestCase {
       public long length() {
         return len;
       }
+      
+      @Override
+      public IndexInput slice(String sliceDescription, long offset, long length) throws IOException {
+        throw new UnsupportedOperationException();
+      }
     }
 
     public void testSetBufferSize() throws IOException {
-      File indexDir = TestUtil.getTempDir("testSetBufferSize");
+      File indexDir = createTempDir("testSetBufferSize");
       MockFSDirectory dir = new MockFSDirectory(indexDir, random());
       try {
         IndexWriter writer = new IndexWriter(
@@ -271,10 +276,10 @@ public class TestBufferedIndexInput extends LuceneTestCase {
         hits = searcher.search(new TermQuery(aaa), null, 1000).scoreDocs;
         dir.tweakBufferSizes();
         assertEquals(35, hits.length);
-        writer.close();
+        writer.shutdown();
         reader.close();
       } finally {
-        TestUtil.rmDir(indexDir);
+        TestUtil.rm(indexDir);
       }
     }
 

@@ -33,19 +33,25 @@ import java.util.Map;
 public class DocCollection extends ZkNodeProps {
   public static final String DOC_ROUTER = "router";
   public static final String SHARDS = "shards";
+  private int version;
 
   private final String name;
   private final Map<String, Slice> slices;
   private final Map<String, Slice> activeSlices;
   private final DocRouter router;
 
+  public DocCollection(String name, Map<String, Slice> slices, Map<String, Object> props, DocRouter router) {
+    this(name, slices, props, router, -1);
+  }
+
   /**
    * @param name  The name of the collection
    * @param slices The logical shards of the collection.  This is used directly and a copy is not made.
    * @param props  The properties of the slice.  This is used directly and a copy is not made.
    */
-  public DocCollection(String name, Map<String, Slice> slices, Map<String, Object> props, DocRouter router) {
-    super( props==null ? props = new HashMap<>() : props);
+  public DocCollection(String name, Map<String, Slice> slices, Map<String, Object> props, DocRouter router, int zkVersion) {
+    super( props==null ? props = new HashMap<String,Object>() : props);
+    this.version = zkVersion;
     this.name = name;
 
     this.slices = slices;
@@ -103,6 +109,12 @@ public class DocCollection extends ZkNodeProps {
   public Map<String, Slice> getActiveSlicesMap() {
     return activeSlices;
   }
+
+  public int getVersion(){
+    return version;
+
+  }
+
 
   public DocRouter getRouter() {
     return router;

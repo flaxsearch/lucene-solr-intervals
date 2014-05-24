@@ -19,6 +19,7 @@ package org.apache.lucene.search.spans;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -116,7 +117,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     doc.add(newTextField(PayloadHelper.FIELD, "one two three one four three", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
     
 
     checkSpans(MultiSpansWrapper.wrap(reader.getContext(), snq), 1,new int[]{2});
@@ -261,7 +262,7 @@ public class TestPayloadSpans extends LuceneTestCase {
 
     IndexReader reader = writer.getReader();
     IndexSearcher is = newSearcher(reader);
-    writer.close();
+    writer.shutdown();
 
     SpanTermQuery stq1 = new SpanTermQuery(new Term("content", "a"));
     SpanTermQuery stq2 = new SpanTermQuery(new Term("content", "k"));
@@ -276,7 +277,7 @@ public class TestPayloadSpans extends LuceneTestCase {
         Collection<byte[]> payloads = spans.getPayload();
 
         for (final byte [] payload : payloads) {
-          payloadSet.add(new String(payload, "UTF-8"));
+          payloadSet.add(new String(payload, StandardCharsets.UTF_8));
         }
       }
     }
@@ -297,7 +298,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
     IndexSearcher is = newSearcher(reader);
-    writer.close();
+    writer.shutdown();
 
     SpanTermQuery stq1 = new SpanTermQuery(new Term("content", "a"));
     SpanTermQuery stq2 = new SpanTermQuery(new Term("content", "k"));
@@ -311,7 +312,7 @@ public class TestPayloadSpans extends LuceneTestCase {
       while (spans.next()) {
         Collection<byte[]> payloads = spans.getPayload();
         for (final byte[] payload : payloads) {
-          payloadSet.add(new String(payload, "UTF-8"));
+          payloadSet.add(new String(payload, StandardCharsets.UTF_8));
         }
       }
     }
@@ -332,7 +333,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
     IndexSearcher is = newSearcher(reader);
-    writer.close();
+    writer.shutdown();
 
     SpanTermQuery stq1 = new SpanTermQuery(new Term("content", "a"));
     SpanTermQuery stq2 = new SpanTermQuery(new Term("content", "k"));
@@ -347,7 +348,7 @@ public class TestPayloadSpans extends LuceneTestCase {
         Collection<byte[]> payloads = spans.getPayload();
 
         for (final byte [] payload : payloads) {
-          payloadSet.add(new String(payload, "UTF-8"));
+          payloadSet.add(new String(payload, StandardCharsets.UTF_8));
         }
       }
     }
@@ -373,7 +374,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     writer.addDocument(doc);
   
     IndexReader reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
     IndexSearcher searcher = newSearcher(reader);
 
     PayloadSpanUtil psu = new PayloadSpanUtil(searcher.getTopReaderContext());
@@ -382,7 +383,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     if(VERBOSE) {
       System.out.println("Num payloads:" + payloads.size());
       for (final byte [] bytes : payloads) {
-        System.out.println(new String(bytes, "UTF-8"));
+        System.out.println(new String(bytes, StandardCharsets.UTF_8));
       }
     }
     reader.close();
@@ -437,7 +438,7 @@ public class TestPayloadSpans extends LuceneTestCase {
     }
 
     closeIndexReader = writer.getReader();
-    writer.close();
+    writer.shutdown();
 
     IndexSearcher searcher = newSearcher(closeIndexReader);
     return searcher;
@@ -455,7 +456,7 @@ public class TestPayloadSpans extends LuceneTestCase {
           System.out.println("payloads for span:" + payload.size());
           for (final byte [] bytes : payload) {
             System.out.println("doc:" + spans.doc() + " s:" + spans.start() + " e:" + spans.end() + " "
-              + new String(bytes, "UTF-8"));
+              + new String(bytes, StandardCharsets.UTF_8));
           }
         }
 

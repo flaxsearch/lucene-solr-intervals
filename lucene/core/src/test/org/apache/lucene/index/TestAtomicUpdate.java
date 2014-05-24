@@ -151,7 +151,7 @@ public class TestAtomicUpdate extends LuceneTestCase {
     searcherThread1.join();
     searcherThread2.join();
 
-    writer.close();
+    writer.shutdown();
 
     assertTrue("hit unexpected exception in indexer", !indexerThread.failed);
     assertTrue("hit unexpected exception in indexer2", !indexerThread2.failed);
@@ -175,10 +175,10 @@ public class TestAtomicUpdate extends LuceneTestCase {
     directory.close();
 
     // Second in an FSDirectory:
-    File dirPath = TestUtil.getTempDir("lucene.test.atomic");
+    File dirPath = createTempDir("lucene.test.atomic");
     directory = newFSDirectory(dirPath);
     runTest(directory);
     directory.close();
-    TestUtil.rmDir(dirPath);
+    TestUtil.rm(dirPath);
   }
 }

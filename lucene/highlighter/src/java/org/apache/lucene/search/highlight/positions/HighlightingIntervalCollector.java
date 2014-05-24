@@ -16,15 +16,15 @@ package org.apache.lucene.search.highlight.positions;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.Weight.PostingFeatures;
 import org.apache.lucene.search.intervals.Interval;
 import org.apache.lucene.search.intervals.IntervalCollector;
 import org.apache.lucene.search.intervals.IntervalIterator;
+
+import java.io.IOException;
 
 /**
  * Collects the first maxDocs docs and their positions matching the query
@@ -32,7 +32,7 @@ import org.apache.lucene.search.intervals.IntervalIterator;
  * @lucene.experimental
  */
 
-public class HighlightingIntervalCollector extends Collector implements IntervalCollector {
+public class HighlightingIntervalCollector extends SimpleCollector implements IntervalCollector {
   
   int count;
   DocAndPositions docs[];

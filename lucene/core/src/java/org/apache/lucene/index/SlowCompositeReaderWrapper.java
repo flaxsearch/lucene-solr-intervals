@@ -78,6 +78,16 @@ public final class SlowCompositeReaderWrapper extends AtomicReader {
   }
 
   @Override
+  public void addCoreClosedListener(CoreClosedListener listener) {
+    addCoreClosedListenerAsReaderClosedListener(in, listener);
+  }
+
+  @Override
+  public void removeCoreClosedListener(CoreClosedListener listener) {
+    removeCoreClosedListenerAsReaderClosedListener(in, listener);
+  }
+
+  @Override
   public Fields fields() {
     ensureOpen();
     return fields;
@@ -130,7 +140,7 @@ public final class SlowCompositeReaderWrapper extends AtomicReader {
       AtomicReaderContext context = in.leaves().get(i);
       SortedDocValues v = context.reader().getSortedDocValues(field);
       if (v == null) {
-        v = SortedDocValues.EMPTY;
+        v = DocValues.EMPTY_SORTED;
       }
       values[i] = v;
       starts[i] = context.docBase;
@@ -169,7 +179,7 @@ public final class SlowCompositeReaderWrapper extends AtomicReader {
       AtomicReaderContext context = in.leaves().get(i);
       SortedSetDocValues v = context.reader().getSortedSetDocValues(field);
       if (v == null) {
-        v = SortedSetDocValues.EMPTY;
+        v = DocValues.EMPTY_SORTED_SET;
       }
       values[i] = v;
       starts[i] = context.docBase;
@@ -238,5 +248,13 @@ public final class SlowCompositeReaderWrapper extends AtomicReader {
   protected void doClose() throws IOException {
     // TODO: as this is a wrapper, should we really close the delegate?
     in.close();
+  }
+
+  @Override
+  public void checkIntegrity() throws IOException {
+    ensureOpen();
+    for (AtomicReaderContext ctx : in.leaves()) {
+      ctx.reader().checkIntegrity();
+    }
   }
 }

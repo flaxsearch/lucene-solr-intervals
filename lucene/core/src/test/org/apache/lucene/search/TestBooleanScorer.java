@@ -50,7 +50,7 @@ public class TestBooleanScorer extends LuceneTestCase {
       writer.addDocument(doc);
     }
     IndexReader ir = writer.getReader();
-    writer.close();
+    writer.shutdown();
 
     BooleanQuery booleanQuery1 = new BooleanQuery();
     booleanQuery1.add(new TermQuery(new Term(FIELD, "1")), BooleanClause.Occur.SHOULD);
@@ -77,14 +77,14 @@ public class TestBooleanScorer extends LuceneTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory);
     writer.commit();
     IndexReader ir = writer.getReader();
-    writer.close();
+    writer.shutdown();
     IndexSearcher searcher = newSearcher(ir);
     BooleanWeight weight = (BooleanWeight) new BooleanQuery().createWeight(searcher);
     BulkScorer[] scorers = new BulkScorer[] {new BulkScorer() {
       private int doc = -1;
 
       @Override
-      public boolean score(Collector c, int maxDoc) throws IOException {
+      public boolean score(LeafCollector c, int maxDoc) throws IOException {
         assert doc == -1;
         doc = 3000;
         FakeScorer fs = new FakeScorer();
@@ -99,7 +99,7 @@ public class TestBooleanScorer extends LuceneTestCase {
     BooleanScorer bs = new BooleanScorer(weight, false, 1, Arrays.asList(scorers), Collections.<BulkScorer>emptyList(), scorers.length);
 
     final List<Integer> hits = new ArrayList<>();
-    bs.score(new Collector() {
+    bs.score(new SimpleCollector() {
       int docBase;
       @Override
       public void setScorer(Scorer scorer) {
@@ -111,7 +111,7 @@ public class TestBooleanScorer extends LuceneTestCase {
       }
       
       @Override
-      public void setNextReader(AtomicReaderContext context) {
+      protected void doSetNextReader(AtomicReaderContext context) throws IOException {
         docBase = context.docBase;
       }
       
@@ -137,8 +137,9 @@ public class TestBooleanScorer extends LuceneTestCase {
     doc.add(new TextField("field", "33", Field.Store.NO));
     w.addDocument(doc);
     final IndexReader r = w.getReader();
-    w.close();
-    final IndexSearcher s = newSearcher(r);
+    w.shutdown();
+    // we don't wrap with AssertingIndexSearcher in order to have the original scorer in setScorer.
+    final IndexSearcher s = newSearcher(r, true, false);
 
     final BooleanQuery q = new BooleanQuery();
     for(int term=0;term<33;term++) {
@@ -149,22 +150,18 @@ public class TestBooleanScorer extends LuceneTestCase {
                             BooleanClause.Occur.SHOULD));
                             
     final int[] count = new int[1];
-    s.search(q, new Collector() {
+    s.search(q, new SimpleCollector() {
     
       @Override
       public void setScorer(Scorer scorer) {
         // Make sure we got BooleanScorer:
-        final Class<?> clazz = scorer instanceof AssertingScorer ? ((AssertingScorer) scorer).getIn().getClass() : scorer.getClass();
+        final Class<?> clazz = scorer.getClass();
         assertEquals("Scorer is implemented by wrong class", FakeScorer.class.getName(), clazz.getName());
       }
       
       @Override
       public void collect(int doc) {
         count[0]++;
-      }
-      
-      @Override
-      public void setNextReader(AtomicReaderContext context) {
       }
       
       @Override
@@ -219,7 +216,7 @@ public class TestBooleanScorer extends LuceneTestCase {
           return new BulkScorer() {
 
             @Override
-            public boolean score(Collector collector, int max) throws IOException {
+            public boolean score(LeafCollector collector, int max) throws IOException {
               collector.setScorer(new FakeScorer());
               collector.collect(0);
               return false;
@@ -239,7 +236,7 @@ public class TestBooleanScorer extends LuceneTestCase {
     doc.add(newTextField("field", "doctors are people who prescribe medicines of which they know little, to cure diseases of which they know less, in human beings of whom they know nothing", Field.Store.NO));
     w.addDocument(doc);
     IndexReader r = w.getReader();
-    w.close();
+    w.shutdown();
 
     IndexSearcher s = newSearcher(r);
     BooleanQuery q1 = new BooleanQuery();

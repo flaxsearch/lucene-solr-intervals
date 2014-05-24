@@ -35,7 +35,6 @@ import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.TestUtil;
 
 public class TestDocumentWriter extends LuceneTestCase {
   private Directory dir;
@@ -63,7 +62,7 @@ public class TestDocumentWriter extends LuceneTestCase {
     writer.addDocument(testDoc);
     writer.commit();
     SegmentCommitInfo info = writer.newestSegment();
-    writer.close();
+    writer.shutdown();
     //After adding the document, we should be able to read it back in
     SegmentReader reader = new SegmentReader(info, newIOContext(random()));
     assertTrue(reader != null);
@@ -125,7 +124,7 @@ public class TestDocumentWriter extends LuceneTestCase {
     writer.addDocument(doc);
     writer.commit();
     SegmentCommitInfo info = writer.newestSegment();
-    writer.close();
+    writer.shutdown();
     SegmentReader reader = new SegmentReader(info, newIOContext(random()));
 
     DocsAndPositionsEnum termPositions = MultiFields.getTermPositionsEnum(reader, MultiFields.getLiveDocs(reader),
@@ -197,7 +196,7 @@ public class TestDocumentWriter extends LuceneTestCase {
     writer.addDocument(doc);
     writer.commit();
     SegmentCommitInfo info = writer.newestSegment();
-    writer.close();
+    writer.shutdown();
     SegmentReader reader = new SegmentReader(info, newIOContext(random()));
 
     DocsAndPositionsEnum termPositions = MultiFields.getTermPositionsEnum(reader, reader.getLiveDocs(), "f1", new BytesRef("a"));
@@ -240,7 +239,7 @@ public class TestDocumentWriter extends LuceneTestCase {
     writer.addDocument(doc);
     writer.commit();
     SegmentCommitInfo info = writer.newestSegment();
-    writer.close();
+    writer.shutdown();
     SegmentReader reader = new SegmentReader(info, newIOContext(random()));
 
     DocsAndPositionsEnum termPositions = reader.termPositionsEnum(new Term("preanalyzed", "term1"));
@@ -258,42 +257,6 @@ public class TestDocumentWriter extends LuceneTestCase {
     assertTrue(termPositions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(1, termPositions.freq());
     assertEquals(2, termPositions.nextPosition());
-    reader.close();
-  }
-
-  /**
-   * Test adding two fields with the same name, but 
-   * with different term vector setting (LUCENE-766).
-   */
-  public void testMixedTermVectorSettingsSameField() throws Exception {
-    Document doc = new Document();
-    // f1 first without tv then with tv
-    doc.add(newStringField("f1", "v1", Field.Store.YES));
-    FieldType customType2 = new FieldType(StringField.TYPE_STORED);
-    customType2.setStoreTermVectors(true);
-    customType2.setStoreTermVectorOffsets(true);
-    customType2.setStoreTermVectorPositions(true);
-    doc.add(newField("f1", "v2", customType2));
-    // f2 first with tv then without tv
-    doc.add(newField("f2", "v1", customType2));
-    doc.add(newStringField("f2", "v2", Field.Store.YES));
-
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random())));
-    writer.addDocument(doc);
-    writer.close();
-
-    TestUtil.checkIndex(dir);
-
-    IndexReader reader = DirectoryReader.open(dir);
-    // f1
-    Terms tfv1 = reader.getTermVectors(0).terms("f1");
-    assertNotNull(tfv1);
-    assertEquals("the 'with_tv' setting should rule!",2,tfv1.size());
-    // f2
-    Terms tfv2 = reader.getTermVectors(0).terms("f2");
-    assertNotNull(tfv2);
-    assertEquals("the 'with_tv' setting should rule!",2,tfv2.size());
     reader.close();
   }
 
@@ -322,7 +285,7 @@ public class TestDocumentWriter extends LuceneTestCase {
         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     writer.addDocument(doc);
     writer.forceMerge(1); // be sure to have a single segment
-    writer.close();
+    writer.shutdown();
 
     TestUtil.checkIndex(dir);
 

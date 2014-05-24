@@ -32,8 +32,8 @@ import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.DocTermOrdsRangeFilter;
 import org.apache.lucene.search.DocTermOrdsRewriteMethod;
-import org.apache.lucene.search.FieldCacheRangeFilter;
-import org.apache.lucene.search.FieldCacheRewriteMethod;
+import org.apache.lucene.search.DocValuesRangeFilter;
+import org.apache.lucene.search.DocValuesRewriteMethod;
 import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
@@ -41,6 +41,7 @@ import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.uninverting.UninvertingReader;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.UnicodeUtil;
@@ -48,6 +49,7 @@ import org.apache.solr.analysis.SolrAnalyzer;
 import org.apache.solr.analysis.TokenizerChain;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
+import org.apache.solr.common.util.Base64;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.response.TextResponseWriter;
@@ -57,7 +59,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -166,7 +167,7 @@ public abstract class FieldType extends FieldProperties {
 
     String positionInc = initArgs.get(POSITION_INCREMENT_GAP);
     if (positionInc != null) {
-      Analyzer analyzer = getAnalyzer();
+      Analyzer analyzer = getIndexAnalyzer();
       if (analyzer instanceof SolrAnalyzer) {
         ((SolrAnalyzer)analyzer).setPositionIncrementGap(Integer.parseInt(positionInc));
       } else {
@@ -213,7 +214,7 @@ public abstract class FieldType extends FieldProperties {
   public String toString() {
     return typeName + "{class=" + this.getClass().getName()
 //            + propertiesToString(properties)
-            + (analyzer != null ? ",analyzer=" + analyzer.getClass().getName() : "")
+            + (indexAnalyzer != null ? ",analyzer=" + indexAnalyzer.getClass().getName() : "")
             + ",args=" + args
             +"}";
   }
@@ -446,6 +447,16 @@ public abstract class FieldType extends FieldProperties {
     query.setRewriteMethod(sf.getType().getRewriteMethod(parser, sf));
     return query;
   }
+  
+  /**
+   * DocValues is not enabled for a field, but its indexed, docvalues can be constructed 
+   * on the fly (uninverted, aka fieldcache) on the first request to sort, facet, etc. 
+   * This specifies the structure to use.
+   * 
+   * @param sf field instance
+   * @return type to uninvert, or {@code null} (to disallow uninversion for the field)
+   */
+  public abstract UninvertingReader.Type getUninversionType(SchemaField sf);
 
   /**
    * Default analyzer for types that only produce 1 verbatim token...
@@ -480,23 +491,9 @@ public abstract class FieldType extends FieldProperties {
     }
   }
 
-  /**
-   * Analyzer set by schema for text types to use when indexing fields
-   * of this type, subclasses can set analyzer themselves or override
-   * getAnalyzer()
-   * @see #getAnalyzer
-   * @see #setAnalyzer
-   */
-  protected Analyzer analyzer=new DefaultAnalyzer(256);
+  private Analyzer indexAnalyzer = new DefaultAnalyzer(256);
 
-  /**
-   * Analyzer set by schema for text types to use when searching fields
-   * of this type, subclasses can set analyzer themselves or override
-   * getAnalyzer()
-   * @see #getQueryAnalyzer
-   * @see #setQueryAnalyzer
-   */
-  protected Analyzer queryAnalyzer=analyzer;
+  private Analyzer queryAnalyzer = indexAnalyzer;
 
   /**
    * Returns the Analyzer to be used when indexing fields of this type.
@@ -505,8 +502,8 @@ public abstract class FieldType extends FieldProperties {
    * </p>
    * @see #getQueryAnalyzer
    */
-  public Analyzer getAnalyzer() {
-    return analyzer;
+  public Analyzer getIndexAnalyzer() {
+    return indexAnalyzer;
   }
 
   /**
@@ -514,10 +511,17 @@ public abstract class FieldType extends FieldProperties {
    * <p>
    * This method may be called many times, at any time.
    * </p>
-   * @see #getAnalyzer
+   * @see #getIndexAnalyzer
    */
   public Analyzer getQueryAnalyzer() {
     return queryAnalyzer;
+  }
+
+  /**
+   * Returns true if this type supports index and query analyzers, false otherwise.
+   */
+  protected boolean supportsAnalyzers() {
+    return false;
   }
 
 
@@ -525,40 +529,46 @@ public abstract class FieldType extends FieldProperties {
    * Sets the Analyzer to be used when indexing fields of this type.
    *
    * <p>
-   * The default implementation throws a SolrException.  
-   * Subclasses that override this method need to ensure the behavior 
-   * of the analyzer is consistent with the implementation of toInternal.
+   * Subclasses should override {@link #supportsAnalyzers()} to
+   * enable this function.
    * </p>
-   * 
-   * @see #toInternal
+   *
+   * @see #supportsAnalyzers()
    * @see #setQueryAnalyzer
-   * @see #getAnalyzer
+   * @see #getIndexAnalyzer
    */
-  public void setAnalyzer(Analyzer analyzer) {
-    throw new SolrException
-      (ErrorCode.SERVER_ERROR,
-       "FieldType: " + this.getClass().getSimpleName() + 
-       " (" + typeName + ") does not support specifying an analyzer");
+  public final void setIndexAnalyzer(Analyzer analyzer) {
+    if (supportsAnalyzers()) {
+      indexAnalyzer = analyzer;
+    } else {
+      throw new SolrException
+        (ErrorCode.SERVER_ERROR,
+         "FieldType: " + this.getClass().getSimpleName() +
+         " (" + typeName + ") does not support specifying an analyzer");
+    }
   }
 
   /**
    * Sets the Analyzer to be used when querying fields of this type.
    *
    * <p>
-   * The default implementation throws a SolrException.  
-   * Subclasses that override this method need to ensure the behavior 
-   * of the analyzer is consistent with the implementation of toInternal.
+   * Subclasses should override {@link #supportsAnalyzers()} to
+   * enable this function.
    * </p>
-   * 
-   * @see #toInternal
-   * @see #setAnalyzer
+   *
+   * @see #supportsAnalyzers()
+   * @see #setIndexAnalyzer
    * @see #getQueryAnalyzer
    */
-  public void setQueryAnalyzer(Analyzer analyzer) {
-    throw new SolrException
-      (ErrorCode.SERVER_ERROR,
-       "FieldType: " + this.getClass().getSimpleName() +
-       " (" + typeName + ") does not support specifying an analyzer");
+  public final void setQueryAnalyzer(Analyzer analyzer) {
+    if (supportsAnalyzers()) {
+      queryAnalyzer = analyzer;
+    } else {
+      throw new SolrException
+        (ErrorCode.SERVER_ERROR,
+         "FieldType: " + this.getClass().getSimpleName() +
+         " (" + typeName + ") does not support specifying an analyzer");
+    }
   }
 
   /** @lucene.internal */
@@ -688,7 +698,7 @@ public abstract class FieldType extends FieldProperties {
             part2 == null ? null : new BytesRef(toInternal(part2)),
             minInclusive, maxInclusive));
       } else {
-        return new ConstantScoreQuery(FieldCacheRangeFilter.newStringRange(
+        return new ConstantScoreQuery(DocValuesRangeFilter.newStringRange(
             field.getName(), 
             part1 == null ? null : toInternal(part1),
             part2 == null ? null : toInternal(part2),
@@ -732,7 +742,7 @@ public abstract class FieldType extends FieldProperties {
    */
   public MultiTermQuery.RewriteMethod getRewriteMethod(QParser parser, SchemaField field) {
     if (!field.indexed() && field.hasDocValues()) {
-      return field.multiValued() ? new DocTermOrdsRewriteMethod() : new FieldCacheRewriteMethod();
+      return field.multiValued() ? new DocTermOrdsRewriteMethod() : new DocValuesRewriteMethod();
     } else {
       return MultiTermQuery.CONSTANT_SCORE_AUTO_REWRITE_DEFAULT;
     }
@@ -844,7 +854,7 @@ public abstract class FieldType extends FieldProperties {
     
     if (isExplicitAnalyzer()) {
       String analyzerProperty = isExplicitQueryAnalyzer() ? INDEX_ANALYZER : ANALYZER;
-      namedPropertyValues.add(analyzerProperty, getAnalyzerProperties(getAnalyzer()));
+      namedPropertyValues.add(analyzerProperty, getAnalyzerProperties(getIndexAnalyzer()));
     } 
     if (isExplicitQueryAnalyzer()) {
       String analyzerProperty = isExplicitAnalyzer() ? QUERY_ANALYZER : ANALYZER;
@@ -967,5 +977,53 @@ public abstract class FieldType extends FieldProperties {
    */
   public Object unmarshalSortValue(Object value) {
     return value;
+  }
+
+  /**
+   * Marshals a string-based field value.
+   */
+  protected static Object marshalStringSortValue(Object value) {
+    if (null == value) {
+      return null;
+    }
+    CharsRef spare = new CharsRef();
+    UnicodeUtil.UTF8toUTF16((BytesRef)value, spare);
+    return spare.toString();
+  }
+
+  /**
+   * Unmarshals a string-based field value.
+   */
+  protected static Object unmarshalStringSortValue(Object value) {
+    if (null == value) {
+      return null;
+    }
+    BytesRef spare = new BytesRef();
+    String stringVal = (String)value;
+    UnicodeUtil.UTF16toUTF8(stringVal, 0, stringVal.length(), spare);
+    return spare;
+  }
+
+  /**
+   * Marshals a binary field value.
+   */
+  protected static Object marshalBase64SortValue(Object value) {
+    if (null == value) {
+      return null;
+    }
+    final BytesRef val = (BytesRef)value;
+    return Base64.byteArrayToBase64(val.bytes, val.offset, val.length);
+  }
+
+  /**
+   * Unmarshals a binary field value.
+   */
+  protected static Object unmarshalBase64SortValue(Object value) {
+    if (null == value) {
+      return null;
+    }
+    final String val = (String)value;
+    final byte[] bytes = Base64.base64ToByteArray(val);
+    return new BytesRef(bytes);
   }
 }

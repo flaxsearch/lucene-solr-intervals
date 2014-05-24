@@ -214,7 +214,7 @@ public abstract class PerFieldDocValuesFormat extends DocValuesFormat {
 
     public FieldsReader(final SegmentReadState readState) throws IOException {
 
-      // Read _X.per and init each format:
+      // Init each unique format:
       boolean success = false;
       try {
         // Read field name -> format name
@@ -309,6 +309,13 @@ public abstract class PerFieldDocValuesFormat extends DocValuesFormat {
             entry.getValue().ramBytesUsed();
       }
       return size;
+    }
+
+    @Override
+    public void checkIntegrity() throws IOException {
+      for (DocValuesProducer format : formats.values()) {
+        format.checkIntegrity();
+      }
     }
   }
 

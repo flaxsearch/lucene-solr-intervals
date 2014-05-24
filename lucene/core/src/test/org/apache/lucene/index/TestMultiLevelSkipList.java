@@ -77,7 +77,7 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
     }
     writer.commit();
     writer.forceMerge(1);
-    writer.close();
+    writer.shutdown();
 
     AtomicReader reader = getOnlySegmentReader(DirectoryReader.open(dir));
     
@@ -189,5 +189,9 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
       return new CountingStream(this.input.clone());
     }
 
+    @Override
+    public IndexInput slice(String sliceDescription, long offset, long length) throws IOException {
+      return new CountingStream(this.input.slice(sliceDescription, offset, length));
+    }
   }
 }

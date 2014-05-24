@@ -64,20 +64,12 @@ public abstract class ReusedBufferedIndexOutput extends IndexOutput {
   }
   
   /** Write the buffered bytes to cache */
-  private void flushBufferToCache() throws IOException {
+  protected void flushBufferToCache() throws IOException {
     writeInternal(buffer, 0, bufferLength);
     
     bufferStart += bufferLength;
     bufferLength = 0;
     bufferPosition = 0;
-  }
-  
-  protected abstract void flushInternal() throws IOException;
-  
-  @Override
-  public void flush() throws IOException {
-    flushBufferToCache();
-    flushInternal();
   }
   
   protected abstract void closeInternal() throws IOException;
@@ -96,11 +88,6 @@ public abstract class ReusedBufferedIndexOutput extends IndexOutput {
   }
   
   protected abstract void seekInternal(long pos) throws IOException;
-  
-  @Override
-  public long length() throws IOException {
-    return fileLength;
-  }
   
   @Override
   public void writeByte(byte b) throws IOException {

@@ -54,6 +54,7 @@ import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.RAMDirectory; // for javadocs
 import org.apache.lucene.util.ArrayUtil;
@@ -447,7 +448,7 @@ public class MemoryIndex {
 
       if (!fieldInfos.containsKey(fieldName)) {
         fieldInfos.put(fieldName, 
-            new FieldInfo(fieldName, true, fieldInfos.size(), false, false, false, this.storeOffsets ? IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS : IndexOptions.DOCS_AND_FREQS_AND_POSITIONS , null, null, null));
+            new FieldInfo(fieldName, true, fieldInfos.size(), false, false, false, this.storeOffsets ? IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS : IndexOptions.DOCS_AND_FREQS_AND_POSITIONS , null, null, -1, null));
       }
       TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
       PositionIncrementAttribute posIncrAttribute = stream.addAttribute(PositionIncrementAttribute.class);
@@ -532,7 +533,7 @@ public class MemoryIndex {
     IndexSearcher searcher = createSearcher();
     try {
       final float[] scores = new float[1]; // inits to 0.0f (no match)
-      searcher.search(query, new Collector() {
+      searcher.search(query, new SimpleCollector() {
         private Scorer scorer;
 
         @Override
@@ -550,8 +551,6 @@ public class MemoryIndex {
           return true;
         }
 
-        @Override
-        public void setNextReader(AtomicReaderContext context) { }
       });
       float score = scores[0];
       return score;
@@ -750,7 +749,17 @@ public class MemoryIndex {
     private MemoryIndexReader() {
       super(); // avoid as much superclass baggage as possible
     }
-    
+
+    @Override
+    public void addCoreClosedListener(CoreClosedListener listener) {
+      addCoreClosedListenerAsReaderClosedListener(this, listener);
+    }
+
+    @Override
+    public void removeCoreClosedListener(CoreClosedListener listener) {
+      removeCoreClosedListenerAsReaderClosedListener(this, listener);
+    }
+
     private Info getInfo(String fieldName) {
       return fields.get(fieldName);
     }
@@ -792,6 +801,11 @@ public class MemoryIndex {
     @Override
     public Bits getDocsWithField(String field) throws IOException {
       return null;
+    }
+
+    @Override
+    public void checkIntegrity() throws IOException {
+      // no-op
     }
 
     private class MemoryFields extends Fields {

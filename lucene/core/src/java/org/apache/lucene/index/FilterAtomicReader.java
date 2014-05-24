@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.util.Iterator;
 
 import org.apache.lucene.search.CachingWrapperFilter;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -38,8 +37,8 @@ import org.apache.lucene.util.BytesRef;
  * to override {@link #numDocs()} as well and vice-versa.
  * <p><b>NOTE</b>: If this {@link FilterAtomicReader} does not change the
  * content the contained reader, you could consider overriding
- * {@link #getCoreCacheKey()} so that {@link FieldCache} and
- * {@link CachingWrapperFilter} share the same entries for this atomic reader
+ * {@link #getCoreCacheKey()} so that
+ * {@link CachingWrapperFilter} shares the same entries for this atomic reader
  * and the wrapped one. {@link #getCombinedCoreAndDeletesKey()} could be
  * overridden as well if the {@link #getLiveDocs() live docs} are not changed
  * either.
@@ -333,6 +332,16 @@ public class FilterAtomicReader extends AtomicReader {
   }
 
   @Override
+  public void addCoreClosedListener(CoreClosedListener listener) {
+    in.addCoreClosedListener(listener);
+  }
+
+  @Override
+  public void removeCoreClosedListener(CoreClosedListener listener) {
+    in.removeCoreClosedListener(listener);
+  }
+
+  @Override
   public Bits getLiveDocs() {
     ensureOpen();
     return in.getLiveDocs();
@@ -423,4 +432,9 @@ public class FilterAtomicReader extends AtomicReader {
     return in.getDocsWithField(field);
   }
 
+  @Override
+  public void checkIntegrity() throws IOException {
+    ensureOpen();
+    in.checkIntegrity();
+  }
 }

@@ -141,7 +141,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     assertEquals(1, s.search(dmq, 10).totalHits);
     
     r.close();
-    w.close();
+    w.shutdown();
     dir.close();
   }
 
@@ -152,7 +152,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     doc1.add(newTextField("field", "foo bar", Field.Store.NO));
     iw1.addDocument(doc1);
     IndexReader reader1 = iw1.getReader();
-    iw1.close();
+    iw1.shutdown();
     
     Directory dir2 = newDirectory();
     RandomIndexWriter iw2 = new RandomIndexWriter(random(), dir2);
@@ -160,7 +160,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     doc2.add(newTextField("field", "foo baz", Field.Store.NO));
     iw2.addDocument(doc2);
     IndexReader reader2 = iw2.getReader();
-    iw2.close();
+    iw2.shutdown();
 
     BooleanQuery query = new BooleanQuery(); // Query: +foo -ba*
     query.add(new TermQuery(new Term("field", "foo")), BooleanClause.Occur.MUST);
@@ -215,7 +215,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     w.forceMerge(1);
     final IndexReader r = w.getReader();
     final IndexSearcher s = newSearcher(r);
-    w.close();
+    w.shutdown();
 
     for(int iter=0;iter<10*RANDOM_MULTIPLIER;iter++) {
       if (VERBOSE) {
@@ -352,7 +352,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     Document d = new Document();
     d.add(new TextField(FIELD, "clockwork orange", Field.Store.YES));
     writer.addDocument(d);
-    writer.close();
+    writer.shutdown();
 
     IndexReader indexReader = DirectoryReader.open(directory);
     IndexSearcher searcher = newSearcher(indexReader);
@@ -382,7 +382,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     doc.add(newTextField("field", "some text here", Field.Store.NO));
     w.addDocument(doc);
     IndexReader r = w.getReader();
-    w.close();
+    w.shutdown();
     IndexSearcher s = new IndexSearcher(r) {
         @Override
         protected void search(List<AtomicReaderContext> leaves, Weight weight, Collector collector) throws IOException {
@@ -396,6 +396,44 @@ public class TestBooleanQuery extends LuceneTestCase {
     bq.add(new TermQuery(new Term("field", "here")), BooleanClause.Occur.SHOULD);
     bq.setMinimumNumberShouldMatch(2);
     s.search(bq, 10);
+    r.close();
+    dir.close();
+  }
+
+  public void testOneClauseRewriteOptimization() throws Exception {
+    final float BOOST = 3.5F;
+    final String FIELD = "content";
+    final String VALUE = "foo";
+      
+    Directory dir = newDirectory();
+    (new RandomIndexWriter(random(), dir)).shutdown();
+    IndexReader r = DirectoryReader.open(dir);
+
+    TermQuery expected = new TermQuery(new Term(FIELD, VALUE));
+    expected.setBoost(BOOST);
+
+    final int numLayers = atLeast(3);
+    boolean needBoost = true;
+    Query actual = new TermQuery(new Term(FIELD, VALUE));
+
+    for (int i = 0; i < numLayers; i++) {
+      if (needBoost && 0 == TestUtil.nextInt(random(),0,numLayers)) {
+        needBoost = false;
+        actual.setBoost(BOOST);
+      }
+
+      BooleanQuery bq = new BooleanQuery();
+      bq.add(actual, random().nextBoolean() 
+             ? BooleanClause.Occur.SHOULD : BooleanClause.Occur.MUST);
+      actual = bq;
+    }
+    if (needBoost) {
+      actual.setBoost(BOOST);
+    }
+
+    assertEquals(numLayers + ": " + actual.toString(),
+                 expected, actual.rewrite(r));
+
     r.close();
     dir.close();
   }

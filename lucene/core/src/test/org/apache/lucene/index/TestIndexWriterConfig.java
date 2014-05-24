@@ -75,7 +75,7 @@ public class TestIndexWriterConfig extends LuceneTestCase {
     assertTrue(DocumentsWriterPerThread.defaultIndexingChain == conf.getIndexingChain());
     assertNull(conf.getMergedSegmentWarmer());
     assertEquals(TieredMergePolicy.class, conf.getMergePolicy().getClass());
-    assertEquals(ThreadAffinityDocumentsWriterThreadPool.class, conf.getIndexerThreadPool().getClass());
+    assertEquals(DocumentsWriterPerThreadPool.class, conf.getIndexerThreadPool().getClass());
     assertEquals(FlushByRamOrCountsPolicy.class, conf.getFlushPolicy().getClass());
     assertEquals(IndexWriterConfig.DEFAULT_RAM_PER_THREAD_HARD_LIMIT_MB, conf.getRAMPerThreadHardLimitMB());
     assertEquals(Codec.getDefault(), conf.getCodec());
@@ -144,7 +144,7 @@ public class TestIndexWriterConfig extends LuceneTestCase {
     Directory dir = newDirectory();
     // test that IWC cannot be reused across two IWs
     IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, null);
-    new RandomIndexWriter(random(), dir, conf).close();
+    new RandomIndexWriter(random(), dir, conf).shutdown();
 
     // this should fail
     try {
@@ -164,8 +164,8 @@ public class TestIndexWriterConfig extends LuceneTestCase {
     
     // if it's cloned in advance, it should be ok
     conf = newIndexWriterConfig(TEST_VERSION_CURRENT, null);
-    new RandomIndexWriter(random(), dir, conf.clone()).close();
-    new RandomIndexWriter(random(), dir, conf.clone()).close();
+    new RandomIndexWriter(random(), dir, conf.clone()).shutdown();
+    new RandomIndexWriter(random(), dir, conf.clone()).shutdown();
     
     dir.close();
   }
@@ -396,7 +396,7 @@ public class TestIndexWriterConfig extends LuceneTestCase {
     w.forceMerge(1);
     w.commit();
     assertTrue("Expected CFS after merge", w.newestSegment().info.getUseCompoundFile());
-    w.close();
+    w.shutdown();
     dir.close();
   }
 

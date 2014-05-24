@@ -2,7 +2,6 @@ package org.apache.lucene.search.intervals;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -10,10 +9,10 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.CheckHits;
-import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.Weight;
@@ -235,7 +234,7 @@ public abstract class IntervalTestBase extends LuceneTestCase {
     }
   }
 
-  public static class MatchCollector extends Collector implements IntervalCollector {
+  public static class MatchCollector extends SimpleCollector implements IntervalCollector {
 
     private IntervalIterator intervals;
     private Interval current;
@@ -255,10 +254,6 @@ public abstract class IntervalTestBase extends LuceneTestCase {
         //System.out.println("**Collecting " + doc + ":" + current);
         intervals.collect(this);
       }
-    }
-
-    @Override
-    public void setNextReader(AtomicReaderContext context) throws IOException {
     }
 
     @Override

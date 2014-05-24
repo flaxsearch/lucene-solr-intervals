@@ -71,18 +71,22 @@ public class TestSortingMergePolicy extends LuceneTestCase {
   }
 
   static MergePolicy newSortingMergePolicy(Sort sort) {
-    // create a MP with a low merge factor so that many merges happen
+    // usually create a MP with a low merge factor so that many merges happen
     MergePolicy mp;
-    if (random().nextBoolean()) {
+    int thingToDo = random().nextInt(3);
+    if (thingToDo == 0) {
       TieredMergePolicy tmp = newTieredMergePolicy(random());
       final int numSegs = TestUtil.nextInt(random(), 3, 5);
       tmp.setSegmentsPerTier(numSegs);
       tmp.setMaxMergeAtOnce(TestUtil.nextInt(random(), 2, numSegs));
       mp = tmp;
-    } else {
+    } else if (thingToDo == 1) {
       LogMergePolicy lmp = newLogMergePolicy(random());
       lmp.setMergeFactor(TestUtil.nextInt(random(), 3, 5));
       mp = lmp;
+    } else {
+      // just a regular random one from LTC (could be alcoholic etc)
+      mp = newMergePolicy();
     }
     // wrap it with a sorting mp
     return new SortingMergePolicy(mp, sort);
@@ -141,8 +145,8 @@ public class TestSortingMergePolicy extends LuceneTestCase {
     
     iw1.forceMerge(1);
     iw2.forceMerge(1);
-    iw1.close();
-    iw2.close();
+    iw1.shutdown();
+    iw2.shutdown();
     reader = DirectoryReader.open(dir1);
     sortedReader = DirectoryReader.open(dir2);
   }

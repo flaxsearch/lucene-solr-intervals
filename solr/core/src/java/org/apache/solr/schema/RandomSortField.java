@@ -30,6 +30,7 @@ import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.IntDocValues;
 import org.apache.lucene.search.*;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.solr.response.TextResponseWriter;
 import org.apache.solr.search.QParser;
 
@@ -54,10 +55,10 @@ import org.apache.solr.search.QParser;
  * 
  * Examples of queries:
  * <ul>
- * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=rand_1234%20desc</li>
- * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=rand_2345%20desc</li>
- * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=rand_ABDC%20desc</li>
- * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=rand_21%20desc</li>
+ * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=random_1234%20desc</li>
+ * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=random_2345%20desc</li>
+ * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=random_ABDC%20desc</li>
+ * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=random_21%20desc</li>
  * </ul>
  * Note that multiple calls to the same URL will return the same sorting order.
  * 
@@ -91,6 +92,11 @@ public class RandomSortField extends FieldType {
   @Override
   public SortField getSortField(SchemaField field, boolean reverse) {
     return new SortField(field.getName(), randomComparatorSource, reverse);
+  }
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    return null;
   }
 
   @Override

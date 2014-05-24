@@ -24,9 +24,10 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.IntField;
+import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
@@ -52,7 +53,7 @@ public class TestTermsEnum extends LuceneTestCase {
       w.addDocument(docs.nextDoc());
     }
     final IndexReader r = w.getReader();
-    w.close();
+    w.shutdown();
 
     final List<BytesRef> terms = new ArrayList<>();
     final TermsEnum termsEnum = MultiFields.getTerms(r, "body").iterator(null);
@@ -159,6 +160,7 @@ public class TestTermsEnum extends LuceneTestCase {
   private void addDoc(RandomIndexWriter w, Collection<String> terms, Map<BytesRef,Integer> termToID, int id) throws IOException {
     Document doc = new Document();
     doc.add(new IntField("id", id, Field.Store.YES));
+    doc.add(new NumericDocValuesField("id", id));
     if (VERBOSE) {
       System.out.println("TEST: addDoc id:" + id + " terms=" + terms);
     }
@@ -224,10 +226,9 @@ public class TestTermsEnum extends LuceneTestCase {
     }
 
     final IndexReader r = w.getReader();
-    w.close();
+    w.shutdown();
 
-    // NOTE: intentional insanity!!
-    final FieldCache.Ints docIDToID = FieldCache.DEFAULT.getInts(SlowCompositeReaderWrapper.wrap(r), "id", false);
+    final NumericDocValues docIDToID = MultiDocValues.getNumericValues(r, "id");
 
     for(int iter=0;iter<10*RANDOM_MULTIPLIER;iter++) {
 
@@ -374,7 +375,7 @@ public class TestTermsEnum extends LuceneTestCase {
       close();
     }
     r = w.getReader();
-    w.close();
+    w.shutdown();
     return r;
   }
 
@@ -513,7 +514,7 @@ public class TestTermsEnum extends LuceneTestCase {
     w.deleteDocuments(new Term("field", "one"));
     w.forceMerge(1);
     IndexReader r = w.getReader();
-    w.close();
+    w.shutdown();
     assertEquals(1, r.numDocs());
     assertEquals(1, r.maxDoc());
     Terms terms = MultiFields.getTerms(r, "field");
@@ -741,7 +742,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
     w.forceMerge(1);
     DirectoryReader r = w.getReader();
-    w.close();
+    w.shutdown();
     AtomicReader sub = getOnlySegmentReader(r);
     Terms terms = sub.fields().terms("field");
     Automaton automaton = new RegExp(".*", RegExp.NONE).toAutomaton();    
@@ -795,7 +796,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
     w.forceMerge(1);
     DirectoryReader r = w.getReader();
-    w.close();
+    w.shutdown();
     AtomicReader sub = getOnlySegmentReader(r);
     Terms terms = sub.fields().terms("field");
 
@@ -849,7 +850,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
     w.forceMerge(1);
     DirectoryReader r = w.getReader();
-    w.close();
+    w.shutdown();
     AtomicReader sub = getOnlySegmentReader(r);
     Terms terms = sub.fields().terms("field");
 
@@ -882,6 +883,125 @@ public class TestTermsEnum extends LuceneTestCase {
     assertNull(te.next());
 
     r.close();
+    dir.close();
+  }
+
+  // LUCENE-5667
+  public void testCommonPrefixTerms() throws Exception {
+    Directory d = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), d);
+    Set<String> terms = new HashSet<String>();
+    //String prefix = TestUtil.randomSimpleString(random(), 1, 20);
+    String prefix = TestUtil.randomRealisticUnicodeString(random(), 1, 20);
+    int numTerms = atLeast(1000);
+    if (VERBOSE) {
+      System.out.println("TEST: " + numTerms + " terms; prefix=" + prefix);
+    }
+    while (terms.size() < numTerms) {
+      //terms.add(prefix + TestUtil.randomSimpleString(random(), 1, 20));
+      terms.add(prefix + TestUtil.randomRealisticUnicodeString(random(), 1, 20));
+    }
+    for(String term : terms) {
+      Document doc = new Document();
+      doc.add(newStringField("id", term, Field.Store.YES));
+      w.addDocument(doc);
+    }
+    IndexReader r = w.getReader();
+    if (VERBOSE) {
+      System.out.println("\nTEST: reader=" + r);
+    }
+
+    TermsEnum termsEnum = MultiFields.getTerms(r, "id").iterator(null);
+    DocsEnum docsEnum = null;
+    PerThreadPKLookup pkLookup = new PerThreadPKLookup(r, "id");
+
+    int iters = atLeast(numTerms*3);
+    List<String> termsList = new ArrayList<>(terms);
+    for(int iter=0;iter<iters;iter++) {
+      String term;
+      boolean shouldExist;
+      if (random().nextBoolean()) {
+        term = termsList.get(random().nextInt(terms.size()));
+        shouldExist = true;
+      } else {
+        term = prefix + TestUtil.randomSimpleString(random(), 1, 20);
+        shouldExist = terms.contains(term);
+      }
+
+      if (VERBOSE) {
+        System.out.println("\nTEST: try term=" + term);
+        System.out.println("  shouldExist?=" + shouldExist);
+      }
+
+      BytesRef termBytesRef = new BytesRef(term);
+
+      boolean actualResult = termsEnum.seekExact(termBytesRef);
+      assertEquals(shouldExist, actualResult);
+      if (shouldExist) {
+        docsEnum = termsEnum.docs(null, docsEnum, 0);
+        int docID = docsEnum.nextDoc();
+        assertTrue(docID != DocsEnum.NO_MORE_DOCS);
+        assertEquals(docID, pkLookup.lookup(termBytesRef));
+        StoredDocument doc = r.document(docID);
+        assertEquals(term, doc.get("id"));
+
+        if (random().nextInt(7) == 1) {
+          termsEnum.next();
+        }
+      } else {
+        assertEquals(-1, pkLookup.lookup(termBytesRef));
+      }
+
+      if (random().nextInt(7) == 1) {
+        TermsEnum.SeekStatus status = termsEnum.seekCeil(termBytesRef);
+        if (shouldExist) {
+          assertEquals(TermsEnum.SeekStatus.FOUND, status);
+        } else {
+          assertNotSame(TermsEnum.SeekStatus.FOUND, status);
+        }
+      }
+    }
+
+    r.close();
+    w.close();
+    d.close();
+  }
+
+  // Stresses out many-terms-in-root-block case:
+  @Slow
+  public void testVaryingTermsPerSegment() throws Exception {
+    Directory dir = newDirectory();
+    Set<BytesRef> terms = new HashSet<BytesRef>();
+    int MAX_TERMS = atLeast(1000);
+    while (terms.size() < MAX_TERMS) {
+      terms.add(new BytesRef(TestUtil.randomSimpleString(random(), 1, 40)));
+    }
+    List<BytesRef> termsList = new ArrayList<>(terms);
+    StringBuilder sb = new StringBuilder();
+    for(int termCount=0;termCount<MAX_TERMS;termCount++) {
+      if (VERBOSE) {
+        System.out.println("\nTEST: termCount=" + termCount + " add term=" + termsList.get(termCount).utf8ToString());
+      }
+      sb.append(' ');
+      sb.append(termsList.get(termCount).utf8ToString());
+      IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+      iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
+      RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
+      Document doc = new Document();
+      doc.add(newTextField("field", sb.toString(), Field.Store.NO));
+      w.addDocument(doc);
+      IndexReader r = w.getReader();
+      assertEquals(1, r.leaves().size());
+      TermsEnum te = r.leaves().get(0).reader().fields().terms("field").iterator(null);
+      for(int i=0;i<=termCount;i++) {
+        assertTrue("term '" + termsList.get(i).utf8ToString() + "' should exist but doesn't", te.seekExact(termsList.get(i)));
+      }
+      for(int i=termCount+1;i<termsList.size();i++) {
+        assertFalse("term '" + termsList.get(i) + "' shouldn't exist but does", te.seekExact(termsList.get(i)));
+      }
+      r.close();
+      w.shutdown();
+    }
     dir.close();
   }
 }

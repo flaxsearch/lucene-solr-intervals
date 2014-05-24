@@ -17,6 +17,12 @@ package org.apache.solr.core;
  * limitations under the License.
  */
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.util.Properties;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.lucene.util.IOUtils;
 import org.apache.solr.SolrTestCaseJ4;
@@ -25,11 +31,7 @@ import org.junit.After;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
-import java.util.Properties;
+import java.nio.charset.StandardCharsets;
 
 public class TestCoreDiscovery extends SolrTestCaseJ4 {
 
@@ -38,21 +40,16 @@ public class TestCoreDiscovery extends SolrTestCaseJ4 {
     initCore();
   }
 
-  private final File solrHomeDirectory = new File(TEMP_DIR, "org.apache.solr.core.TestCoreDiscovery" + File.separator + "solrHome");
+  private final File solrHomeDirectory = createTempDir();
 
   private void setMeUp(String alternateCoreDir) throws Exception {
-    if (solrHomeDirectory.exists()) {
-      FileUtils.deleteDirectory(solrHomeDirectory);
-    }
-    assertTrue("Failed to mkdirs workDir", solrHomeDirectory.mkdirs());
-
     System.setProperty("solr.solr.home", solrHomeDirectory.getAbsolutePath());
     String xmlStr = SOLR_XML;
     if (alternateCoreDir != null) {
       xmlStr = xmlStr.replace("<solr>", "<solr> <str name=\"coreRootDirectory\">" + alternateCoreDir + "</str> ");
     }
     File tmpFile = new File(solrHomeDirectory, ConfigSolr.SOLR_XML_FILE);
-    FileUtils.write(tmpFile, xmlStr, IOUtils.CHARSET_UTF_8.toString());
+    FileUtils.write(tmpFile, xmlStr, IOUtils.UTF_8);
 
   }
 
@@ -80,7 +77,7 @@ public class TestCoreDiscovery extends SolrTestCaseJ4 {
 
   private void addCoreWithProps(Properties stockProps, File propFile) throws Exception {
     if (!propFile.getParentFile().exists()) propFile.getParentFile().mkdirs();
-    Writer out = new OutputStreamWriter(new FileOutputStream(propFile), IOUtils.CHARSET_UTF_8);
+    Writer out = new OutputStreamWriter(new FileOutputStream(propFile), StandardCharsets.UTF_8);
     try {
       stockProps.store(out, null);
     } finally {
@@ -115,9 +112,7 @@ public class TestCoreDiscovery extends SolrTestCaseJ4 {
 
   @After
   public void after() throws Exception {
-    if (solrHomeDirectory.exists()) {
-      FileUtils.deleteDirectory(solrHomeDirectory);
-    }
+
   }
 
   // Test the basic setup, create some dirs with core.properties files in them, but solr.xml has discoverCores
@@ -198,9 +193,9 @@ public class TestCoreDiscovery extends SolrTestCaseJ4 {
 
   @Test
   public void testAlternateCoreDir() throws Exception {
-    File alt = new File(TEMP_DIR, "alternateCoreDir");
-    if (alt.exists()) FileUtils.deleteDirectory(alt);
-    alt.mkdirs();
+
+    File alt = createTempDir();
+
     setMeUp(alt.getAbsolutePath());
     addCoreWithProps(makeCorePropFile("core1", false, true, "dataDir=core1"),
         new File(alt, "core1" + File.separator + CorePropertiesLocator.PROPERTIES_FILENAME));
@@ -213,14 +208,11 @@ public class TestCoreDiscovery extends SolrTestCaseJ4 {
       assertNotNull(core2);
     } finally {
       cc.shutdown();
-      if (alt.exists()) FileUtils.deleteDirectory(alt);
     }
   }
   @Test
   public void testNoCoreDir() throws Exception {
-    File noCoreDir = new File(TEMP_DIR, "noCoreDir");
-    if (noCoreDir.exists()) FileUtils.deleteDirectory(noCoreDir);
-    noCoreDir.mkdirs();
+    File noCoreDir = createTempDir();
     setMeUp(noCoreDir.getAbsolutePath());
     addCoreWithProps(makeCorePropFile("core1", false, true),
         new File(noCoreDir, "core1" + File.separator + CorePropertiesLocator.PROPERTIES_FILENAME));
@@ -233,7 +225,6 @@ public class TestCoreDiscovery extends SolrTestCaseJ4 {
       assertNotNull(core2);
     } finally {
       cc.shutdown();
-      if (noCoreDir.exists()) FileUtils.deleteDirectory(noCoreDir);
     }
   }
   // For testing whether finding a solr.xml overrides looking at solr.properties

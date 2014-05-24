@@ -28,9 +28,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import org.apache.lucene.codecs.BlockTreeTermsReader;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.PostingsFormat;
+import org.apache.lucene.codecs.blocktree.BlockTreeTermsReader;
+import org.apache.lucene.codecs.blocktree.FieldReader;
+import org.apache.lucene.codecs.blocktree.Stats;
 import org.apache.lucene.index.CheckIndex.Status.DocValuesStatus;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -44,6 +46,7 @@ import org.apache.lucene.util.CommandLineUtil;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LongBitSet;
 import org.apache.lucene.util.StringHelper;
+
 
 /**
  * Basic tool and API to check the health of an index and
@@ -237,7 +240,7 @@ public class CheckIndex {
        *  tree terms dictionary (this is only set if the
        *  {@link PostingsFormat} for this segment uses block
        *  tree. */
-      public Map<String,BlockTreeTermsReader.Stats> blockTreeStats = null;
+      public Map<String,Stats> blockTreeStats = null;
     }
 
     /**
@@ -534,9 +537,17 @@ public class CheckIndex {
         if (infoStream != null)
           infoStream.print("    test: open reader.........");
         reader = new SegmentReader(info, IOContext.DEFAULT);
+        msg(infoStream, "OK");
 
         segInfoStat.openReaderPassed = true;
+        
+        if (infoStream != null)
+          infoStream.print("    test: check integrity.....");
+        reader.checkIntegrity();
+        msg(infoStream, "OK");
 
+        if (infoStream != null)
+          infoStream.print("    test: check live docs.....");
         final int numDocs = reader.numDocs();
         toLoseDocCount = numDocs;
         if (reader.hasDeletions()) {
@@ -748,6 +759,30 @@ public class CheckIndex {
       final boolean hasPositions = terms.hasPositions();
       final boolean hasPayloads = terms.hasPayloads();
       final boolean hasOffsets = terms.hasOffsets();
+      
+      BytesRef bb = terms.getMin();
+      BytesRef minTerm;
+      if (bb != null) {
+        assert bb.isValid();
+        minTerm = BytesRef.deepCopyOf(bb);
+      } else {
+        minTerm = null;
+      }
+
+      BytesRef maxTerm;
+      bb = terms.getMax();
+      if (bb != null) {
+        assert bb.isValid();
+        maxTerm = BytesRef.deepCopyOf(bb);
+        if (minTerm == null) {
+          throw new RuntimeException("field \"" + field + "\" has null minTerm but non-null maxTerm");
+        }
+      } else {
+        maxTerm = null;
+        if (minTerm != null) {
+          throw new RuntimeException("field \"" + field + "\" has non-null minTerm but null maxTerm");
+        }
+      }
 
       // term vectors cannot omit TF:
       final boolean expectedHasFreqs = (isVectors || fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS) >= 0);
@@ -807,6 +842,20 @@ public class CheckIndex {
             throw new RuntimeException("terms out of order: lastTerm=" + lastTerm + " term=" + term);
           }
           lastTerm.copyBytes(term);
+        }
+        
+        if (minTerm == null) {
+          // We checked this above:
+          assert maxTerm == null;
+          throw new RuntimeException("field=\"" + field + "\": invalid term: term=" + term + ", minTerm=" + minTerm);
+        }
+        
+        if (term.compareTo(minTerm) < 0) {
+          throw new RuntimeException("field=\"" + field + "\": invalid term: term=" + term + ", minTerm=" + minTerm);
+        }
+        
+        if (term.compareTo(maxTerm) > 0) {
+          throw new RuntimeException("field=\"" + field + "\": invalid term: term=" + term + ", maxTerm=" + maxTerm);
         }
         
         final int docFreq = termsEnum.docFreq();
@@ -1056,6 +1105,10 @@ public class CheckIndex {
         }
       }
       
+      if (minTerm != null && status.termCount + status.delTermCount == 0) {
+        throw new RuntimeException("field=\"" + field + "\": minTerm is non-null yet we saw no terms: " + minTerm);
+      }
+
       final Terms fieldTerms = fields.terms(field);
       if (fieldTerms == null) {
         // Unusual: the FieldsEnum returned a field but
@@ -1065,8 +1118,8 @@ public class CheckIndex {
         // docs got deleted and then merged away):
         
       } else {
-        if (fieldTerms instanceof BlockTreeTermsReader.FieldReader) {
-          final BlockTreeTermsReader.Stats stats = ((BlockTreeTermsReader.FieldReader) fieldTerms).computeStats();
+        if (fieldTerms instanceof FieldReader) {
+          final Stats stats = ((FieldReader) fieldTerms).computeStats();
           assert stats != null;
           if (status.blockTreeStats == null) {
             status.blockTreeStats = new HashMap<>();
@@ -1199,7 +1252,7 @@ public class CheckIndex {
     }
     
     if (verbose && status.blockTreeStats != null && infoStream != null && status.termCount > 0) {
-      for(Map.Entry<String,BlockTreeTermsReader.Stats> ent : status.blockTreeStats.entrySet()) {
+      for(Map.Entry<String,Stats> ent : status.blockTreeStats.entrySet()) {
         infoStream.println("      field \"" + ent.getKey() + "\":");
         infoStream.println("      " + ent.getValue().toString().replace("\n", "\n      "));
       }
@@ -1589,6 +1642,7 @@ public class CheckIndex {
 
           // Only agg stats if the doc is live:
           final boolean doStats = liveDocs == null || liveDocs.get(j);
+
           if (doStats) {
             status.docCount++;
           }

@@ -23,7 +23,7 @@ import java.io.IOException;
 import java.util.Collection;
 
 /** Used by {@link BulkScorer}s that need to pass a {@link
- *  Scorer} to {@link Collector#setScorer}. */
+ *  Scorer} to {@link LeafCollector#setScorer}. */
 final class FakeScorer extends Scorer {
   float score;
   int doc = -1;

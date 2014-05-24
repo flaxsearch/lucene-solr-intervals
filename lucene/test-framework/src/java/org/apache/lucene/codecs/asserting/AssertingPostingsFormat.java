@@ -89,6 +89,11 @@ public final class AssertingPostingsFormat extends PostingsFormat {
     public long ramBytesUsed() {
       return in.ramBytesUsed();
     }
+
+    @Override
+    public void checkIntegrity() throws IOException {
+      in.checkIntegrity();
+    }
   }
 
   static class AssertingFieldsConsumer extends FieldsConsumer {
@@ -203,6 +208,11 @@ public final class AssertingPostingsFormat extends PostingsFormat {
           }
         }
       }
+    }
+
+    @Override
+    public void close() throws IOException {
+      in.close();
     }
   }
 }

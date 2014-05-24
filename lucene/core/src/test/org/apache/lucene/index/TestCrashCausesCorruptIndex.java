@@ -42,7 +42,7 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
    * LUCENE-3627: This test fails.
    */
   public void testCrashCorruptsIndexing() throws Exception {
-    path = TestUtil.getTempDir("testCrashCorruptsIndexing");
+    path = createTempDir("testCrashCorruptsIndexing");
         
     indexAndCrashOnCreateOutputSegments2();
 
@@ -81,7 +81,7 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
       // expected
     }
     // writes segments_3
-    indexWriter.close();
+    indexWriter.shutdown();
     assertFalse(slowFileExists(realDirectory, "segments_2"));
     crashAfterCreateOutput.close();
   }
@@ -101,7 +101,7 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
     // currently the test fails above.
     // however, to test the fix, the following lines should pass as well.
     indexWriter.addDocument(getDocument());
-    indexWriter.close();
+    indexWriter.shutdown();
     assertFalse(slowFileExists(realDirectory, "segments_2"));
     realDirectory.close();
   }

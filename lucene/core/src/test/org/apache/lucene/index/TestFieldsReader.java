@@ -56,7 +56,7 @@ public class TestFieldsReader extends LuceneTestCase {
     conf.getMergePolicy().setNoCFSRatio(0.0);
     IndexWriter writer = new IndexWriter(dir, conf);
     writer.addDocument(testDoc);
-    writer.close();
+    writer.shutdown();
     FaultyIndexInput.doFail = false;
   }
   
@@ -183,11 +183,17 @@ public class TestFieldsReader extends LuceneTestCase {
       }
       return i;
     }
+    
+    @Override
+    public IndexInput slice(String sliceDescription, long offset, long length) throws IOException {
+      IndexInput slice = delegate.slice(sliceDescription, offset, length);
+      return new FaultyIndexInput(slice);
+    }
   }
 
   // LUCENE-1262
   public void testExceptions() throws Throwable {
-    File indexDir = TestUtil.getTempDir("testfieldswriterexceptions");
+    File indexDir = createTempDir("testfieldswriterexceptions");
 
     try {
       Directory dir = new FaultyFSDirectory(indexDir);
@@ -197,7 +203,7 @@ public class TestFieldsReader extends LuceneTestCase {
       for(int i=0;i<2;i++)
         writer.addDocument(testDoc);
       writer.forceMerge(1);
-      writer.close();
+      writer.shutdown();
 
       IndexReader reader = DirectoryReader.open(dir);
 
@@ -223,7 +229,7 @@ public class TestFieldsReader extends LuceneTestCase {
       reader.close();
       dir.close();
     } finally {
-      TestUtil.rmDir(indexDir);
+      TestUtil.rm(indexDir);
     }
 
   }

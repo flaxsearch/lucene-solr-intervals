@@ -104,12 +104,10 @@ class Lucene40FieldInfosReader extends FieldInfosReader {
           attributes.put(LEGACY_NORM_TYPE_KEY, oldNormsType.name());
         }
         infos[i] = new FieldInfo(name, isIndexed, fieldNumber, storeTermVector, 
-          omitNorms, storePayloads, indexOptions, oldValuesType.mapping, oldNormsType.mapping, Collections.unmodifiableMap(attributes));
+          omitNorms, storePayloads, indexOptions, oldValuesType.mapping, oldNormsType.mapping, -1, Collections.unmodifiableMap(attributes));
       }
 
-      if (input.getFilePointer() != input.length()) {
-        throw new CorruptIndexException("did not read all bytes from file \"" + fileName + "\": read " + input.getFilePointer() + " vs size " + input.length() + " (resource: " + input + ")");
-      }
+      CodecUtil.checkEOF(input);
       FieldInfos fieldInfos = new FieldInfos(infos);
       success = true;
       return fieldInfos;

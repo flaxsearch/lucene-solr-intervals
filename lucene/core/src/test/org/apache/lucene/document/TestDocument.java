@@ -19,6 +19,7 @@ package org.apache.lucene.document;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.apache.lucene.analysis.MockTokenizer;
@@ -53,8 +54,8 @@ public class TestDocument extends LuceneTestCase {
     FieldType ft = new FieldType();
     ft.setStored(true);
     Field stringFld = new Field("string", binaryVal, ft);
-    StoredField binaryFld = new StoredField("binary", binaryVal.getBytes("UTF-8"));
-    StoredField binaryFld2 = new StoredField("binary", binaryVal2.getBytes("UTF-8"));
+    StoredField binaryFld = new StoredField("binary", binaryVal.getBytes(StandardCharsets.UTF_8));
+    StoredField binaryFld2 = new StoredField("binary", binaryVal2.getBytes(StandardCharsets.UTF_8));
     
     doc.add(stringFld);
     doc.add(binaryFld);
@@ -130,7 +131,7 @@ public class TestDocument extends LuceneTestCase {
     assertEquals(0, doc.getFields().size());
   }
 
-  public void testConstructorExceptions() {
+  public void testConstructorExceptions() throws Exception {
     FieldType ft = new FieldType();
     ft.setStored(true);
     new Field("name", "value", ft); // okay
@@ -141,16 +142,23 @@ public class TestDocument extends LuceneTestCase {
     } catch (IllegalArgumentException e) {
       // expected exception
     }
+
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
     new Field("name", "value", ft); // okay
+    Document doc = new Document();
+    FieldType ft2 = new FieldType();
+    ft2.setStored(true);
+    ft2.setStoreTermVectors(true);
+    doc.add(new Field("name", "value", ft2));
     try {
-      FieldType ft2 = new FieldType();
-      ft2.setStored(true);
-      ft2.setStoreTermVectors(true);
-      new Field("name", "value", ft2);
+      w.addDocument(doc);
       fail();
     } catch (IllegalArgumentException e) {
       // expected exception
     }
+    w.close();
+    dir.close();
   }
 
   public void testClearDocument() {
@@ -213,7 +221,7 @@ public class TestDocument extends LuceneTestCase {
     assertEquals(1, hits.length);
     
     doAssert(searcher.doc(hits[0].doc));
-    writer.close();
+    writer.shutdown();
     reader.close();
     dir.close();
   }
@@ -245,7 +253,7 @@ public class TestDocument extends LuceneTestCase {
     assertEquals(1, hits.length);
     
     doAssert(searcher.doc(hits[0].doc));
-    writer.close();
+    writer.shutdown();
     reader.close();
     dir.close();    
   }
@@ -336,7 +344,7 @@ public class TestDocument extends LuceneTestCase {
       else if (f.stringValue().equals("id3")) result |= 4;
       else fail("unexpected id field");
     }
-    writer.close();
+    writer.shutdown();
     reader.close();
     dir.close();
     assertEquals("did not see all IDs", 7, result);
@@ -373,7 +381,7 @@ public class TestDocument extends LuceneTestCase {
     assertNull(sdoc.get("somethingElse"));
     assertArrayEquals(new String[] { "5", "4" }, sdoc.getValues("int"));
     ir.close();
-    iw.close();
+    iw.shutdown();
     dir.close();
   }
 }

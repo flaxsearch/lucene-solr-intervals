@@ -47,6 +47,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.CachingTokenFilter;
 import org.apache.lucene.analysis.CharFilter;
+import org.apache.lucene.analysis.CrankyTokenFilter;
 import org.apache.lucene.analysis.MockGraphTokenFilter;
 import org.apache.lucene.analysis.MockRandomLookaheadTokenFilter;
 import org.apache.lucene.analysis.MockTokenFilter;
@@ -80,8 +81,8 @@ import org.apache.lucene.analysis.synonym.SynonymMap;
 import org.apache.lucene.analysis.util.CharArrayMap;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.wikipedia.WikipediaTokenizer;
+import org.apache.lucene.util.AttributeFactory;
 import org.apache.lucene.util.AttributeSource;
-import org.apache.lucene.util.AttributeSource.AttributeFactory;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.Rethrow;
 import org.apache.lucene.util.TestUtil;
@@ -141,6 +142,8 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
           // offsets offenders?
           // doesn't actual reset itself!
           CachingTokenFilter.class,
+          // Not broken, simulates brokenness:
+          CrankyTokenFilter.class,
           // Not broken: we forcefully add this, so we shouldn't
           // also randomly pick it:
           ValidatingTokenFilter.class)) {
@@ -302,7 +305,7 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
         // TODO: could cause huge ram usage to use full int range for some filters
         // (e.g. allocate enormous arrays)
         // return Integer.valueOf(random.nextInt());
-        return Integer.valueOf(TestUtil.nextInt(random, -100, 100));
+        return Integer.valueOf(TestUtil.nextInt(random, -50, 50));
       }
     });
     put(char.class, new ArgProducer() {
@@ -350,6 +353,11 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
       @Override public Object create(Random random) {
         // we expect bugs in emulating old versions
         return TEST_VERSION_CURRENT;
+      }
+    });
+    put(AttributeFactory.class, new ArgProducer() {
+      @Override public Object create(Random random) {
+        return newAttributeFactory(random);
       }
     });
     put(Set.class, new ArgProducer() {
@@ -579,10 +587,7 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
     Object[] args = new Object[paramTypes.length];
     for (int i = 0; i < args.length; i++) {
       Class<?> paramType = paramTypes[i];
-      if (paramType == AttributeFactory.class) {
-        // TODO: maybe the collator one...???
-        args[i] = AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY;
-      } else if (paramType == AttributeSource.class) {
+      if (paramType == AttributeSource.class) {
         // TODO: args[i] = new AttributeSource();
         // this is currently too scary to deal with!
         args[i] = null; // force IAE
@@ -917,7 +922,7 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
         System.out.println("Creating random analyzer:" + a);
       }
       try {
-        checkRandomData(random, a, 50*RANDOM_MULTIPLIER, 128, false,
+        checkRandomData(random, a, 50*RANDOM_MULTIPLIER, 80, false,
                         false /* We already validate our own offsets... */);
       } catch (Throwable e) {
         System.err.println("Exception from random analyzer: " + a);

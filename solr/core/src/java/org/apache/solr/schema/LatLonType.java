@@ -37,6 +37,7 @@ import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.lucene.util.Bits;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.response.TextResponseWriter;
@@ -237,6 +238,11 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
   @Override
   public SortField getSortField(SchemaField field, boolean top) {
     throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Sorting not supported on LatLonType " + field.getName());
+  }
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    return null;
   }
 
 
@@ -527,14 +533,14 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     @Override
     public void collect(int doc) throws IOException {
       spatialScorer.doc = doc;
-      if (spatialScorer.match()) delegate.collect(doc);
+      if (spatialScorer.match()) leafDelegate.collect(doc);
     }
 
     @Override
-    public void setNextReader(AtomicReaderContext context) throws IOException {
+    protected void doSetNextReader(AtomicReaderContext context) throws IOException {
+      super.doSetNextReader(context);
       maxdoc = context.reader().maxDoc();
       spatialScorer = new SpatialScorer(context, null, weight, 1.0f);
-      super.setNextReader(context);
     }
   }
 

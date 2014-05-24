@@ -34,16 +34,16 @@ import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.index.StorableField;
 import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.DocTermOrdsRangeFilter;
-import org.apache.lucene.search.FieldCacheRangeFilter;
+import org.apache.lucene.search.DocValuesRangeFilter;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermRangeQuery;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Version;
 import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.common.util.Base64;
 import org.apache.solr.response.TextResponseWriter;
 import org.apache.solr.search.QParser;
 
@@ -225,9 +225,18 @@ public class ICUCollationField extends FieldType {
   public SortField getSortField(SchemaField field, boolean top) {
     return getStringSort(field, top);
   }
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    if (sf.multiValued()) {
+      return Type.SORTED_SET_BINARY; 
+    } else {
+      return Type.SORTED;
+    }
+  }
 
   @Override
-  public Analyzer getAnalyzer() {
+  public Analyzer getIndexAnalyzer() {
     return analyzer;
   }
 
@@ -271,7 +280,7 @@ public class ICUCollationField extends FieldType {
           return new ConstantScoreQuery(DocTermOrdsRangeFilter.newBytesRefRange(
               field.getName(), low, high, minInclusive, maxInclusive));
         } else {
-          return new ConstantScoreQuery(FieldCacheRangeFilter.newBytesRefRange(
+          return new ConstantScoreQuery(DocValuesRangeFilter.newBytesRefRange(
               field.getName(), low, high, minInclusive, maxInclusive));
         } 
     } else {
@@ -303,20 +312,11 @@ public class ICUCollationField extends FieldType {
 
   @Override
   public Object marshalSortValue(Object value) {
-    if (null == value) {
-      return null;
-    }
-    final BytesRef val = (BytesRef)value;
-    return Base64.byteArrayToBase64(val.bytes, val.offset, val.length);
+    return marshalBase64SortValue(value);
   }
 
   @Override
   public Object unmarshalSortValue(Object value) {
-    if (null == value) {
-      return null;
-    }
-    final String val = (String)value;
-    final byte[] bytes = Base64.base64ToByteArray(val);
-    return new BytesRef(bytes);
+    return unmarshalBase64SortValue(value);
   }
 }

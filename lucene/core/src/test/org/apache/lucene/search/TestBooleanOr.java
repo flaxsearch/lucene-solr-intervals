@@ -150,7 +150,7 @@ public class TestBooleanOr extends LuceneTestCase {
     reader = writer.getReader();
     //
     searcher = newSearcher(reader);
-    writer.close();
+    writer.shutdown();
   }
 
   @Override
@@ -174,7 +174,7 @@ public class TestBooleanOr extends LuceneTestCase {
 
     riw.forceMerge(1);
     IndexReader r = riw.getReader();
-    riw.close();
+    riw.shutdown();
 
     IndexSearcher s = newSearcher(r);
     BooleanQuery bq = new BooleanQuery();
@@ -188,19 +188,12 @@ public class TestBooleanOr extends LuceneTestCase {
 
     final FixedBitSet hits = new FixedBitSet(docCount);
     final AtomicInteger end = new AtomicInteger();
-    Collector c = new Collector() {
-        @Override
-        public void setNextReader(AtomicReaderContext sub) {
-        }
+    LeafCollector c = new SimpleCollector() {
 
         @Override
         public void collect(int doc) {
           assertTrue("collected doc=" + doc + " beyond max=" + end, doc < end.intValue());
           hits.set(doc);
-        }
-
-        @Override
-        public void setScorer(Scorer scorer) {
         }
 
         @Override

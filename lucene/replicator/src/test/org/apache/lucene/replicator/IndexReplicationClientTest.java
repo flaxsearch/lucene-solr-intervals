@@ -136,7 +136,7 @@ public class IndexReplicationClientTest extends ReplicatorTestCase {
     super.setUp();
     publishDir = newMockDirectory();
     handlerDir = newMockDirectory();
-    sourceDirFactory = new PerSessionDirectoryFactory(TestUtil.getTempDir("replicationClientTest"));
+    sourceDirFactory = new PerSessionDirectoryFactory(createTempDir("replicationClientTest"));
     replicator = new LocalReplicator();
     callback = new IndexReadyCallback(handlerDir);
     handler = new IndexReplicationHandler(handlerDir, callback);
@@ -150,7 +150,8 @@ public class IndexReplicationClientTest extends ReplicatorTestCase {
   @After
   @Override
   public void tearDown() throws Exception {
-    IOUtils.close(client, callback, publishWriter, replicator, publishDir, handlerDir);
+    publishWriter.shutdown();
+    IOUtils.close(client, callback, replicator, publishDir, handlerDir);
     super.tearDown();
   }
   

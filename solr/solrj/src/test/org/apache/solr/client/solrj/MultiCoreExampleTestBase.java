@@ -21,6 +21,8 @@ import java.io.File;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.TestUtil;
 import org.apache.solr.client.solrj.request.AbstractUpdateRequest.ACTION;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.request.CoreAdminRequest.Unload;
@@ -55,32 +57,17 @@ public abstract class MultiCoreExampleTestBase extends SolrExampleTestBase
 
   @Override public void setUp() throws Exception {
     super.setUp();
-
-    dataDir1 = new File(TEMP_DIR, getClass().getName() + "-core0-"
-        + System.currentTimeMillis());
-    dataDir1.mkdirs();
-    
-    dataDir2 = new File(TEMP_DIR, getClass().getName() + "-core1-"
-        + System.currentTimeMillis());
-    dataDir2.mkdirs();
+    dataDir1 = createTempDir();
+    dataDir2 = createTempDir();
     
     System.setProperty( "solr.core0.data.dir", this.dataDir1.getCanonicalPath() ); 
     System.setProperty( "solr.core1.data.dir", this.dataDir2.getCanonicalPath() );
-
   }
   
   @Override
   public void tearDown() throws Exception {
     super.tearDown();
     
-    String skip = System.getProperty("solr.test.leavedatadir");
-    if (null != skip && 0 != skip.trim().length()) {
-      System.err.println("NOTE: per solr.test.leavedatadir, dataDir2 will not be removed: " + dataDir2.getAbsolutePath());
-    } else {
-      if (!recurseDelete(dataDir2)) {
-        System.err.println("!!!! WARNING: best effort to remove " + dataDir2.getAbsolutePath() + " FAILED !!!!!");
-      }
-    }
     if(solrCore0 != null) solrCore0.shutdown();
     if(solrCore1 != null) solrCore1.shutdown();
     if(solrAdmin != null) solrAdmin.shutdown();

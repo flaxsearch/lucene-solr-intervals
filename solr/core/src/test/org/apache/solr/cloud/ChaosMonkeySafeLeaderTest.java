@@ -33,7 +33,6 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 
 @Slow
-@BadApple(bugUrl = "https://issues.apache.org/jira/browse/SOLR-5735")
 public class ChaosMonkeySafeLeaderTest extends AbstractFullDistribZkTestBase {
   
   private static final Integer RUN_LENGTH = Integer.parseInt(System.getProperty("solr.tests.cloud.cm.runlength", "-1"));
@@ -58,14 +57,14 @@ public class ChaosMonkeySafeLeaderTest extends AbstractFullDistribZkTestBase {
     SolrCmdDistributor.testing_errorHook = null;
   }
   
-  public static String[] fieldNames = new String[]{"f_i", "f_f", "f_d", "f_l", "f_dt"};
-  public static RandVal[] randVals = new RandVal[]{rint, rfloat, rdouble, rlong, rdate};
+  protected static final String[] fieldNames = new String[]{"f_i", "f_f", "f_d", "f_l", "f_dt"};
+  protected static final RandVal[] randVals = new RandVal[]{rint, rfloat, rdouble, rlong, rdate};
   
-  protected String[] getFieldNames() {
+  public String[] getFieldNames() {
     return fieldNames;
   }
 
-  protected RandVal[] getRandValues() {
+  public RandVal[] getRandValues() {
     return randVals;
   }
   

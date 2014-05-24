@@ -45,12 +45,7 @@ public class CachedIndexOutput extends ReusedBufferedIndexOutput {
     this.location = directory.getFileCacheLocation(name);
     this.cache = cache;
   }
-  
-  @Override
-  public void flushInternal() throws IOException {
-    dest.flush();
-  }
-  
+
   @Override
   public void closeInternal() throws IOException {
     dest.close();
@@ -88,5 +83,10 @@ public class CachedIndexOutput extends ReusedBufferedIndexOutput {
       offset += len;
     }
   }
-  
+
+  @Override
+  public long getChecksum() throws IOException {
+    flushBufferToCache();
+    return dest.getChecksum();
+  }
 }

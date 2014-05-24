@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.TreeMap;
 
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.search.Filter;
@@ -98,7 +99,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
     List<RangeFacetRequest> rangeFreqs = request.getRangeFacets();
     List<QueryFacetRequest> queryFreqs = request.getQueryFacets();
 
-    this.fieldFacetExpressions = new LinkedHashMap<>(fieldFreqs.size());
+    this.fieldFacetExpressions = new TreeMap<>();
     this.rangeFacetExpressions = new LinkedHashMap<>(rangeFreqs.size());
     this.queryFacetExpressions = new LinkedHashMap<>(queryFreqs.size());
     this.fieldFacetCollectors = new LinkedHashMap<>(fieldFreqs.size());
@@ -120,8 +121,8 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
       final SchemaField ff = fr.getField();
       final FieldFacetAccumulator facc = FieldFacetAccumulator.create(searcher, this, ff);
       facetAccumulators.add(facc);
-      fieldFacetExpressions.put(freq.getName(), new LinkedHashMap<String,Expression[]>() );
-      fieldFacetCollectors.put(freq.getName(), new LinkedHashMap<String,StatsCollector[]>());
+      fieldFacetExpressions.put(freq.getName(), new TreeMap<String, Expression[]>() );
+      fieldFacetCollectors.put(freq.getName(), new TreeMap<String,StatsCollector[]>());
     }
     /**
      * For each range and query facet request add a bucket to the corresponding
@@ -154,8 +155,8 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
    * @throws IOException if there is an error setting the next reader
    */
   @Override
-  public void setNextReader(AtomicReaderContext context) throws IOException {
-    super.setNextReader(context);
+  protected void doSetNextReader(AtomicReaderContext context) throws IOException {
+    super.doSetNextReader(context);
     for( Map<String,StatsCollector[]> valueList : fieldFacetCollectors.values() ){
       for (StatsCollector[] statsCollectorList : valueList.values()) {
         for (StatsCollector statsCollector : statsCollectorList) {
@@ -164,7 +165,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
       }
     }
     for (FieldFacetAccumulator fa : facetAccumulators) {
-      fa.setNextReader(context);
+      fa.getLeafCollector(context);
     }
   }
   
@@ -174,7 +175,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
    * @throws IOException if there is an error setting the next reader
    */
   public void setRangeStatsCollectorReaders(AtomicReaderContext context) throws IOException {
-    super.setNextReader(context);
+    super.getLeafCollector(context);
     for( Map<String,StatsCollector[]> rangeList : rangeFacetCollectors.values() ){
       for (StatsCollector[] statsCollectorList : rangeList.values()) {
         for (StatsCollector statsCollector : statsCollectorList) {
@@ -191,7 +192,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
    * @throws IOException if there is an error setting the next reader
    */
   public void setQueryStatsCollectorReaders(AtomicReaderContext context) throws IOException {
-    super.setNextReader(context);
+    super.getLeafCollector(context);
     for( Map<String,StatsCollector[]> queryList : queryFacetCollectors.values() ){
       for (StatsCollector[] statsCollectorList : queryList.values()) {
         for (StatsCollector statsCollector : statsCollectorList) {

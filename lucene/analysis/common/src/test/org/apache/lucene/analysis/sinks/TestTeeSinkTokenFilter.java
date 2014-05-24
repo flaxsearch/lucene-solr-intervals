@@ -104,7 +104,7 @@ public class TestTeeSinkTokenFilter extends BaseTokenStreamTestCase {
     doc.add(f1);
     doc.add(f2);
     w.addDocument(doc);
-    w.close();
+    w.shutdown();
 
     IndexReader r = DirectoryReader.open(dir);
     Terms vector = r.getTermVectors(0).terms("field");
@@ -151,7 +151,9 @@ public class TestTeeSinkTokenFilter extends BaseTokenStreamTestCase {
     dogDetector.addAttribute(CheckClearAttributesAttribute.class);
     theDetector.addAttribute(CheckClearAttributesAttribute.class);
 
-    final TeeSinkTokenFilter tee2 = new TeeSinkTokenFilter(whitespaceMockTokenizer(buffer2.toString()));
+    MockTokenizer tokenizer = new MockTokenizer(tee1.getAttributeFactory(), MockTokenizer.WHITESPACE, false);
+    tokenizer.setReader(new StringReader(buffer2.toString()));
+    final TeeSinkTokenFilter tee2 = new TeeSinkTokenFilter(tokenizer);
     tee2.addSinkTokenStream(dogDetector);
     tee2.addSinkTokenStream(theDetector);
     final TokenStream source2 = tee2;

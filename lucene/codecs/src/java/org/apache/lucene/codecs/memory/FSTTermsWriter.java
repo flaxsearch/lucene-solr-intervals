@@ -124,11 +124,12 @@ public class FSTTermsWriter extends FieldsConsumer {
   static final String TERMS_EXTENSION = "tmp";
   static final String TERMS_CODEC_NAME = "FST_TERMS_DICT";
   public static final int TERMS_VERSION_START = 0;
-  public static final int TERMS_VERSION_CURRENT = TERMS_VERSION_START;
+  public static final int TERMS_VERSION_CHECKSUM = 1;
+  public static final int TERMS_VERSION_CURRENT = TERMS_VERSION_CHECKSUM;
   
   final PostingsWriterBase postingsWriter;
   final FieldInfos fieldInfos;
-  final IndexOutput out;
+  IndexOutput out;
   final int maxDoc;
   final List<FieldMetaData> fields = new ArrayList<>();
 
@@ -162,65 +163,69 @@ public class FSTTermsWriter extends FieldsConsumer {
 
   @Override
   public void write(Fields fields) throws IOException {
-    try {
-      for(String field : fields) {
-        Terms terms = fields.terms(field);
-        if (terms == null) {
-          continue;
-        }
-        FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
-        boolean hasFreq = fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
-        TermsEnum termsEnum = terms.iterator(null);
-        TermsWriter termsWriter = termsWriter = new TermsWriter(fieldInfo);
-
-        long sumTotalTermFreq = 0;
-        long sumDocFreq = 0;
-        FixedBitSet docsSeen = new FixedBitSet(maxDoc);
-
-        while (true) {
-          BytesRef term = termsEnum.next();
-          if (term == null) {
-            break;
-          }
-            
-          BlockTermState termState = postingsWriter.writeTerm(term, termsEnum, docsSeen);
-          if (termState != null) {
-            termsWriter.finishTerm(term, termState);
-            sumTotalTermFreq += termState.totalTermFreq;
-            sumDocFreq += termState.docFreq;
-          }
-        }
-
-        termsWriter.finish(hasFreq ? sumTotalTermFreq : -1, sumDocFreq, docsSeen.cardinality());
+    for(String field : fields) {
+      Terms terms = fields.terms(field);
+      if (terms == null) {
+        continue;
       }
-    } finally {
-      close();
+      FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
+      boolean hasFreq = fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
+      TermsEnum termsEnum = terms.iterator(null);
+      TermsWriter termsWriter = termsWriter = new TermsWriter(fieldInfo);
+
+      long sumTotalTermFreq = 0;
+      long sumDocFreq = 0;
+      FixedBitSet docsSeen = new FixedBitSet(maxDoc);
+
+      while (true) {
+        BytesRef term = termsEnum.next();
+        if (term == null) {
+          break;
+        }
+            
+        BlockTermState termState = postingsWriter.writeTerm(term, termsEnum, docsSeen);
+        if (termState != null) {
+          termsWriter.finishTerm(term, termState);
+          sumTotalTermFreq += termState.totalTermFreq;
+          sumDocFreq += termState.docFreq;
+        }
+      }
+
+      termsWriter.finish(hasFreq ? sumTotalTermFreq : -1, sumDocFreq, docsSeen.cardinality());
     }
   }
 
+  @Override
   public void close() throws IOException {
-    IOException ioe = null;
-    try {
-      // write field summary
-      final long dirStart = out.getFilePointer();
-      
-      out.writeVInt(fields.size());
-      for (FieldMetaData field : fields) {
-        out.writeVInt(field.fieldInfo.number);
-        out.writeVLong(field.numTerms);
-        if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
-          out.writeVLong(field.sumTotalTermFreq);
+    if (out != null) {
+      boolean success = false;
+      try {
+        // write field summary
+        final long dirStart = out.getFilePointer();
+        
+        out.writeVInt(fields.size());
+        for (FieldMetaData field : fields) {
+          out.writeVInt(field.fieldInfo.number);
+          out.writeVLong(field.numTerms);
+          if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+            out.writeVLong(field.sumTotalTermFreq);
+          }
+          out.writeVLong(field.sumDocFreq);
+          out.writeVInt(field.docCount);
+          out.writeVInt(field.longsSize);
+          field.dict.save(out);
         }
-        out.writeVLong(field.sumDocFreq);
-        out.writeVInt(field.docCount);
-        out.writeVInt(field.longsSize);
-        field.dict.save(out);
+        writeTrailer(out, dirStart);
+        CodecUtil.writeFooter(out);
+        success = true;
+      } finally {
+        if (success) {
+          IOUtils.close(out, postingsWriter);
+        } else {
+          IOUtils.closeWhileHandlingException(out, postingsWriter);
+        }
+        out = null;
       }
-      writeTrailer(out, dirStart);
-    } catch (IOException ioe2) {
-      ioe = ioe2;
-    } finally {
-      IOUtils.closeWhileHandlingException(ioe, out, postingsWriter);
     }
   }
 

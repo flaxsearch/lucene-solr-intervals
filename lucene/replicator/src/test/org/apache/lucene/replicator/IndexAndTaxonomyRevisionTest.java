@@ -62,7 +62,8 @@ public class IndexAndTaxonomyRevisionTest extends ReplicatorTestCase {
     } catch (IllegalStateException e) {
       // expected
     } finally {
-      IOUtils.close(indexWriter, taxoWriter, taxoDir, indexDir);
+      indexWriter.shutdown();
+      IOUtils.close(taxoWriter, taxoDir, indexDir);
     }
   }
   
@@ -92,6 +93,7 @@ public class IndexAndTaxonomyRevisionTest extends ReplicatorTestCase {
       assertNotNull(new IndexAndTaxonomyRevision(indexWriter, taxoWriter));
       rev1.release(); // this release should trigger the delete of segments_1
       assertFalse(slowFileExists(indexDir, IndexFileNames.SEGMENTS + "_1"));
+      indexWriter.shutdown();
     } finally {
       IOUtils.close(indexWriter, taxoWriter, taxoDir, indexDir);
     }
@@ -117,6 +119,7 @@ public class IndexAndTaxonomyRevisionTest extends ReplicatorTestCase {
         String lastFile = files.get(files.size() - 1).fileName;
         assertTrue(lastFile.startsWith(IndexFileNames.SEGMENTS) && !lastFile.equals(IndexFileNames.SEGMENTS_GEN));
       }
+      indexWriter.shutdown();
     } finally {
       IOUtils.close(indexWriter, taxoWriter, taxoDir, indexDir);
     }
@@ -138,6 +141,7 @@ public class IndexAndTaxonomyRevisionTest extends ReplicatorTestCase {
       Revision rev = new IndexAndTaxonomyRevision(indexWriter, taxoWriter);
       for (Entry<String,List<RevisionFile>> e : rev.getSourceFiles().entrySet()) {
         String source = e.getKey();
+        @SuppressWarnings("resource") // silly, both directories are closed in the end
         Directory dir = source.equals(IndexAndTaxonomyRevision.INDEX_SOURCE) ? indexDir : taxoDir;
         for (RevisionFile file : e.getValue()) {
           IndexInput src = dir.openInput(file.fileName, IOContext.READONCE);
@@ -161,6 +165,7 @@ public class IndexAndTaxonomyRevisionTest extends ReplicatorTestCase {
           IOUtils.close(src, in);
         }
       }
+      indexWriter.shutdown();
     } finally {
       IOUtils.close(indexWriter, taxoWriter, taxoDir, indexDir);
     }

@@ -17,7 +17,6 @@
 
 package org.apache.solr.core;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexDeletionPolicy;
@@ -89,6 +88,7 @@ import org.apache.solr.update.processor.RunUpdateProcessorFactory;
 import org.apache.solr.update.processor.UpdateRequestProcessorChain;
 import org.apache.solr.update.processor.UpdateRequestProcessorFactory;
 import org.apache.solr.util.DefaultSolrThreadFactory;
+import org.apache.solr.util.IOUtils;
 import org.apache.solr.util.PropertiesInputStream;
 import org.apache.solr.util.RefCounted;
 import org.apache.solr.util.plugin.NamedListInitializedPlugin;
@@ -99,6 +99,7 @@ import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
+
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -108,6 +109,7 @@ import java.io.InputStreamReader;
 import java.io.Writer;
 import java.lang.reflect.Constructor;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -159,6 +161,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
   private final SolrResourceLoader resourceLoader;
   private volatile IndexSchema schema;
   private final String dataDir;
+  private final String ulogDir;
   private final UpdateHandler updateHandler;
   private final SolrCoreState solrCoreState;
   
@@ -240,6 +243,10 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     return dataDir;
   }
 
+  public String getUlogDir() {
+    return ulogDir;
+  }
+
   public String getIndexDir() {
     synchronized (searcherLock) {
       if (_searcher == null) return getNewIndexDir();
@@ -274,7 +281,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
       if (input != null) {
         final InputStream is = new PropertiesInputStream(input);
         try {
-          p.load(new InputStreamReader(is, "UTF-8"));
+          p.load(new InputStreamReader(is, StandardCharsets.UTF_8));
           
           String s = p.getProperty("index");
           if (s != null && s.trim().length() > 0) {
@@ -416,8 +423,8 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
       ParserConfigurationException, SAXException {
     
     solrCoreState.increfSolrCoreState();
-    
-    if (!getNewIndexDir().equals(getIndexDir())) {
+    boolean indexDirChange = !getNewIndexDir().equals(getIndexDir());
+    if (indexDirChange || !coreConfig.getSolrConfig().nrtMode) {
       // the directory is changing, don't pass on state
       prev = null;
     }
@@ -426,6 +433,8 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
         coreConfig.getIndexSchema(), coreDescriptor, updateHandler, this.solrDelPolicy, prev);
     core.solrDelPolicy = this.solrDelPolicy;
     
+
+    // we open a new indexwriter to pick up the latest config
     core.getUpdateHandler().getSolrCoreState().newIndexWriter(core, false);
     
     core.getSearcher(true, false, null, true);
@@ -516,7 +525,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
 
         SolrIndexWriter writer = SolrIndexWriter.create("SolrCore.initIndex", indexDir, getDirectoryFactory(), true, 
                                                         getLatestSchema(), solrConfig.indexConfig, solrDelPolicy, codec);
-        writer.close();
+        writer.shutdown();
       }
 
  
@@ -650,6 +659,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     this.setName(name);
     this.schema = null;
     this.dataDir = null;
+    this.ulogDir = null;
     this.solrConfig = null;
     this.startTime = System.currentTimeMillis();
     this.maxWarmingSearchers = 2;  // we don't have a config yet, just pick a number.
@@ -683,7 +693,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     if (updateHandler == null) {
       initDirectoryFactory();
     }
-    
+
     if (dataDir == null) {
       if (cd.usingDefaultDataDir()) dataDir = config.getDataDir();
       if (dataDir == null) {
@@ -697,8 +707,18 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
         }
       }
     }
-
     dataDir = SolrResourceLoader.normalizeDir(dataDir);
+
+    String updateLogDir = cd.getUlogDir();
+    if (updateLogDir == null) {
+      updateLogDir = dataDir;
+      if (new File(updateLogDir).isAbsolute() == false) {
+        updateLogDir = SolrResourceLoader.normalizeDir(cd.getInstanceDir()) + updateLogDir;
+      }
+    }
+    ulogDir = updateLogDir;
+
+
     log.info(logid+"Opening new SolrCore at " + resourceLoader.getInstanceDir() + ", dataDir="+dataDir);
 
     if (null != cd && null != cd.getCloudDescriptor()) {
@@ -852,7 +872,15 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
       if (e instanceof OutOfMemoryError) {
         throw (OutOfMemoryError)e;
       }
-      close();
+      
+      try {
+       this.close();
+      } catch (Throwable t) {
+        if (t instanceof OutOfMemoryError) {
+          throw (OutOfMemoryError)t;
+        }
+        log.error("Error while closing", t);
+      }
       
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, 
                               e.getMessage(), e);
@@ -1449,7 +1477,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
       if (newestSearcher != null && (nrt || indexDirFile.equals(newIndexDirFile))) {
 
         DirectoryReader newReader;
-        DirectoryReader currentReader = newestSearcher.get().getIndexReader();
+        DirectoryReader currentReader = newestSearcher.get().getRawReader();
 
         // SolrCore.verbose("start reopen from",previousSearcher,"writer=",writer);
         

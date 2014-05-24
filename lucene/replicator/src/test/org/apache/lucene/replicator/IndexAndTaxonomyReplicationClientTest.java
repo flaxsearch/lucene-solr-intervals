@@ -191,7 +191,7 @@ public class IndexAndTaxonomyReplicationClientTest extends ReplicatorTestCase {
     publishTaxoDir = newDirectory();
     handlerIndexDir = newMockDirectory();
     handlerTaxoDir = newMockDirectory();
-    clientWorkDir = TestUtil.getTempDir("replicationClientTest");
+    clientWorkDir = createTempDir("replicationClientTest");
     sourceDirFactory = new PerSessionDirectoryFactory(clientWorkDir);
     replicator = new LocalReplicator();
     callback = new IndexAndTaxonomyReadyCallback(handlerIndexDir, handlerTaxoDir);
@@ -209,8 +209,9 @@ public class IndexAndTaxonomyReplicationClientTest extends ReplicatorTestCase {
   @After
   @Override
   public void tearDown() throws Exception {
-    IOUtils.close(client, callback, publishIndexWriter, publishTaxoWriter, replicator, publishIndexDir, publishTaxoDir,
-        handlerIndexDir, handlerTaxoDir);
+    publishIndexWriter.shutdown();
+    IOUtils.close(client, callback, publishTaxoWriter, replicator, publishIndexDir, publishTaxoDir,
+            handlerIndexDir, handlerTaxoDir);
     super.tearDown();
   }
   

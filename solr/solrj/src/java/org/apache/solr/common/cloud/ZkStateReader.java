@@ -10,7 +10,7 @@ package org.apache.solr.common.cloud;
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
+ * Unless required byOCP applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
@@ -37,12 +37,14 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
@@ -88,7 +90,7 @@ public class ZkStateReader {
   public static final String LEGACY_CLOUD = "legacyCloud";
 
   public static final String URL_SCHEME = "urlScheme";
-  
+
   private volatile ClusterState clusterState;
 
   private static final long SOLRCLOUD_UPDATE_DELAY = Long.parseLong(System.getProperty("solrcloud.update.delay", "5000"));
@@ -131,7 +133,7 @@ public class ZkStateReader {
 
   /**
    * Returns config set name for collection.
-   * 
+   *
    * @param collection to return config set name for
    */
   public String readConfigName(String collection) {
@@ -248,6 +250,23 @@ public class ZkStateReader {
   public Aliases getAliases() {
     return aliases;
   }
+
+  /*public Boolean checkValid(String coll, int version){
+    DocCollection collection = clusterState.getCollectionOrNull(coll);
+    if(collection ==null) return null;
+    if(collection.getVersion() < version){
+      log.info("server older than client {}<{}",collection.getVersion(),version);
+      DocCollection nu = getExternCollectionFresh(this, coll);
+      if(nu.getVersion()> collection.getVersion()){
+        updateExternCollection(nu);
+        collection = nu;
+      }
+    }
+    if(collection.getVersion() == version) return Boolean.TRUE;
+    log.info("wrong version from client {}!={} ",version, collection.getVersion());
+    return Boolean.FALSE;
+
+  }*/
   
   public synchronized void createClusterStateWatchersAndUpdate() throws KeeperException,
       InterruptedException {
@@ -280,9 +299,14 @@ public class ZkStateReader {
               byte[] data = zkClient.getData(CLUSTER_STATE, thisWatch, stat ,
                   true);
               Set<String> ln = ZkStateReader.this.clusterState.getLiveNodes();
-              ClusterState clusterState = ClusterState.load(stat.getVersion(), data, ln,ZkStateReader.this);
+              ClusterState clusterState = ClusterState.load(stat.getVersion(), data, ln);
               // update volatile
               ZkStateReader.this.clusterState = clusterState;
+
+//              HashSet<String> all = new HashSet<>(colls);;
+//              all.addAll(clusterState.getAllInternalCollections());
+//              all.remove(null);
+
             }
           } catch (KeeperException e) {
             if (e.code() == KeeperException.Code.SESSIONEXPIRED
@@ -322,14 +346,13 @@ public class ZkStateReader {
                 synchronized (ZkStateReader.this.getUpdateLock()) {
                   List<String> liveNodes = zkClient.getChildren(
                       LIVE_NODES_ZKNODE, this, true);
-                  log.info("Updating live nodes... ({})", liveNodes.size());
+                  log.debug("Updating live nodes... ({})", liveNodes.size());
                   Set<String> liveNodesSet = new HashSet<>();
                   liveNodesSet.addAll(liveNodes);
-                  ClusterState clusterState = new ClusterState(
-                      ZkStateReader.this.clusterState.getZkClusterStateVersion(),
-                      liveNodesSet, ZkStateReader.this.clusterState
-                          .getCollectionStates());
-                  ZkStateReader.this.clusterState = clusterState;
+
+                  ClusterState clusterState =  ZkStateReader.this.clusterState;
+
+                  clusterState.setLiveNodes(liveNodesSet);
                 }
               } catch (KeeperException e) {
                 if (e.code() == KeeperException.Code.SESSIONEXPIRED
@@ -354,7 +377,7 @@ public class ZkStateReader {
       liveNodeSet.addAll(liveNodes);
       ClusterState clusterState = ClusterState.load(zkClient, liveNodeSet, ZkStateReader.this);
       this.clusterState = clusterState;
-      
+
       zkClient.exists(ALIASES,
           new Watcher() {
             
@@ -400,8 +423,8 @@ public class ZkStateReader {
     }
     updateAliases();
   }
-  
-  
+
+
   // load and publish a new CollectionInfo
   private synchronized void updateClusterState(boolean immediate,
       final boolean onlyLiveNodes) throws KeeperException,
@@ -424,9 +447,6 @@ public class ZkStateReader {
           log.info("Updating live nodes from ZooKeeper... ({})", liveNodesSet.size());
           clusterState = this.clusterState;
           clusterState.setLiveNodes(liveNodesSet);
-          /*clusterState = new ClusterState(
-              ZkStateReader.this.clusterState.getZkClusterStateVersion(), liveNodesSet,
-              ZkStateReader.this.clusterState.getCollectionStates());*/
         }
         this.clusterState = clusterState;
       }
@@ -458,7 +478,9 @@ public class ZkStateReader {
                 clusterState = ClusterState.load(zkClient, liveNodesSet,ZkStateReader.this);
               } else {
                 log.info("Updating live nodes from ZooKeeper... ");
-                clusterState = new ClusterState(ZkStateReader.this.clusterState.getZkClusterStateVersion(), liveNodesSet, ZkStateReader.this.clusterState.getCollectionStates());
+                clusterState = ZkStateReader.this.clusterState;
+                clusterState.setLiveNodes(liveNodesSet);
+
               }
               
               ZkStateReader.this.clusterState = clusterState;
@@ -485,7 +507,7 @@ public class ZkStateReader {
         }
       }, SOLRCLOUD_UPDATE_DELAY, TimeUnit.MILLISECONDS);
     }
-    
+
   }
    
   /**
@@ -610,9 +632,6 @@ public class ZkStateReader {
   public SolrZkClient getZkClient() {
     return zkClient;
   }
-  public Set<String> getAllCollections(){
-    return clusterState.getCollections();
-  }
 
   public void updateAliases() throws KeeperException, InterruptedException {
     byte[] data = zkClient.getData(ALIASES, null, null, true);
@@ -658,5 +677,5 @@ public class ZkStateReader {
       throw new IllegalStateException("JVM Does not seem to support UTF-8", e);
     }
   }
-  
+
 }

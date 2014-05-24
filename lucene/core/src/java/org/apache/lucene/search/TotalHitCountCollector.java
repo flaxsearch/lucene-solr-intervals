@@ -17,23 +17,18 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.search.Weight.PostingFeatures;
 
 /**
  * Just counts the total number of hits.
  */
 
-public class TotalHitCountCollector extends Collector {
+public class TotalHitCountCollector extends SimpleCollector {
   private int totalHits;
 
   /** Returns how many hits matched the search. */
   public int getTotalHits() {
     return totalHits;
-  }
-
-  @Override
-  public void setScorer(Scorer scorer) {
   }
 
   @Override
@@ -45,10 +40,6 @@ public class TotalHitCountCollector extends Collector {
   public PostingFeatures postingFeatures() {
     // we don't need frequencies here
     return PostingFeatures.DOCS_ONLY;
-  }
-
-  @Override
-  public void setNextReader(AtomicReaderContext context) {
   }
 
   @Override

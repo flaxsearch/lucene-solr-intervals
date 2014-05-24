@@ -25,6 +25,7 @@ import org.apache.lucene.analysis.icu.tokenattributes.ScriptAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
+import org.apache.lucene.util.AttributeFactory;
 
 import com.ibm.icu.lang.UCharacter;
 import com.ibm.icu.text.BreakIterator;
@@ -79,7 +80,7 @@ public final class ICUTokenizer extends Tokenizer {
    * @param config Tailored BreakIterator configuration
    */
   public ICUTokenizer(ICUTokenizerConfig config) {
-    this(AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY, config);
+    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, config);
   }
 
   /**

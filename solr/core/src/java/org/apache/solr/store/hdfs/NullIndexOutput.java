@@ -35,18 +35,8 @@ public class NullIndexOutput extends IndexOutput {
   }
   
   @Override
-  public void flush() throws IOException {
-    
-  }
-  
-  @Override
   public long getFilePointer() {
     return pos;
-  }
-  
-  @Override
-  public long length() throws IOException {
-    return length;
   }
   
   @Override
@@ -66,5 +56,9 @@ public class NullIndexOutput extends IndexOutput {
       length = pos;
     }
   }
-  
+
+  @Override
+  public long getChecksum() throws IOException {
+    return 0; // we don't write anything.
+  }
 }

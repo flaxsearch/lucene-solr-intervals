@@ -19,9 +19,10 @@ package org.apache.lucene.search;
 
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
+
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.index.IndexReaderContext;  // javadocs
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Bits;
@@ -145,12 +146,14 @@ public abstract class Weight {
     private final Scorer scorer;
 
     public DefaultBulkScorer(Scorer scorer) {
-      assert scorer != null;
+      if (scorer == null) {
+        throw new NullPointerException();
+      }
       this.scorer = scorer;
     }
 
     @Override
-    public boolean score(Collector collector, int max) throws IOException {
+    public boolean score(LeafCollector collector, int max) throws IOException {
       // TODO: this may be sort of weird, when we are
       // embedded in a BooleanScorer, because we are
       // called for every chunk of 2048 documents.  But,
@@ -158,21 +161,46 @@ public abstract class Weight {
       // Collector doing something "interesting" in
       // setScorer will be forced to use BS2 anyways:
       collector.setScorer(scorer);
-      if (scorer.docID() == -1) {
-        scorer.nextDoc();
+      if (max == DocIdSetIterator.NO_MORE_DOCS) {
+        scoreAll(collector, scorer);
+        return false;
+      } else {
+        int doc = scorer.docID();
+        if (doc < 0) {
+          doc = scorer.nextDoc();
+        }
+        return scoreRange(collector, scorer, doc, max);
       }
+    }
+
+    /** Specialized method to bulk-score a range of hits; we
+     *  separate this from {@link #scoreAll} to help out
+     *  hotspot.
+     *  See <a href="https://issues.apache.org/jira/browse/LUCENE-5487">LUCENE-5487</a> */
+    static boolean scoreRange(LeafCollector collector, Scorer scorer, int currentDoc, int end) throws IOException {
+      while (currentDoc < end) {
+        collector.collect(currentDoc);
+        currentDoc = scorer.nextDoc();
+      }
+      return currentDoc != DocIdSetIterator.NO_MORE_DOCS;
+    }
+    
+    /** Specialized method to bulk-score all hits; we
+     *  separate this from {@link #scoreRange} to help out
+     *  hotspot.
+     *  See <a href="https://issues.apache.org/jira/browse/LUCENE-5487">LUCENE-5487</a> */
+    static void scoreAll(LeafCollector collector, Scorer scorer) throws IOException {
       int doc;
-      for (doc = scorer.docID(); doc < max; doc = scorer.nextDoc()) {
+      while ((doc = scorer.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
         collector.collect(doc);
       }
-      return doc != DocsEnum.NO_MORE_DOCS;
     }
   }
 
   /**
    * Returns true iff this implementation scores docs only out of order. This
    * method is used in conjunction with {@link Collector}'s
-   * {@link Collector#acceptsDocsOutOfOrder() acceptsDocsOutOfOrder} and
+   * {@link LeafCollector#acceptsDocsOutOfOrder() acceptsDocsOutOfOrder} and
    * {@link #bulkScorer(AtomicReaderContext, boolean, Bits)} to
    * create a matching {@link Scorer} instance for a given {@link Collector}, or
    * vice versa.

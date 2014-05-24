@@ -94,6 +94,9 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
       }
       return sizeInBytes;
     }
+
+    @Override
+    public void checkIntegrity() throws IOException {}
   } 
 
   static class RAMField extends Terms {
@@ -329,6 +332,10 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
 
         termsConsumer.finish(sumTotalTermFreq, sumDocFreq, docsSeen.cardinality());
       }
+    }
+
+    @Override
+    public void close() throws IOException {
     }
   }
 

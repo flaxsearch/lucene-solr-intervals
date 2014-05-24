@@ -17,11 +17,10 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.search.Collector;
-import org.apache.lucene.search.Scorer;
+
+import java.io.IOException;
+import java.util.Arrays;
 
 /**
  * A {@link Collector} which allows running a search with several
@@ -29,7 +28,12 @@ import org.apache.lucene.search.Scorer;
  * list of collectors and wraps them with {@link MultiCollector}, while
  * filtering out the <code>null</code> null ones.
  */
-public class MultiCollector extends Collector {
+public class MultiCollector implements Collector {
+
+  /** See {@link #wrap(Iterable)}. */
+  public static Collector wrap(Collector... collectors) {
+    return wrap(Arrays.asList(collectors));
+  }
 
   /**
    * Wraps a list of {@link Collector}s with a {@link MultiCollector}. This
@@ -47,7 +51,7 @@ public class MultiCollector extends Collector {
    *           if either 0 collectors were input, or all collectors are
    *           <code>null</code>.
    */
-  public static Collector wrap(Collector... collectors) {
+  public static Collector wrap(Iterable<? extends Collector> collectors) {
     // For the user's convenience, we allow null collectors to be passed.
     // However, to improve performance, these null collectors are found
     // and dropped from the array we save for actual collection time.
@@ -70,8 +74,6 @@ public class MultiCollector extends Collector {
         }
       }
       return col;
-    } else if (n == collectors.length) {
-      return new MultiCollector(collectors);
     } else {
       Collector[] colls = new Collector[n];
       n = 0;
@@ -91,34 +93,57 @@ public class MultiCollector extends Collector {
   }
 
   @Override
-  public boolean acceptsDocsOutOfOrder() {
-    for (Collector c : collectors) {
-      if (!c.acceptsDocsOutOfOrder()) {
-        return false;
+  public LeafCollector getLeafCollector(AtomicReaderContext context) throws IOException {
+    final LeafCollector[] leafCollectors = new LeafCollector[collectors.length];
+    for (int i = 0; i < collectors.length; ++i) {
+      leafCollectors[i] = collectors[i].getLeafCollector(context);
+    }
+    return new MultiLeafCollector(leafCollectors);
+  }
+
+
+  private static class MultiLeafCollector implements LeafCollector {
+
+    private final LeafCollector[] collectors;
+
+    private MultiLeafCollector(LeafCollector[] collectors) {
+      this.collectors = collectors;
+    }
+
+    @Override
+    public void setScorer(Scorer scorer) throws IOException {
+      for (LeafCollector c : collectors) {
+        c.setScorer(scorer);
       }
     }
-    return true;
-  }
 
-  @Override
-  public void collect(int doc) throws IOException {
-    for (Collector c : collectors) {
-      c.collect(doc);
+    @Override
+    public void collect(int doc) throws IOException {
+      for (LeafCollector c : collectors) {
+        c.collect(doc);
+      }
     }
-  }
 
-  @Override
-  public void setNextReader(AtomicReaderContext context) throws IOException {
-    for (Collector c : collectors) {
-      c.setNextReader(context);
+    @Override
+    public boolean acceptsDocsOutOfOrder() {
+      for (LeafCollector c : collectors) {
+        if (!c.acceptsDocsOutOfOrder()) {
+          return false;
+        }
+      }
+      return true;
     }
-  }
 
-  @Override
-  public void setScorer(Scorer s) throws IOException {
-    for (Collector c : collectors) {
-      c.setScorer(s);
+    @Override
+    public Weight.PostingFeatures postingFeatures() {
+      Weight.PostingFeatures features = Weight.PostingFeatures.DOCS_ONLY;
+      for (LeafCollector c : collectors) {
+        if (c.postingFeatures().compareTo(features) > 0)
+          features = c.postingFeatures();
+      }
+      return features;
     }
+
   }
 
 }

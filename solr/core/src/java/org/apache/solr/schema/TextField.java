@@ -18,17 +18,19 @@
 package org.apache.solr.schema;
 
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
+import org.apache.lucene.queries.function.ValueSource;
+import org.apache.lucene.queries.function.valuesource.SortedSetFieldSource;
 import org.apache.lucene.search.*;
 import org.apache.lucene.index.StorableField;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.QueryBuilder;
-import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.response.TextResponseWriter;
 import org.apache.solr.search.QParser;
+import org.apache.solr.search.Sorting;
 
 import java.util.Map;
 import java.io.IOException;
@@ -43,7 +45,7 @@ public class TextField extends FieldType {
   /**
    * Analyzer set by schema for text types to use when searching fields
    * of this type, subclasses can set analyzer themselves or override
-   * getAnalyzer()
+   * getIndexAnalyzer()
    * This analyzer is used to process wildcard, prefix, regex and other multiterm queries. It
    * assembles a list of tokenizer +filters that "make sense" for this, primarily accent folding and
    * lowercasing filters, and charfilters.
@@ -78,7 +80,7 @@ public class TextField extends FieldType {
    * <p>
    * This method may be called many times, at any time.
    * </p>
-   * @see #getAnalyzer
+   * @see #getIndexAnalyzer
    */
   public Analyzer getMultiTermAnalyzer() {
     return multiTermAnalyzer;
@@ -95,7 +97,18 @@ public class TextField extends FieldType {
   @Override
   public SortField getSortField(SchemaField field, boolean reverse) {
     /* :TODO: maybe warn if isTokenized(), but doesn't use LimitTokenCountFilter in it's chain? */
-    return getStringSort(field, reverse);
+    field.checkSortability();
+    return Sorting.getTextSortField(field.getName(), reverse, field.sortMissingLast(), field.sortMissingFirst());
+  }
+  
+  @Override
+  public ValueSource getValueSource(SchemaField field, QParser parser) {
+    return new SortedSetFieldSource(field.getName());
+  }
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    return Type.SORTED_SET_BINARY;
   }
 
   @Override
@@ -114,15 +127,9 @@ public class TextField extends FieldType {
   }
 
   @Override
-  public void setAnalyzer(Analyzer analyzer) {
-    this.analyzer = analyzer;
+  protected boolean supportsAnalyzers() {
+    return true;
   }
-
-  @Override
-  public void setQueryAnalyzer(Analyzer analyzer) {
-    this.queryAnalyzer = analyzer;
-  }
-
 
   @Override
   public Query getRangeQuery(QParser parser, SchemaField field, String part1, String part2, boolean minInclusive, boolean maxInclusive) {
@@ -170,22 +177,11 @@ public class TextField extends FieldType {
 
   @Override
   public Object marshalSortValue(Object value) {
-    if (null == value) {
-      return null;
-    }
-    CharsRef spare = new CharsRef();
-    UnicodeUtil.UTF8toUTF16((BytesRef)value, spare);
-    return spare.toString();
+    return marshalStringSortValue(value);
   }
 
   @Override
   public Object unmarshalSortValue(Object value) {
-    if (null == value) {
-      return null;
-    }
-    BytesRef spare = new BytesRef();
-    String stringVal = (String)value;
-    UnicodeUtil.UTF16toUTF8(stringVal, 0, stringVal.length(), spare);
-    return spare;
+    return unmarshalStringSortValue(value);
   }
 }

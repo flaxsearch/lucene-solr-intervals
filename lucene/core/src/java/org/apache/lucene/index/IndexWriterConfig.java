@@ -110,6 +110,12 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig implements Cl
    *  (set to <code>true</code>). For batch indexing with very large 
    *  ram buffers use <code>false</code> */
   public final static boolean DEFAULT_USE_COMPOUND_FILE_SYSTEM = true;
+  
+  /** Default value for calling {@link AtomicReader#checkIntegrity()} before
+   *  merging segments (set to <code>false</code>). You can set this
+   *  to <code>true</code> for additional safety. */
+  public final static boolean DEFAULT_CHECK_INTEGRITY_AT_MERGE = false;
+  
   /**
    * Sets the default (for any instance) maximum time to wait for a write lock
    * (in milliseconds).
@@ -339,11 +345,7 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig implements Cl
   }
 
   /** Expert: Sets the {@link DocumentsWriterPerThreadPool} instance used by the
-   * IndexWriter to assign thread-states to incoming indexing threads. If no
-   * {@link DocumentsWriterPerThreadPool} is set {@link IndexWriter} will use
-   * {@link ThreadAffinityDocumentsWriterThreadPool} with max number of
-   * thread-states set to {@link #DEFAULT_MAX_THREAD_STATES} (see
-   * {@link #DEFAULT_MAX_THREAD_STATES}).
+   * IndexWriter to assign thread-states to incoming indexing threads.
    * </p>
    * <p>
    * NOTE: The given {@link DocumentsWriterPerThreadPool} instance must not be used with
@@ -373,17 +375,13 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig implements Cl
    *
    * <p>Only takes effect when IndexWriter is first created. */
   public IndexWriterConfig setMaxThreadStates(int maxThreadStates) {
-    this.indexerThreadPool = new ThreadAffinityDocumentsWriterThreadPool(maxThreadStates);
+    this.indexerThreadPool = new DocumentsWriterPerThreadPool(maxThreadStates);
     return this;
   }
 
   @Override
   public int getMaxThreadStates() {
-    try {
-      return ((ThreadAffinityDocumentsWriterThreadPool) indexerThreadPool).getMaxThreadStates();
-    } catch (ClassCastException cce) {
-      throw new IllegalStateException(cce);
-    }
+    return indexerThreadPool.getMaxThreadStates();
   }
 
   /** By default, IndexWriter does not pool the

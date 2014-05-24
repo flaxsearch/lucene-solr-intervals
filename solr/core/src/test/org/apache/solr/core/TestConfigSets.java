@@ -17,7 +17,14 @@ package org.apache.solr.core;
  * limitations under the License.
  */
 
-import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.core.Is.is;
+import static org.junit.internal.matchers.StringContains.containsString;
+
+import java.io.File;
+import java.io.IOException;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.Rule;
@@ -25,13 +32,7 @@ import org.junit.Test;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
 
-import java.io.File;
-import java.io.IOException;
-
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.CoreMatchers.nullValue;
-import static org.hamcrest.core.Is.is;
-import static org.junit.internal.matchers.StringContains.containsString;
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 
 public class TestConfigSets extends SolrTestCaseJ4 {
 
@@ -40,10 +41,8 @@ public class TestConfigSets extends SolrTestCaseJ4 {
 
   public static String solrxml = "<solr><str name=\"configSetBaseDir\">${configsets:configsets}</str></solr>";
 
-  public CoreContainer setupContainer(String testName, String configSetsBaseDir) {
-
-    File testDirectory = new File(TEMP_DIR, testName);
-    testDirectory.mkdirs();
+  public CoreContainer setupContainer(String configSetsBaseDir) {
+    File testDirectory = createTempDir();
 
     System.setProperty("configsets", configSetsBaseDir);
 
@@ -57,17 +56,19 @@ public class TestConfigSets extends SolrTestCaseJ4 {
   @Test
   public void testConfigSetServiceFindsConfigSets() {
     CoreContainer container = null;
+    SolrCore core1 = null;
     try {
-      container = setupContainer("findsConfigSets", getFile("solr/configsets").getAbsolutePath());
-      String testDirectory = container.getResourceLoader().getInstanceDir();
+      container = setupContainer(getFile("solr/configsets").getAbsolutePath());
+      String testDirectory = new File(container.getResourceLoader().getInstanceDir()).getAbsolutePath();
 
-      SolrCore core1 = container.create("core1", testDirectory + "/core1", "configSet", "configset-2");
+      core1 = container.create("core1", testDirectory + "core1", "configSet", "configset-2");
       assertThat(core1.getCoreDescriptor().getName(), is("core1"));
-      assertThat(core1.getDataDir(), is(testDirectory + "/core1" + File.separator + "data" + File.separator));
-      core1.close();
-
+      assertThat(core1.getDataDir(), is(testDirectory + "core1" + File.separator + "data" + File.separator));
     }
     finally {
+      if (core1 != null) {
+        core1.close();
+      }
       if (container != null)
         container.shutdown();
     }
@@ -77,7 +78,7 @@ public class TestConfigSets extends SolrTestCaseJ4 {
   public void testNonExistentConfigSetThrowsException() {
     CoreContainer container = null;
     try {
-      container = setupContainer("badConfigSet", getFile("solr/configsets").getAbsolutePath());
+      container = setupContainer(getFile("solr/configsets").getAbsolutePath());
       String testDirectory = container.getResourceLoader().getInstanceDir();
 
       container.create("core1", testDirectory + "/core1", "configSet", "nonexistent");
@@ -95,7 +96,7 @@ public class TestConfigSets extends SolrTestCaseJ4 {
 
   @Test
   public void testConfigSetOnCoreReload() throws IOException {
-    File testDirectory = new File(TEMP_DIR, "core-reload");
+    File testDirectory = new File(initCoreDataDir, "core-reload");
     testDirectory.mkdirs();
     File configSetsDir = new File(testDirectory, "configsets");
 

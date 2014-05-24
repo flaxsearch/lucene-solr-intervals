@@ -18,12 +18,16 @@
 package org.apache.solr.servlet;
 
 import java.io.IOException;
-import java.io.BufferedWriter;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -31,17 +35,21 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.IOUtils;
 import org.noggit.CharArr;
 import org.noggit.JSONWriter;
+import org.noggit.ObjectBuilder;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.cloud.SolrZkClient;
+import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.util.FastWriter;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.apache.zookeeper.data.Stat;
+import org.noggit.CharArr;
+import org.noggit.JSONWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,7 +61,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class ZookeeperInfoServlet extends HttpServlet {
   static final Logger log = LoggerFactory.getLogger(ZookeeperInfoServlet.class);
-  
+
   @Override
   public void init() {
   }
@@ -67,7 +75,7 @@ public final class ZookeeperInfoServlet extends HttpServlet {
     if (cores == null) {
       throw new ServletException("Missing request attribute org.apache.solr.CoreContainer.");
     }
-    
+
     final SolrParams params;
     try {
       params = SolrRequestParsers.DEFAULT.parse(null, request.getServletPath(), request).getParams();
@@ -82,6 +90,7 @@ public final class ZookeeperInfoServlet extends HttpServlet {
 
     String path = params.get("path");
     String addr = params.get("addr");
+    boolean all = "true".equals(params.get("all"));
 
     if (addr != null && addr.length() == 0) {
       addr = null;
@@ -96,7 +105,7 @@ public final class ZookeeperInfoServlet extends HttpServlet {
     response.setCharacterEncoding("UTF-8");
     response.setContentType("application/json");
 
-    Writer out = new FastWriter(new OutputStreamWriter(response.getOutputStream(), IOUtils.CHARSET_UTF_8));
+    Writer out = new FastWriter(new OutputStreamWriter(response.getOutputStream(), StandardCharsets.UTF_8));
 
     ZKPrinter printer = new ZKPrinter(response, out, cores.getZkController(), addr);
     printer.detail = detail;
@@ -107,7 +116,7 @@ public final class ZookeeperInfoServlet extends HttpServlet {
     } finally {
       printer.close();
     }
-    
+
     out.flush();
   }
 
@@ -360,6 +369,7 @@ public final class ZookeeperInfoServlet extends HttpServlet {
       json.write(v);
     }
 
+    @SuppressWarnings("unchecked")
     boolean printZnode(JSONWriter json, String path) throws IOException {
       try {
         Stat stat = new Stat();

@@ -63,6 +63,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -309,7 +310,7 @@ public class TestFSTs extends LuceneTestCase {
     analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
 
     final IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer).setMaxBufferedDocs(-1).setRAMBufferSizeMB(64);
-    final File tempDir = TestUtil.getTempDir("fstlines");
+    final File tempDir = createTempDir("fstlines");
     final Directory dir = newFSDirectory(tempDir);
     final IndexWriter writer = new IndexWriter(dir, conf);
     final long stopTime = System.currentTimeMillis() + RUN_TIME_MSEC;
@@ -320,7 +321,7 @@ public class TestFSTs extends LuceneTestCase {
       docCount++;
     }
     IndexReader r = DirectoryReader.open(writer, true);
-    writer.close();
+    writer.shutdown();
     final PositiveIntOutputs outputs = PositiveIntOutputs.getSingleton();
 
     final boolean doRewrite = random().nextBoolean();
@@ -474,7 +475,7 @@ public class TestFSTs extends LuceneTestCase {
     protected abstract T getOutput(IntsRef input, int ord) throws IOException;
 
     public void run(int limit, boolean verify, boolean verifyByOutput) throws IOException {
-      BufferedReader is = new BufferedReader(new InputStreamReader(new FileInputStream(wordsFileIn), "UTF-8"), 65536);
+      BufferedReader is = new BufferedReader(new InputStreamReader(new FileInputStream(wordsFileIn), StandardCharsets.UTF_8), 65536);
       try {
         final IntsRef intsRef = new IntsRef(10);
         long tStart = System.currentTimeMillis();
@@ -517,7 +518,7 @@ public class TestFSTs extends LuceneTestCase {
 
         System.out.println(ord + " terms; " + fst.getNodeCount() + " nodes; " + fst.getArcCount() + " arcs; " + fst.getArcWithOutputCount() + " arcs w/ output; tot size " + fst.sizeInBytes());
         if (fst.getNodeCount() < 100) {
-          Writer w = new OutputStreamWriter(new FileOutputStream("out.dot"), "UTF-8");
+          Writer w = new OutputStreamWriter(new FileOutputStream("out.dot"), StandardCharsets.UTF_8);
           Util.toDot(fst, w, false, false);
           w.close();
           System.out.println("Wrote FST to out.dot");
@@ -544,7 +545,7 @@ public class TestFSTs extends LuceneTestCase {
         while(true) {
           for(int iter=0;iter<2;iter++) {
             is.close();
-            is = new BufferedReader(new InputStreamReader(new FileInputStream(wordsFileIn), "UTF-8"), 65536);
+            is = new BufferedReader(new InputStreamReader(new FileInputStream(wordsFileIn), StandardCharsets.UTF_8), 65536);
 
             ord = 0;
             tStart = System.currentTimeMillis();
@@ -778,14 +779,14 @@ public class TestFSTs extends LuceneTestCase {
     System.out.println("DOT before rewrite");
     Writer w = new OutputStreamWriter(new FileOutputStream("/mnt/scratch/before.dot"));
     Util.toDot(fst, w, false, false);
-    w.close();
+    w.shutdown();
 
     final FST<Object> rewrite = new FST<Object>(fst, 1, 100);
 
     System.out.println("DOT after rewrite");
     w = new OutputStreamWriter(new FileOutputStream("/mnt/scratch/after.dot"));
     Util.toDot(rewrite, w, false, false);
-    w.close();
+    w.shutdown();
   }
   */
 
@@ -884,7 +885,7 @@ public class TestFSTs extends LuceneTestCase {
       // turn writer into reader:
       final IndexReader r = w.getReader();
       final IndexSearcher s = newSearcher(r);
-      w.close();
+      w.shutdown();
 
       final List<String> allIDsList = new ArrayList<>(allIDs);
       final List<String> sortedAllIDsList = new ArrayList<>(allIDsList);
@@ -1008,7 +1009,7 @@ public class TestFSTs extends LuceneTestCase {
       System.out.println("TEST: got reader=" + r);
     }
     IndexSearcher s = newSearcher(r);
-    w.close();
+    w.shutdown();
 
     final List<String> allTermsList = new ArrayList<>(allTerms);
     Collections.shuffle(allTermsList, random());
@@ -1236,7 +1237,7 @@ public class TestFSTs extends LuceneTestCase {
     final FST<Long> fst = builder.finish();
     //Writer w = new OutputStreamWriter(new FileOutputStream("out.dot"));
     //Util.toDot(fst, w, false, false);
-    //w.close();
+    //w.shutdown();
 
     Util.TopResults<Long> res = Util.shortestPaths(fst,
                                                   fst.getFirstArc(new FST.Arc<Long>()),
@@ -1331,7 +1332,7 @@ public class TestFSTs extends LuceneTestCase {
     final FST<Pair<Long,Long>> fst = builder.finish();
     //Writer w = new OutputStreamWriter(new FileOutputStream("out.dot"));
     //Util.toDot(fst, w, false, false);
-    //w.close();
+    //w.shutdown();
 
     Util.TopResults<Pair<Long,Long>> res = Util.shortestPaths(fst,
                                                              fst.getFirstArc(new FST.Arc<Pair<Long,Long>>()),
@@ -1391,7 +1392,7 @@ public class TestFSTs extends LuceneTestCase {
     //System.out.println("SAVE out.dot");
     //Writer w = new OutputStreamWriter(new FileOutputStream("out.dot"));
     //Util.toDot(fst, w, false, false);
-    //w.close();
+    //w.shutdown();
 
     BytesReader reader = fst.getBytesReader();
 
@@ -1513,7 +1514,7 @@ public class TestFSTs extends LuceneTestCase {
     //System.out.println("SAVE out.dot");
     //Writer w = new OutputStreamWriter(new FileOutputStream("out.dot"));
     //Util.toDot(fst, w, false, false);
-    //w.close();
+    //w.shutdown();
 
     BytesReader reader = fst.getBytesReader();
 

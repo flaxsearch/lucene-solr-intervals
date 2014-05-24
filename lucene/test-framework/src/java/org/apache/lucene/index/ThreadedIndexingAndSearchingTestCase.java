@@ -435,15 +435,18 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
 
     Random random = new Random(random().nextLong());
     final LineFileDocs docs = new LineFileDocs(random, true);
-    final File tempDir = TestUtil.getTempDir(testName);
+    final File tempDir = createTempDir(testName);
     dir = getDirectory(newMockFSDirectory(tempDir)); // some subclasses rely on this being MDW
     if (dir instanceof BaseDirectoryWrapper) {
       ((BaseDirectoryWrapper) dir).setCheckIndexOnClose(false); // don't double-checkIndex, we do it ourselves.
     }
     MockAnalyzer analyzer = new MockAnalyzer(random());
     analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
-    final IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, 
-        analyzer).setInfoStream(new FailOnNonBulkMergesInfoStream());
+    final IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    conf.setInfoStream(new FailOnNonBulkMergesInfoStream());
+    if (conf.getMergePolicy() instanceof MockRandomMergePolicy) {
+      ((MockRandomMergePolicy)conf.getMergePolicy()).setDoNonBulkMerges(false);
+    }
 
     if (LuceneTestCase.TEST_NIGHTLY) {
       // newIWConfig makes smallish max seg size, which
@@ -633,7 +636,8 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
     assertEquals("index=" + writer.segString() + " addCount=" + addCount + " delCount=" + delCount, addCount.get() - delCount.get(), writer.numDocs());
 
     doClose();
-    writer.close(false);
+
+    writer.shutdown(false);
 
     // Cannot shutdown until after writer is closed because
     // writer has merged segment warmer that uses IS to run
@@ -645,7 +649,7 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
 
     TestUtil.checkIndex(dir);
     dir.close();
-    TestUtil.rmDir(tempDir);
+    TestUtil.rm(tempDir);
 
     if (VERBOSE) {
       System.out.println("TEST: done [" + (System.currentTimeMillis()-t0) + " ms]");

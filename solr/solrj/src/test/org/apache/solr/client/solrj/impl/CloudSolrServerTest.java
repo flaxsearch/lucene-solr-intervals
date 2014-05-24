@@ -20,7 +20,9 @@ package org.apache.solr.client.solrj.impl;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
@@ -39,6 +42,7 @@ import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.cloud.AbstractFullDistribZkTestBase;
 import org.apache.solr.cloud.AbstractZkTestCase;
+import org.apache.solr.cloud.Overseer;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
@@ -47,6 +51,7 @@ import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.DocRouter;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
+import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
@@ -56,6 +61,9 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -63,7 +71,8 @@ import org.junit.BeforeClass;
  */
 @Slow
 public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
-  
+  static Logger log = LoggerFactory.getLogger(CloudSolrServerTest.class);
+
   private static final String SOLR_HOME = getFile("solrj" + File.separator + "solr").getAbsolutePath();
 
   @BeforeClass
@@ -111,9 +120,19 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
     sliceCount = 2;
     shardCount = 3;
   }
-  
+
   @Override
   public void doTest() throws Exception {
+    allTests();
+  }
+
+  private void allTests() throws Exception {
+
+    String collectionName = "clientTestExternColl";
+    createCollection(collectionName, controlClientCloud, 2, 2);
+    waitForRecoveriesToFinish(collectionName, false);
+    CloudSolrServer cloudClient = createCloudClient(collectionName);
+
     assertNotNull(cloudClient);
     
     handle.clear();
@@ -122,10 +141,13 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
     
     waitForThingsToLevelOut(30);
 
-    del("*:*");
+    controlClient.deleteByQuery("*:*");
+    cloudClient.deleteByQuery("*:*");
 
-    commit();
-    
+
+    controlClient.commit();
+    this.cloudClient.commit();
+
     SolrInputDocument doc1 = new SolrInputDocument();
     doc1.addField(id, "0");
     doc1.addField("a_t", "hello1");
@@ -181,7 +203,7 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
     try {
       threadedClient = new CloudSolrServer(zkServer.getZkAddress());
       threadedClient.setParallelUpdates(true);
-      threadedClient.setDefaultCollection("collection1");
+      threadedClient.setDefaultCollection(collectionName);
       response = threadedClient.request(request);
       rr = (CloudSolrServer.RouteResponse) response;
       routes = rr.getRoutes();
@@ -211,12 +233,12 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
 
     // Track request counts on each node before query calls
     ClusterState clusterState = cloudClient.getZkStateReader().getClusterState();
-    DocCollection col = clusterState.getCollection(DEFAULT_COLLECTION);
+    DocCollection col = clusterState.getCollection(collectionName);
     Map<String, Long> requestCountsMap = Maps.newHashMap();
     for (Slice slice : col.getSlices()) {
       for (Replica replica : slice.getReplicas()) {
         String baseURL = (String) replica.get(ZkStateReader.BASE_URL_PROP);
-        requestCountsMap.put(baseURL, getNumRequests(new HttpSolrServer(baseURL)));
+        requestCountsMap.put(baseURL, getNumRequests(baseURL,collectionName));
       }
     }
 
@@ -238,9 +260,9 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
     // Calculate a number of shard keys that route to the same shard.
     int n;
     if (TEST_NIGHTLY) {
-      n = random().nextInt(999) + 1;
+      n = random().nextInt(999) + 2;
     } else {
-      n = random().nextInt(9) + 1;
+      n = random().nextInt(9) + 2;
     }
     
     List<String> sameShardRoutes = Lists.newArrayList();
@@ -248,6 +270,7 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
     for (int i = 1; i < n; i++) {
       String shardKey = Integer.toString(i);
       Collection<Slice> slices = router.getSearchSlicesSingle(shardKey, null, col);
+      log.info("Expected Slices {}", slices);
       if (expectedSlices.equals(slices)) {
         sameShardRoutes.add(shardKey);
       }
@@ -260,7 +283,7 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
       ModifiableSolrParams solrParams = new ModifiableSolrParams();
       solrParams.set(CommonParams.Q, "*:*");
       solrParams.set(ShardParams._ROUTE_, sameShardRoutes.get(random().nextInt(sameShardRoutes.size())));
-      cloudClient.query(solrParams);
+      log.info("output  : {}" ,cloudClient.query(solrParams));
     }
 
     // Request counts increase from expected nodes should aggregate to 1000, while there should be
@@ -273,7 +296,7 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
         String baseURL = (String) replica.get(ZkStateReader.BASE_URL_PROP);
 
         Long prevNumRequests = requestCountsMap.get(baseURL);
-        Long curNumRequests = getNumRequests(new HttpSolrServer(baseURL));
+        Long curNumRequests = getNumRequests(baseURL, collectionName);
 
         long delta = curNumRequests - prevNumRequests;
         if (expectedBaseURLs.contains(baseURL)) {
@@ -289,13 +312,17 @@ public class CloudSolrServerTest extends AbstractFullDistribZkTestBase {
     assertEquals("Unexpected number of requests to unexpected URLs: " + numRequestsToUnexpectedUrls,
         0, increaseFromUnexpectedUrls);
 
-    del("*:*");
-    commit();
+    controlClient.deleteByQuery("*:*");
+    cloudClient.deleteByQuery("*:*");
+
+    controlClient.commit();
+    cloudClient.commit();
+    cloudClient.shutdown();
   }
 
-  private Long getNumRequests(HttpSolrServer solrServer) throws
+  private Long getNumRequests(String baseUrl, String collectionName) throws
       SolrServerException, IOException {
-    HttpSolrServer server = new HttpSolrServer(solrServer.getBaseURL());
+    HttpSolrServer server = new HttpSolrServer(baseUrl + "/"+ collectionName);
     server.setConnectionTimeout(15000);
     server.setSoTimeout(60000);
     ModifiableSolrParams params = new ModifiableSolrParams();

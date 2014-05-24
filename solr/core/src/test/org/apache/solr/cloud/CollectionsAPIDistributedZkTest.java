@@ -246,7 +246,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     checkForMissingCollection(collectionName);
     
     assertFalse(cloudClient.getZkStateReader().getZkClient().exists(ZkStateReader.COLLECTIONS_ZKNODE + "/" + collectionName, true));
-    
+
   }
 
   private void testSolrJAPICalls() throws Exception {
@@ -335,8 +335,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     Create createCmd = new Create();
     createCmd.setCoreName("halfdeletedcollection_shard1_replica1");
     createCmd.setCollection(collectionName);
-    String dataDir = SolrTestCaseJ4.dataDir.getAbsolutePath() + File.separator
-        + System.currentTimeMillis() + "halfcollection" + "_hdn";
+    String dataDir = createTempDir().getAbsolutePath();
     createCmd.setDataDir(dataDir);
     createCmd.setNumShards(2);
     if (secondConfigSet) {
@@ -412,7 +411,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     }
 
     assertFalse("Still found collection that should be gone", cloudClient.getZkStateReader().getClusterState().hasCollection("halfdeletedcollection2"));
-    
+
   }
 
   private void testErrorHandling() throws Exception {
@@ -527,8 +526,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     Create createCmd = new Create();
     createCmd.setCoreName("halfcollection_shard1_replica1");
     createCmd.setCollection("halfcollectionblocker");
-    String dataDir = SolrTestCaseJ4.dataDir.getAbsolutePath() + File.separator
-        + System.currentTimeMillis() + "halfcollection" + "_3n";
+    String dataDir = createTempDir().getAbsolutePath();
     createCmd.setDataDir(dataDir);
     createCmd.setNumShards(1);
     if (secondConfigSet) {
@@ -539,8 +537,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     createCmd = new Create();
     createCmd.setCoreName("halfcollection_shard1_replica1");
     createCmd.setCollection("halfcollectionblocker2");
-    dataDir = SolrTestCaseJ4.dataDir.getAbsolutePath() + File.separator
-        + System.currentTimeMillis() + "halfcollection" + "_3n";
+    dataDir = createTempDir().getAbsolutePath();
     createCmd.setDataDir(dataDir);
     createCmd.setNumShards(1);
     if (secondConfigSet) {
@@ -582,15 +579,14 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
   private void testNoCollectionSpecified() throws Exception {
     
     cloudClient.getZkStateReader().updateClusterState(true);
-    assertFalse(cloudClient.getZkStateReader().getAllCollections().contains("corewithnocollection"));
-    assertFalse(cloudClient.getZkStateReader().getAllCollections().contains("corewithnocollection2"));
+    assertFalse(cloudClient.getZkStateReader().getClusterState().hasCollection("corewithnocollection"));
+    assertFalse(cloudClient.getZkStateReader().getClusterState().hasCollection("corewithnocollection2"));
     
     // try and create a SolrCore with no collection name
     Create createCmd = new Create();
     createCmd.setCoreName("corewithnocollection");
     createCmd.setCollection("");
-    String dataDir = SolrTestCaseJ4.dataDir.getAbsolutePath() + File.separator
-        + System.currentTimeMillis() + "corewithnocollection" + "_1v";
+    String dataDir = createTempDir().getAbsolutePath();
     createCmd.setDataDir(dataDir);
     createCmd.setNumShards(1);
     if (secondConfigSet) {
@@ -609,8 +605,8 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     // in both cases, the collection should have default to the core name
     cloudClient.getZkStateReader().updateClusterState(true);
-    assertTrue(cloudClient.getZkStateReader().getAllCollections().contains("corewithnocollection"));
-    assertTrue(cloudClient.getZkStateReader().getAllCollections().contains("corewithnocollection2"));
+    assertTrue( cloudClient.getZkStateReader().getClusterState().hasCollection("corewithnocollection"));
+    assertTrue(cloudClient.getZkStateReader().getClusterState().hasCollection("corewithnocollection2"));
   }
 
   private void testNodesUsedByCreate() throws Exception {
@@ -1167,27 +1163,6 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     fail("Could not find the new collection - " + exp.code() + " : " + collectionClient.getBaseURL());
   }*/
   
-  private void checkForMissingCollection(String collectionName)
-      throws Exception {
-    // check for a  collection - we poll the state
-    long timeoutAt = System.currentTimeMillis() + 45000;
-    boolean found = true;
-    while (System.currentTimeMillis() < timeoutAt) {
-      getCommonCloudSolrServer().getZkStateReader().updateClusterState(true);
-      ClusterState clusterState = getCommonCloudSolrServer().getZkStateReader().getClusterState();
-//      Map<String,DocCollection> collections = clusterState
-//          .getCollectionStates();
-      if (! clusterState.hasCollection(collectionName)) {
-        found = false;
-        break;
-      }
-      Thread.sleep(100);
-    }
-    if (found) {
-      fail("Found collection that should be gone " + collectionName);
-    }
-  }
-
   private void checkNoTwoShardsUseTheSameIndexDir() throws Exception {
     Map<String, Set<String>> indexDirToShardNamesMap = new HashMap<>();
     
@@ -1235,53 +1210,46 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     }
 
   }
-  private void addReplicaTest()throws Exception{
+
+  private void addReplicaTest() throws Exception {
     String collectionName = "addReplicaColl";
     CloudSolrServer client = createCloudClient(null);
     try {
-      createCollection(collectionName, client,2,2);
-      String newReplicaName = Assign.assignNode(collectionName , client.getZkStateReader().getClusterState() );
+      createCollection(collectionName, client, 2, 2);
+      String newReplicaName = Assign.assignNode(collectionName, client.getZkStateReader().getClusterState());
       ArrayList<String> nodeList = new ArrayList<>(client.getZkStateReader().getClusterState().getLiveNodes());
       Collections.shuffle(nodeList);
-      Map m = makeMap(
-          "action", CollectionAction.ADDREPLICA.toString(),
-          ZkStateReader.COLLECTION_PROP, collectionName,
-          ZkStateReader.SHARD_ID_PROP, "shard1",
-          "node", nodeList.get(0));
-
-      SolrRequest request = new QueryRequest(new MapSolrParams(m));
-      request.setPath("/admin/collections");
-      client.request(request);
+      CollectionAdminRequest.AddReplica addReplica = new CollectionAdminRequest.AddReplica();
+      addReplica.setCollectionName(collectionName);
+      addReplica.setShardName("shard1");
+      addReplica.setNode(nodeList.get(0));
+      client.request(addReplica);
 
       long timeout = System.currentTimeMillis() + 3000;
       Replica newReplica = null;
 
-      for(; System.currentTimeMillis()<timeout;){
+      for (; System.currentTimeMillis() < timeout; ) {
         Slice slice = client.getZkStateReader().getClusterState().getSlice(collectionName, "shard1");
         newReplica = slice.getReplica(newReplicaName);
       }
 
       assertNotNull(newReplica);
 
-      log.info("newReplica {},\n{} ", newReplica,client.getZkStateReader().getBaseUrlForNodeName(nodeList.get(0)));
-//
+      log.info("newReplica {},\n{} ", newReplica, client.getZkStateReader().getBaseUrlForNodeName(nodeList.get(0)));
+
       assertEquals("Replica should be created on the right node",
           client.getZkStateReader().getBaseUrlForNodeName(nodeList.get(0)), newReplica.getStr(ZkStateReader.BASE_URL_PROP));
 
-      newReplicaName = Assign.assignNode(collectionName , client.getZkStateReader().getClusterState() );
-      m = makeMap(
-          "action", CollectionAction.ADDREPLICA.toString(),
-          ZkStateReader.COLLECTION_PROP, collectionName,
-          ZkStateReader.SHARD_ID_PROP, "shard2");
-
-      request = new QueryRequest(new MapSolrParams(m));
-      request.setPath("/admin/collections");
-      client.request(request);
+      newReplicaName = Assign.assignNode(collectionName, client.getZkStateReader().getClusterState());
+      addReplica = new CollectionAdminRequest.AddReplica();
+      addReplica.setCollectionName(collectionName);
+      addReplica.setShardName("shard2");
+      client.request(addReplica);
 
       timeout = System.currentTimeMillis() + 3000;
       newReplica = null;
 
-      for(; System.currentTimeMillis()<timeout;){
+      for (; System.currentTimeMillis() < timeout; ) {
         Slice slice = client.getZkStateReader().getClusterState().getSlice(collectionName, "shard2");
         newReplica = slice.getReplica(newReplicaName);
       }

@@ -123,7 +123,7 @@ public class TestNumericRangeQuery32 extends LuceneTestCase {
   
     reader = writer.getReader();
     searcher=newSearcher(reader);
-    writer.close();
+    writer.shutdown();
   }
   
   @AfterClass
@@ -322,7 +322,7 @@ public class TestNumericRangeQuery32 extends LuceneTestCase {
       writer.addDocument(doc);
     }
     
-    writer.close();
+    writer.shutdown();
     
     IndexReader r = DirectoryReader.open(dir);
     IndexSearcher s = newSearcher(r);
@@ -563,46 +563,6 @@ public class TestNumericRangeQuery32 extends LuceneTestCase {
   @Test
   public void testFloatRange_2bit() throws Exception {
     testFloatRange(2);
-  }
-  
-  private void testSorting(int precisionStep) throws Exception {
-    String field="field"+precisionStep;
-    // 10 random tests, the index order is ascending,
-    // so using a reverse sort field should retun descending documents
-    int num = TestUtil.nextInt(random(), 10, 20);
-    for (int i = 0; i < num; i++) {
-      int lower=(int)(random().nextDouble()*noDocs*distance)+startOffset;
-      int upper=(int)(random().nextDouble()*noDocs*distance)+startOffset;
-      if (lower>upper) {
-        int a=lower; lower=upper; upper=a;
-      }
-      Query tq=NumericRangeQuery.newIntRange(field, precisionStep, lower, upper, true, true);
-      TopDocs topDocs = searcher.search(tq, null, noDocs, new Sort(new SortField(field, SortField.Type.INT, true)));
-      if (topDocs.totalHits==0) continue;
-      ScoreDoc[] sd = topDocs.scoreDocs;
-      assertNotNull(sd);
-      int last = searcher.doc(sd[0].doc).getField(field).numericValue().intValue();
-      for (int j=1; j<sd.length; j++) {
-        int act = searcher.doc(sd[j].doc).getField(field).numericValue().intValue();
-        assertTrue("Docs should be sorted backwards", last>act );
-        last=act;
-      }
-    }
-  }
-
-  @Test
-  public void testSorting_8bit() throws Exception {
-    testSorting(8);
-  }
-  
-  @Test
-  public void testSorting_4bit() throws Exception {
-    testSorting(4);
-  }
-  
-  @Test
-  public void testSorting_2bit() throws Exception {
-    testSorting(2);
   }
   
   @Test

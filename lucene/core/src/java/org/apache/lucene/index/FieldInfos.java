@@ -58,6 +58,9 @@ public class FieldInfos implements Iterable<FieldInfo> {
     boolean hasDocValues = false;
     
     for (FieldInfo info : infos) {
+      if (info.number < 0) {
+        throw new IllegalArgumentException("illegal field number: " + info.number + " for field " + info.name);
+      }
       FieldInfo previous = byNumber.put(info.number, info);
       if (previous != null) {
         throw new IllegalArgumentException("duplicate field numbers: " + previous.name + " and " + info.name + " have: " + info.number);
@@ -148,15 +151,16 @@ public class FieldInfos implements Iterable<FieldInfo> {
 
   /**
    * Return the fieldinfo object referenced by the fieldNumber.
-   * @param fieldNumber field's number. if this is negative, this method
-   *        always returns null.
+   * @param fieldNumber field's number.
    * @return the FieldInfo object or null when the given fieldNumber
    * doesn't exist.
-   */  
-  // TODO: fix this negative behavior, this was something related to Lucene3x?
-  // if the field name is empty, i think it writes the fieldNumber as -1
+   * @throws IllegalArgumentException if fieldNumber is negative
+   */
   public FieldInfo fieldInfo(int fieldNumber) {
-    return (fieldNumber >= 0) ? byNumber.get(fieldNumber) : null;
+    if (fieldNumber < 0) {
+      throw new IllegalArgumentException("Illegal field number: " + fieldNumber);
+    }
+    return byNumber.get(fieldNumber);
   }
   
   static final class FieldNumbers {
@@ -298,7 +302,7 @@ public class FieldInfos implements Iterable<FieldInfo> {
         // before then we'll get the same name and number,
         // else we'll allocate a new one:
         final int fieldNumber = globalFieldNumbers.addOrGet(name, preferredFieldNumber, docValues);
-        fi = new FieldInfo(name, isIndexed, fieldNumber, storeTermVector, omitNorms, storePayloads, indexOptions, docValues, normType, null);
+        fi = new FieldInfo(name, isIndexed, fieldNumber, storeTermVector, omitNorms, storePayloads, indexOptions, docValues, normType, -1, null);
         assert !byName.containsKey(fi.name);
         assert globalFieldNumbers.containsConsistent(Integer.valueOf(fi.number), fi.name, fi.getDocValuesType());
         byName.put(fi.name, fi);

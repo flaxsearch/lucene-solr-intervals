@@ -78,12 +78,12 @@ public class TokenSourcesTest extends LuceneTestCase {
     public void reset() {
       this.i = -1;
       this.tokens = new Token[] {
-          new Token(new char[] {'t', 'h', 'e'}, 0, 3, 0, 3),
-          new Token(new char[] {'{', 'f', 'o', 'x', '}'}, 0, 5, 0, 7),
-          new Token(new char[] {'f', 'o', 'x'}, 0, 3, 4, 7),
-          new Token(new char[] {'d', 'i', 'd'}, 0, 3, 8, 11),
-          new Token(new char[] {'n', 'o', 't'}, 0, 3, 12, 15),
-          new Token(new char[] {'j', 'u', 'm', 'p'}, 0, 4, 16, 20)};
+          new Token("the", 0, 3),
+          new Token("{fox}", 0, 7),
+          new Token("fox", 4, 7),
+          new Token("did", 8, 11),
+          new Token("not", 12, 15),
+          new Token("jump", 16, 20)};
       this.tokens[1].setPositionIncrement(0);
     }
   }
@@ -101,7 +101,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       document.add(new Field(FIELD, new OverlappingTokenStream(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.close();
+      indexWriter.shutdown();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     assertEquals(1, indexReader.numDocs());
@@ -146,7 +146,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       document.add(new Field(FIELD, new OverlappingTokenStream(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.close();
+      indexWriter.shutdown();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -190,7 +190,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       document.add(new Field(FIELD, new OverlappingTokenStream(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.close();
+      indexWriter.shutdown();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -234,7 +234,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       document.add(new Field(FIELD, new OverlappingTokenStream(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.close();
+      indexWriter.shutdown();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -278,7 +278,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       document.add(new Field(FIELD, new OverlappingTokenStream(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.close();
+      indexWriter.shutdown();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -332,7 +332,7 @@ public class TokenSourcesTest extends LuceneTestCase {
     writer.addDocument(doc);
   
     IndexReader reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
     assertEquals(1, reader.numDocs());
 
     for(int i=0;i<2;i++) {

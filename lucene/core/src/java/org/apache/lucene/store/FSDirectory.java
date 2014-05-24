@@ -17,21 +17,21 @@ package org.apache.lucene.store;
  * limitations under the License.
  */
 
+import org.apache.lucene.util.Constants;
+import org.apache.lucene.util.IOUtils;
+
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FilenameFilter;
+import java.io.FilterOutputStream;
 import java.io.IOException;
-import java.io.RandomAccessFile;
-
 import java.util.Collection;
-import static java.util.Collections.synchronizedSet;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Future;
 
-import org.apache.lucene.util.ThreadInterruptedException;
-import org.apache.lucene.util.Constants;
-import org.apache.lucene.util.IOUtils;
+import static java.util.Collections.synchronizedSet;
 
 /**
  * Base class for Directory implementations that store index
@@ -263,7 +263,7 @@ public abstract class FSDirectory extends BaseDirectory {
     ensureOpen();
 
     ensureCanWrite(name);
-    return new FSIndexOutput(this, name);
+    return new FSIndexOutput(name);
   }
 
   protected void ensureCanWrite(String name) throws IOException {
@@ -290,9 +290,16 @@ public abstract class FSDirectory extends BaseDirectory {
     Set<String> toSync = new HashSet<>(names);
     toSync.retainAll(staleFiles);
 
-    for (String name : toSync)
+    for (String name : toSync) {
       fsync(name);
-
+    }
+    
+    // fsync the directory itsself, but only if there was any file fsynced before
+    // (otherwise it can happen that the directory does not yet exist)!
+    if (!toSync.isEmpty()) {
+      IOUtils.fsync(directory, true);
+    }
+    
     staleFiles.removeAll(toSync);
   }
 
@@ -332,99 +339,42 @@ public abstract class FSDirectory extends BaseDirectory {
     return this.getClass().getSimpleName() + "@" + directory + " lockFactory=" + getLockFactory();
   }
 
-  /**
-   * Writes output with {@link RandomAccessFile#write(byte[], int, int)}
-   */
-  protected static class FSIndexOutput extends BufferedIndexOutput {
+  final class FSIndexOutput extends OutputStreamIndexOutput {
     /**
-     * The maximum chunk size is 8192 bytes, because {@link RandomAccessFile} mallocs
+     * The maximum chunk size is 8192 bytes, because {@link FileOutputStream} mallocs
      * a native buffer outside of stack if the write buffer size is larger.
      */
-    private static final int CHUNK_SIZE = 8192;
+    static final int CHUNK_SIZE = 8192;
     
-    private final FSDirectory parent;
     private final String name;
-    private final RandomAccessFile file;
-    private volatile boolean isOpen; // remember if the file is open, so that we don't try to close it more than once
-    
-    public FSIndexOutput(FSDirectory parent, String name) throws IOException {
-      super(CHUNK_SIZE);
-      this.parent = parent;
-      this.name = name;
-      file = new RandomAccessFile(new File(parent.directory, name), "rw");
-      isOpen = true;
-    }
 
-    @Override
-    protected void flushBuffer(byte[] b, int offset, int size) throws IOException {
-      assert isOpen;
-      while (size > 0) {
-        final int toWrite = Math.min(CHUNK_SIZE, size);
-        file.write(b, offset, toWrite);
-        offset += toWrite;
-        size -= toWrite;
-      }
-      assert size == 0;
+    public FSIndexOutput(String name) throws IOException {
+      super(new FilterOutputStream(new FileOutputStream(new File(directory, name))) {
+        // This implementation ensures, that we never write more than CHUNK_SIZE bytes:
+        @Override
+        public void write(byte[] b, int offset, int length) throws IOException {
+          while (length > 0) {
+            final int chunk = Math.min(length, CHUNK_SIZE);
+            out.write(b, offset, chunk);
+            length -= chunk;
+            offset += chunk;
+          }
+        }
+      }, CHUNK_SIZE);
+      this.name = name;
     }
     
     @Override
     public void close() throws IOException {
-      parent.onIndexOutputClosed(name);
-      // only close the file if it has not been closed yet
-      if (isOpen) {
-        IOException priorE = null;
-        try {
-          super.close();
-        } catch (IOException ioe) {
-          priorE = ioe;
-        } finally {
-          isOpen = false;
-          IOUtils.closeWhileHandlingException(priorE, file);
-        }
+      try {
+        onIndexOutputClosed(name);
+      } finally {
+        super.close();
       }
-    }
-
-    @Override
-    public long length() throws IOException {
-      return file.length();
-    }
-
-    @Override
-    public void setLength(long length) throws IOException {
-      file.setLength(length);
     }
   }
 
   protected void fsync(String name) throws IOException {
-    File fullFile = new File(directory, name);
-    boolean success = false;
-    int retryCount = 0;
-    IOException exc = null;
-    while (!success && retryCount < 5) {
-      retryCount++;
-      RandomAccessFile file = null;
-      try {
-        try {
-          file = new RandomAccessFile(fullFile, "rw");
-          file.getFD().sync();
-          success = true;
-        } finally {
-          if (file != null)
-            file.close();
-        }
-      } catch (IOException ioe) {
-        if (exc == null)
-          exc = ioe;
-        try {
-          // Pause 5 msec
-          Thread.sleep(5);
-        } catch (InterruptedException ie) {
-          throw new ThreadInterruptedException(ie);
-        }
-      }
-    }
-    if (!success)
-      // Throw original exception
-      throw exc;
+    IOUtils.fsync(new File(directory, name), false);
   }
 }

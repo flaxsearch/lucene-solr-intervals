@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -48,16 +47,10 @@ import org.apache.solr.common.util.NamedList;
 public class TestDistributedSearch extends BaseDistributedSearchTestCase {
 
   String t1="a_t";
-  String i1="a_si";
+  String i1="a_i1";
   String nint = "n_i";
   String tint = "n_ti";
-  String nfloat = "n_f";
-  String tfloat = "n_tf";
-  String ndouble = "n_d";
-  String tdouble = "n_td";
-  String nlong = "n_l";
   String tlong = "other_tl1";
-  String ndate = "n_dt";
   String tdate_a = "a_n_tdt";
   String tdate_b = "b_n_tdt";
   
@@ -270,7 +263,17 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
     // test field that is valid in schema and missing in some shards
     query("q","*:*", "rows",100, "facet","true", "facet.field",oddField, "facet.mincount",2);
 
+    query("q","*:*", "sort",i1+" desc", "stats", "true", "stats.field", "stats_dt");
     query("q","*:*", "sort",i1+" desc", "stats", "true", "stats.field", i1);
+    query("q","*:*", "sort",i1+" desc", "stats", "true", "stats.field", tdate_a);
+    query("q","*:*", "sort",i1+" desc", "stats", "true", "stats.field", tdate_b);
+
+    handle.put("stats_fields", UNORDERED);
+    query("q","*:*", "sort",i1+" desc", "stats", "true", 
+          "stats.field", "stats_dt", 
+          "stats.field", i1, 
+          "stats.field", tdate_a, 
+          "stats.field", tdate_b);
 
     /*** TODO: the failure may come back in "exception"
     try {
@@ -418,12 +421,15 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
     
     // Thread.sleep(10000000000L);
 
-    FieldCache.DEFAULT.purgeAllCaches();   // avoid FC insanity
-
     del("*:*"); // delete all docs and test stats request
     commit();
     try {
-      query("q", "*:*", "stats", "true", "stats.field", "stats_dt", "stats.calcdistinct", "true");
+      query("q", "*:*", "stats", "true", 
+            "stats.field", "stats_dt", 
+            "stats.field", i1, 
+            "stats.field", tdate_a, 
+            "stats.field", tdate_b,
+            "stats.calcdistinct", "true");
     } catch (Exception e) {
       log.error("Exception on distrib stats request on empty index", e);
       fail("NullPointerException with stats request on empty index");

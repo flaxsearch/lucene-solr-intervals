@@ -24,6 +24,7 @@ import java.util.List;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesConsumer;
 import org.apache.lucene.codecs.FieldInfosWriter;
+import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.StoredFieldsWriter;
 import org.apache.lucene.codecs.TermVectorsWriter;
 import org.apache.lucene.index.FieldInfo.DocValuesType;
@@ -52,7 +53,13 @@ final class SegmentMerger {
 
   // note, just like in codec apis Directory 'dir' is NOT the same as segmentInfo.dir!!
   SegmentMerger(List<AtomicReader> readers, SegmentInfo segmentInfo, InfoStream infoStream, Directory dir,
-                MergeState.CheckAbort checkAbort, FieldInfos.FieldNumbers fieldNumbers, IOContext context) throws IOException {
+                MergeState.CheckAbort checkAbort, FieldInfos.FieldNumbers fieldNumbers, IOContext context, boolean validate) throws IOException {
+    // validate incoming readers
+    if (validate) {
+      for (AtomicReader reader : readers) {
+        reader.checkIntegrity();
+      }
+    }
     mergeState = new MergeState(readers, segmentInfo, infoStream, checkAbort);
     directory = dir;
     this.codec = segmentInfo.getCodec();
@@ -161,7 +168,7 @@ final class SegmentMerger {
               NumericDocValues values = reader.getNumericDocValues(field.name);
               Bits bits = reader.getDocsWithField(field.name);
               if (values == null) {
-                values = NumericDocValues.EMPTY;
+                values = DocValues.EMPTY_NUMERIC;
                 bits = new Bits.MatchNoBits(reader.maxDoc());
               }
               toMerge.add(values);
@@ -175,7 +182,7 @@ final class SegmentMerger {
               BinaryDocValues values = reader.getBinaryDocValues(field.name);
               Bits bits = reader.getDocsWithField(field.name);
               if (values == null) {
-                values = BinaryDocValues.EMPTY;
+                values = DocValues.EMPTY_BINARY;
                 bits = new Bits.MatchNoBits(reader.maxDoc());
               }
               toMerge.add(values);
@@ -187,7 +194,7 @@ final class SegmentMerger {
             for (AtomicReader reader : mergeState.readers) {
               SortedDocValues values = reader.getSortedDocValues(field.name);
               if (values == null) {
-                values = SortedDocValues.EMPTY;
+                values = DocValues.EMPTY_SORTED;
               }
               toMerge.add(values);
             }
@@ -197,7 +204,7 @@ final class SegmentMerger {
             for (AtomicReader reader : mergeState.readers) {
               SortedSetDocValues values = reader.getSortedSetDocValues(field.name);
               if (values == null) {
-                values = SortedSetDocValues.EMPTY;
+                values = DocValues.EMPTY_SORTED_SET;
               }
               toMerge.add(values);
             }
@@ -228,7 +235,7 @@ final class SegmentMerger {
           for (AtomicReader reader : mergeState.readers) {
             NumericDocValues norms = reader.getNormValues(field.name);
             if (norms == null) {
-              norms = NumericDocValues.EMPTY;
+              norms = DocValues.EMPTY_NUMERIC;
             }
             toMerge.add(norms);
             docsWithField.add(new Bits.MatchAllBits(reader.maxDoc()));
@@ -378,6 +385,17 @@ final class SegmentMerger {
                                                 new MultiFields(fields.toArray(Fields.EMPTY_ARRAY),
                                                                 slices.toArray(ReaderSlice.EMPTY_ARRAY)));
 
-    codec.postingsFormat().fieldsConsumer(segmentWriteState).write(mergedFields);
+    FieldsConsumer consumer = codec.postingsFormat().fieldsConsumer(segmentWriteState);
+    boolean success = false;
+    try {
+      consumer.write(mergedFields);
+      success = true;
+    } finally {
+      if (success) {
+        IOUtils.close(consumer);
+      } else {
+        IOUtils.closeWhileHandlingException(consumer);
+      }
+    }
   }
 }

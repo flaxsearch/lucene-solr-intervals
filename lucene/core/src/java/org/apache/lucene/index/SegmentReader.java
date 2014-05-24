@@ -19,23 +19,28 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
+import java.util.Set;
 
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.DocValuesProducer;
+import org.apache.lucene.codecs.FieldInfosFormat;
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.TermVectorsReader;
 import org.apache.lucene.index.FieldInfo.DocValuesType;
-import org.apache.lucene.search.FieldCache;
+import org.apache.lucene.search.CachingWrapperFilter;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.CloseableThreadLocal;
+import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.Version;
 
 /**
  * IndexReader implementation over a single segment. 
@@ -71,7 +76,8 @@ public final class SegmentReader extends AtomicReader {
     }
   };
 
-  final Map<String,DocValuesProducer> dvProducers = new HashMap<>();
+  final Map<String,DocValuesProducer> dvProducersByField = new HashMap<>();
+  final Set<DocValuesProducer> dvProducers = Collections.newSetFromMap(new IdentityHashMap<DocValuesProducer,Boolean>());
   
   final FieldInfos fieldInfos;
 
@@ -106,7 +112,7 @@ public final class SegmentReader extends AtomicReader {
         liveDocs = null;
       }
       numDocs = si.info.getDocCount() - si.getDelCount();
-      
+
       if (fieldInfos.hasDocValues()) {
         initDocValuesProducers(codec);
       }
@@ -169,23 +175,89 @@ public final class SegmentReader extends AtomicReader {
   }
 
   // initialize the per-field DocValuesProducer
+  @SuppressWarnings("deprecation")
   private void initDocValuesProducers(Codec codec) throws IOException {
     final Directory dir = core.cfsReader != null ? core.cfsReader : si.info.dir;
     final DocValuesFormat dvFormat = codec.docValuesFormat();
-    final Map<Long,List<FieldInfo>> genInfos = getGenInfos();
-    
-//      System.out.println("[" + Thread.currentThread().getName() + "] SR.initDocValuesProducers: segInfo=" + si + "; gens=" + genInfos.keySet());
-    
-    for (Entry<Long,List<FieldInfo>> e : genInfos.entrySet()) {
-      Long gen = e.getKey();
-      List<FieldInfo> infos = e.getValue();
-      DocValuesProducer dvp = segDocValues.getDocValuesProducer(gen, si, IOContext.READ, dir, dvFormat, infos);
-      for (FieldInfo fi : infos) {
-        dvProducers.put(fi.name, dvp);
+
+    if (!si.hasFieldUpdates()) {
+      // simple case, no DocValues updates
+      final DocValuesProducer dvp = segDocValues.getDocValuesProducer(-1L, si, IOContext.READ, dir, dvFormat, fieldInfos);
+      dvGens.add(-1L);
+      dvProducers.add(dvp);
+      for (FieldInfo fi : fieldInfos) {
+        if (!fi.hasDocValues()) continue;
+        assert fi.getDocValuesGen() == -1;
+        dvProducersByField.put(fi.name, dvp);
+      }
+      return;
+    }
+
+    Version ver;
+    try {
+      ver = Version.parseLeniently(si.info.getVersion());
+    } catch (IllegalArgumentException e) {
+      // happened in TestBackwardsCompatibility on a 4.0.0.2 index (no matching
+      // Version constant), anyway it's a pre-4.9 index.
+      ver = null;
+    }
+    if (ver != null && ver.onOrAfter(Version.LUCENE_4_9)) {
+      DocValuesProducer baseProducer = null;
+      for (FieldInfo fi : fieldInfos) {
+        if (!fi.hasDocValues()) continue;
+        long docValuesGen = fi.getDocValuesGen();
+        if (docValuesGen == -1) {
+          if (baseProducer == null) {
+//        System.out.println("[" + Thread.currentThread().getName() + "] SR.initDocValuesProducers: segInfo=" + si + "; gen=" + docValuesGen + "; field=" + fi.name);
+            // the base producer gets all the fields, so the Codec can validate properly
+            baseProducer = segDocValues.getDocValuesProducer(docValuesGen, si, IOContext.READ, dir, dvFormat, fieldInfos);
+            dvGens.add(docValuesGen);
+            dvProducers.add(baseProducer);
+          }
+//        System.out.println("[" + Thread.currentThread().getName() + "] SR.initDocValuesProducers: segInfo=" + si + "; gen=" + docValuesGen + "; field=" + fi.name);
+          dvProducersByField.put(fi.name, baseProducer);
+        } else {
+          assert !dvGens.contains(docValuesGen);
+//        System.out.println("[" + Thread.currentThread().getName() + "] SR.initDocValuesProducers: segInfo=" + si + "; gen=" + docValuesGen + "; field=" + fi.name);
+          final DocValuesProducer dvp = segDocValues.getDocValuesProducer(docValuesGen, si, IOContext.READ, dir, dvFormat, new FieldInfos(new FieldInfo[] { fi }));
+          dvGens.add(docValuesGen);
+          dvProducers.add(dvp);
+          dvProducersByField.put(fi.name, dvp);
+        }
+      }
+    } else {
+      // For pre-4.9 indexes, especially with doc-values updates, multiple
+      // FieldInfos could belong to the same dvGen. Therefore need to make sure
+      // we initialize each DocValuesProducer once per gen.
+      Map<Long,List<FieldInfo>> genInfos = new HashMap<>();
+      for (FieldInfo fi : fieldInfos) {
+        if (!fi.hasDocValues()) continue;
+        List<FieldInfo> genFieldInfos = genInfos.get(fi.getDocValuesGen());
+        if (genFieldInfos == null) {
+          genFieldInfos = new ArrayList<>();
+          genInfos.put(fi.getDocValuesGen(), genFieldInfos);
+        }
+        genFieldInfos.add(fi);
+      }
+      
+      for (Map.Entry<Long,List<FieldInfo>> e : genInfos.entrySet()) {
+        long docValuesGen = e.getKey();
+        List<FieldInfo> infos = e.getValue();
+        final DocValuesProducer dvp;
+        if (docValuesGen == -1) {
+          // we need to send all FieldInfos to gen=-1, but later we need to
+          // record the DVP only for the "true" gen=-1 fields (not updated)
+          dvp = segDocValues.getDocValuesProducer(docValuesGen, si, IOContext.READ, dir, dvFormat, fieldInfos);
+        } else {
+          dvp = segDocValues.getDocValuesProducer(docValuesGen, si, IOContext.READ, dir, dvFormat, new FieldInfos(infos.toArray(new FieldInfo[infos.size()])));
+        }
+        dvGens.add(docValuesGen);
+        dvProducers.add(dvp);
+        for (FieldInfo fi : infos) {
+          dvProducersByField.put(fi.name, dvp);
+        }
       }
     }
-    
-    dvGens.addAll(genInfos.keySet());
   }
   
   /**
@@ -211,7 +283,9 @@ public final class SegmentReader extends AtomicReader {
     
     try {
       final String segmentSuffix = info.getFieldInfosGen() == -1 ? "" : Long.toString(info.getFieldInfosGen(), Character.MAX_RADIX);
-      return info.info.getCodec().fieldInfosFormat().getFieldInfosReader().read(dir, info.info.name, segmentSuffix, IOContext.READONCE);
+      Codec codec = info.info.getCodec();
+      FieldInfosFormat fisFormat = codec.fieldInfosFormat();
+      return fisFormat.getFieldInfosReader().read(dir, info.info.name, segmentSuffix, IOContext.READONCE);
     } finally {
       if (closeDir) {
         dir.close();
@@ -219,24 +293,6 @@ public final class SegmentReader extends AtomicReader {
     }
   }
   
-  // returns a gen->List<FieldInfo> mapping. Fields without DV updates have gen=-1
-  private Map<Long,List<FieldInfo>> getGenInfos() {
-    final Map<Long,List<FieldInfo>> genInfos = new HashMap<>();
-    for (FieldInfo fi : fieldInfos) {
-      if (fi.getDocValuesType() == null) {
-        continue;
-      }
-      long gen = fi.getDocValuesGen();
-      List<FieldInfo> infos = genInfos.get(gen);
-      if (infos == null) {
-        infos = new ArrayList<>();
-        genInfos.put(gen, infos);
-      }
-      infos.add(fi);
-    }
-    return genInfos;
-  }
-
   @Override
   public Bits getLiveDocs() {
     ensureOpen();
@@ -249,10 +305,12 @@ public final class SegmentReader extends AtomicReader {
     try {
       core.decRef();
     } finally {
-      dvProducers.clear();
-      docValuesLocal.close();
-      docsWithFieldLocal.close();
-      segDocValues.decRef(dvGens);
+      dvProducersByField.clear();
+      try {
+        IOUtils.close(docValuesLocal, docsWithFieldLocal);
+      } finally {
+        segDocValues.decRef(dvGens);
+      }
     }
   }
 
@@ -349,7 +407,7 @@ public final class SegmentReader extends AtomicReader {
 
   // This is necessary so that cloned SegmentReaders (which
   // share the underlying postings data) will map to the
-  // same entry in the FieldCache.  See LUCENE-1579.
+  // same entry for CachingWrapperFilter.  See LUCENE-1579.
   @Override
   public Object getCoreCacheKey() {
     // NOTE: if this ever changes, be sure to fix
@@ -387,50 +445,48 @@ public final class SegmentReader extends AtomicReader {
   @Override
   public NumericDocValues getNumericDocValues(String field) throws IOException {
     ensureOpen();
-    FieldInfo fi = getDVField(field, DocValuesType.NUMERIC);
-    if (fi == null) {
-      return null;
-    }
-
-    DocValuesProducer dvProducer = dvProducers.get(field);
-    assert dvProducer != null;
-
     Map<String,Object> dvFields = docValuesLocal.get();
 
-    NumericDocValues dvs = (NumericDocValues) dvFields.get(field);
-    if (dvs == null) {
-      dvs = dvProducer.getNumeric(fi);
-      dvFields.put(field, dvs);
+    Object previous = dvFields.get(field);
+    if (previous != null && previous instanceof NumericDocValues) {
+      return (NumericDocValues) previous;
+    } else {
+      FieldInfo fi = getDVField(field, DocValuesType.NUMERIC);
+      if (fi == null) {
+        return null;
+      }
+      DocValuesProducer dvProducer = dvProducersByField.get(field);
+      assert dvProducer != null;
+      NumericDocValues dv = dvProducer.getNumeric(fi);
+      dvFields.put(field, dv);
+      return dv;
     }
-
-    return dvs;
   }
 
   @Override
   public Bits getDocsWithField(String field) throws IOException {
     ensureOpen();
-    FieldInfo fi = fieldInfos.fieldInfo(field);
-    if (fi == null) {
-      // Field does not exist
-      return null;
-    }
-    if (fi.getDocValuesType() == null) {
-      // Field was not indexed with doc values
-      return null;
-    }
-
-    DocValuesProducer dvProducer = dvProducers.get(field);
-    assert dvProducer != null;
-
     Map<String,Bits> dvFields = docsWithFieldLocal.get();
 
-    Bits dvs = dvFields.get(field);
-    if (dvs == null) {
-      dvs = dvProducer.getDocsWithField(fi);
-      dvFields.put(field, dvs);
+    Bits previous = dvFields.get(field);
+    if (previous != null) {
+      return previous;
+    } else {
+      FieldInfo fi = fieldInfos.fieldInfo(field);
+      if (fi == null) {
+        // Field does not exist
+        return null;
+      }
+      if (fi.getDocValuesType() == null) {
+        // Field was not indexed with doc values
+        return null;
+      }
+      DocValuesProducer dvProducer = dvProducersByField.get(field);
+      assert dvProducer != null;
+      Bits dv = dvProducer.getDocsWithField(fi);
+      dvFields.put(field, dv);
+      return dv;
     }
-
-    return dvs;
   }
 
   @Override
@@ -441,13 +497,12 @@ public final class SegmentReader extends AtomicReader {
       return null;
     }
 
-    DocValuesProducer dvProducer = dvProducers.get(field);
-    assert dvProducer != null;
-
     Map<String,Object> dvFields = docValuesLocal.get();
 
     BinaryDocValues dvs = (BinaryDocValues) dvFields.get(field);
     if (dvs == null) {
+      DocValuesProducer dvProducer = dvProducersByField.get(field);
+      assert dvProducer != null;
       dvs = dvProducer.getBinary(fi);
       dvFields.put(field, dvs);
     }
@@ -458,84 +513,58 @@ public final class SegmentReader extends AtomicReader {
   @Override
   public SortedDocValues getSortedDocValues(String field) throws IOException {
     ensureOpen();
-    FieldInfo fi = getDVField(field, DocValuesType.SORTED);
-    if (fi == null) {
-      return null;
-    }
-
-    DocValuesProducer dvProducer = dvProducers.get(field);
-    assert dvProducer != null;
-
     Map<String,Object> dvFields = docValuesLocal.get();
-
-    SortedDocValues dvs = (SortedDocValues) dvFields.get(field);
-    if (dvs == null) {
-      dvs = dvProducer.getSorted(fi);
-      dvFields.put(field, dvs);
+    
+    Object previous = dvFields.get(field);
+    if (previous != null && previous instanceof SortedDocValues) {
+      return (SortedDocValues) previous;
+    } else {
+      FieldInfo fi = getDVField(field, DocValuesType.SORTED);
+      if (fi == null) {
+        return null;
+      }
+      DocValuesProducer dvProducer = dvProducersByField.get(field);
+      assert dvProducer != null;
+      SortedDocValues dv = dvProducer.getSorted(fi);
+      dvFields.put(field, dv);
+      return dv;
     }
-
-    return dvs;
   }
 
   @Override
   public SortedSetDocValues getSortedSetDocValues(String field) throws IOException {
     ensureOpen();
-    FieldInfo fi = getDVField(field, DocValuesType.SORTED_SET);
-    if (fi == null) {
-      return null;
-    }
-
-    DocValuesProducer dvProducer = dvProducers.get(field);
-    assert dvProducer != null;
-
     Map<String,Object> dvFields = docValuesLocal.get();
-
-    SortedSetDocValues dvs = (SortedSetDocValues) dvFields.get(field);
-    if (dvs == null) {
-      dvs = dvProducer.getSortedSet(fi);
-      dvFields.put(field, dvs);
+    
+    Object previous = dvFields.get(field);
+    if (previous != null && previous instanceof SortedSetDocValues) {
+      return (SortedSetDocValues) previous;
+    } else {
+      FieldInfo fi = getDVField(field, DocValuesType.SORTED_SET);
+      if (fi == null) {
+        return null;
+      }
+      DocValuesProducer dvProducer = dvProducersByField.get(field);
+      assert dvProducer != null;
+      SortedSetDocValues dv = dvProducer.getSortedSet(fi);
+      dvFields.put(field, dv);
+      return dv;
     }
-
-    return dvs;
   }
 
   @Override
   public NumericDocValues getNormValues(String field) throws IOException {
     ensureOpen();
-    FieldInfo fi = fieldInfos.fieldInfo(field);
-    if (fi == null || !fi.hasNorms()) {
-      // Field does not exist or does not index norms
-      return null;
-    }
-    return core.getNormValues(fi);
-  }
-
-  /**
-   * Called when the shared core for this SegmentReader
-   * is closed.
-   * <p>
-   * This listener is called only once all SegmentReaders 
-   * sharing the same core are closed.  At this point it 
-   * is safe for apps to evict this reader from any caches 
-   * keyed on {@link #getCoreCacheKey}.  This is the same 
-   * interface that {@link FieldCache} uses, internally, 
-   * to evict entries.</p>
-   * 
-   * @lucene.experimental
-   */
-  public static interface CoreClosedListener {
-    /** Invoked when the shared core of the original {@code
-     *  SegmentReader} has closed. */
-    public void onClose(Object ownerCoreCacheKey);
+    return core.getNormValues(fieldInfos, field);
   }
   
-  /** Expert: adds a CoreClosedListener to this reader's shared core */
+  @Override
   public void addCoreClosedListener(CoreClosedListener listener) {
     ensureOpen();
     core.addCoreClosedListener(listener);
   }
   
-  /** Expert: removes a CoreClosedListener from this reader's shared core */
+  @Override
   public void removeCoreClosedListener(CoreClosedListener listener) {
     ensureOpen();
     core.removeCoreClosedListener(listener);
@@ -545,12 +574,45 @@ public final class SegmentReader extends AtomicReader {
   public long ramBytesUsed() {
     ensureOpen();
     long ramBytesUsed = 0;
-    if (segDocValues != null) {
-      ramBytesUsed += segDocValues.ramBytesUsed();
+    if (dvProducers != null) {
+      for (DocValuesProducer producer : dvProducers) {
+        ramBytesUsed += producer.ramBytesUsed();
+      }
     }
     if (core != null) {
       ramBytesUsed += core.ramBytesUsed();
     }
     return ramBytesUsed;
+  }
+  
+  @Override
+  public void checkIntegrity() throws IOException {
+    ensureOpen();
+    
+    // stored fields
+    getFieldsReader().checkIntegrity();
+    
+    // term vectors
+    TermVectorsReader termVectorsReader = getTermVectorsReader();
+    if (termVectorsReader != null) {
+      termVectorsReader.checkIntegrity();
+    }
+    
+    // terms/postings
+    if (core.fields != null) {
+      core.fields.checkIntegrity();
+    }
+    
+    // norms
+    if (core.normsProducer != null) {
+      core.normsProducer.checkIntegrity();
+    }
+    
+    // docvalues
+    if (dvProducers != null) {
+      for (DocValuesProducer producer : dvProducers) {
+        producer.checkIntegrity();
+      }
+    }
   }
 }

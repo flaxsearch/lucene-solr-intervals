@@ -37,6 +37,7 @@ import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo;
@@ -45,17 +46,18 @@ import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.RandomAccessOrds;
 import org.apache.lucene.index.SegmentReadState;
-import org.apache.lucene.index.SingletonSortedSetDocValues;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.TermsEnum.SeekStatus;
+import org.apache.lucene.store.ChecksumIndexInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LongValues;
 import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.Version;
 import org.apache.lucene.util.packed.BlockPackedReader;
 import org.apache.lucene.util.packed.MonotonicBlockPackedReader;
 import org.apache.lucene.util.packed.PackedInts;
@@ -71,16 +73,32 @@ public class Lucene45DocValuesProducer extends DocValuesProducer implements Clos
   private final IndexInput data;
   private final int maxDoc;
   private final int version;
+  
+  // We need this for pre-4.9 indexes which recorded multiple fields' DocValues
+  // updates under the same generation, and therefore the passed FieldInfos may
+  // not include all the fields that are encoded in this generation. In that
+  // case, we are more lenient about the fields we read and the passed-in
+  // FieldInfos.
+  @Deprecated
+  private final boolean lenientFieldInfoCheck;
 
   // memory-resident structures
   private final Map<Integer,MonotonicBlockPackedReader> addressInstances = new HashMap<>();
   private final Map<Integer,MonotonicBlockPackedReader> ordIndexInstances = new HashMap<>();
   
   /** expert: instantiates a new reader */
+  @SuppressWarnings("deprecation")
   protected Lucene45DocValuesProducer(SegmentReadState state, String dataCodec, String dataExtension, String metaCodec, String metaExtension) throws IOException {
+    Version ver;
+    try {
+      ver = Version.parseLeniently(state.segmentInfo.getVersion());
+    } catch (IllegalArgumentException e) {
+      ver = null;
+    }
+    lenientFieldInfoCheck = ver == null || !ver.onOrAfter(Version.LUCENE_4_9);
     String metaName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, metaExtension);
     // read in the entries from the metadata file.
-    IndexInput in = state.directory.openInput(metaName, state.context);
+    ChecksumIndexInput in = state.directory.openChecksumInput(metaName, state.context);
     this.maxDoc = state.segmentInfo.getDocCount();
     boolean success = false;
     try {
@@ -94,8 +112,10 @@ public class Lucene45DocValuesProducer extends DocValuesProducer implements Clos
       sortedSets = new HashMap<>();
       readFields(in, state.fieldInfos);
 
-      if (in.getFilePointer() != in.length()) {
-        throw new CorruptIndexException("did not read all bytes from file \"" + metaName + "\": read " + in.getFilePointer() + " vs size " + in.length() + " (resource: " + in + ")");
+      if (version >= Lucene45DocValuesFormat.VERSION_CHECKSUM) {
+        CodecUtil.checkFooter(in);
+      } else {
+        CodecUtil.checkEOF(in);
       }
 
       success = true;
@@ -107,10 +127,10 @@ public class Lucene45DocValuesProducer extends DocValuesProducer implements Clos
       }
     }
 
+    String dataName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, dataExtension);
+    this.data = state.directory.openInput(dataName, state.context);
     success = false;
     try {
-      String dataName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, dataExtension);
-      data = state.directory.openInput(dataName, state.context);
       final int version2 = CodecUtil.checkHeader(data, dataCodec, 
                                                  Lucene45DocValuesFormat.VERSION_START,
                                                  Lucene45DocValuesFormat.VERSION_CURRENT);
@@ -182,6 +202,11 @@ public class Lucene45DocValuesProducer extends DocValuesProducer implements Clos
   private void readFields(IndexInput meta, FieldInfos infos) throws IOException {
     int fieldNumber = meta.readVInt();
     while (fieldNumber != -1) {
+      if ((lenientFieldInfoCheck && fieldNumber < 0) || (!lenientFieldInfoCheck && infos.fieldInfo(fieldNumber) == null)) {
+        // trickier to validate more: because we re-use for norms, because we use multiple entries
+        // for "composite" types like sortedset, etc.
+        throw new CorruptIndexException("Invalid field number: " + fieldNumber + " (resource=" + meta + ")");
+      }
       byte type = meta.readByte();
       if (type == Lucene45DocValuesFormat.NUMERIC) {
         numerics.put(fieldNumber, readNumericEntry(meta));
@@ -299,6 +324,13 @@ public class Lucene45DocValuesProducer extends DocValuesProducer implements Clos
     return ramBytesUsed.get();
   }
   
+  @Override
+  public void checkIntegrity() throws IOException {
+    if (version >= Lucene45DocValuesFormat.VERSION_CHECKSUM) {
+      CodecUtil.checksumEntireFile(data);
+    }
+  }
+
   LongValues getNumeric(NumericEntry entry) throws IOException {
     final IndexInput data = this.data.clone();
     data.seek(entry.offset);
@@ -515,7 +547,7 @@ public class Lucene45DocValuesProducer extends DocValuesProducer implements Clos
     SortedSetEntry ss = sortedSets.get(field.number);
     if (ss.format == SORTED_SET_SINGLE_VALUED_SORTED) {
       final SortedDocValues values = getSorted(field);
-      return new SingletonSortedSetDocValues(values);
+      return DocValues.singleton(values);
     } else if (ss.format != SORTED_SET_WITH_ADDRESSES) {
       throw new AssertionError();
     }
@@ -619,9 +651,9 @@ public class Lucene45DocValuesProducer extends DocValuesProducer implements Clos
   public Bits getDocsWithField(FieldInfo field) throws IOException {
     switch(field.getDocValuesType()) {
       case SORTED_SET:
-        return new SortedSetDocsWithField(getSortedSet(field), maxDoc);
+        return DocValues.docsWithValue(getSortedSet(field), maxDoc);
       case SORTED:
-        return new SortedDocsWithField(getSorted(field), maxDoc);
+        return DocValues.docsWithValue(getSorted(field), maxDoc);
       case BINARY:
         BinaryEntry be = binaries.get(field.number);
         return getMissingBits(be.missingOffset);

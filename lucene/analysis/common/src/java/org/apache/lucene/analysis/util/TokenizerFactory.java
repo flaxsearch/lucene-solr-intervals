@@ -17,10 +17,10 @@ package org.apache.lucene.analysis.util;
  * limitations under the License.
  */
 
+import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
-import org.apache.lucene.util.AttributeSource.AttributeFactory;
+import org.apache.lucene.util.AttributeFactory;
 
-import java.io.Reader;
 import java.util.Map;
 import java.util.Set;
 
@@ -72,7 +72,7 @@ public abstract class TokenizerFactory extends AbstractAnalysisFactory {
 
   /** Creates a TokenStream of the specified input using the default attribute factory. */
   public final Tokenizer create() {
-    return create(AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY);
+    return create(TokenStream.DEFAULT_TOKEN_ATTRIBUTE_FACTORY);
   }
   
   /** Creates a TokenStream of the specified input using the given AttributeFactory */

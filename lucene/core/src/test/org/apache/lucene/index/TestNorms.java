@@ -76,7 +76,6 @@ public class TestNorms extends LuceneTestCase {
   public void testCustomEncoder() throws Exception {
     Directory dir = newDirectory();
     MockAnalyzer analyzer = new MockAnalyzer(random());
-    analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
 
     IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
     config.setSimilarity(new CustomNormEncodingSimilarity());
@@ -93,7 +92,7 @@ public class TestNorms extends LuceneTestCase {
     }
     
     IndexReader reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
     
     NumericDocValues fooNorms = MultiDocValues.getNormValues(reader, "foo");
     for (int i = 0; i < reader.maxDoc(); i++) {
@@ -110,7 +109,7 @@ public class TestNorms extends LuceneTestCase {
   }
   
   public void testMaxByteNorms() throws IOException {
-    Directory dir = newFSDirectory(TestUtil.getTempDir("TestNorms.testMaxByteNorms"));
+    Directory dir = newFSDirectory(createTempDir("TestNorms.testMaxByteNorms"));
     buildIndex(dir);
     AtomicReader open = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir));
     NumericDocValues normValues = open.getNormValues(byteTestField);
@@ -128,8 +127,10 @@ public class TestNorms extends LuceneTestCase {
 
   public void buildIndex(Directory dir) throws IOException {
     Random random = random();
+    MockAnalyzer analyzer = new MockAnalyzer(random());
+    analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
     IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT,
-        new MockAnalyzer(random()));
+        analyzer);
     Similarity provider = new MySimProvider();
     config.setSimilarity(provider);
     RandomIndexWriter writer = new RandomIndexWriter(random, dir, config);
@@ -148,7 +149,7 @@ public class TestNorms extends LuceneTestCase {
       }
     }
     writer.commit();
-    writer.close();
+    writer.shutdown();
     docs.close();
   }
 

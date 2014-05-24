@@ -47,7 +47,7 @@ public final class FieldInfo {
 
   private Map<String,String> attributes;
 
-  private long dvGen = -1; // the DocValues generation of this field
+  private long dvGen;
   
   /**
    * Controls how much information is stored in the postings lists.
@@ -121,7 +121,7 @@ public final class FieldInfo {
    */
   public FieldInfo(String name, boolean indexed, int number, boolean storeTermVector, boolean omitNorms, 
       boolean storePayloads, IndexOptions indexOptions, DocValuesType docValues, DocValuesType normsType, 
-      Map<String,String> attributes) {
+      long dvGen, Map<String,String> attributes) {
     this.name = name;
     this.indexed = indexed;
     this.number = number;
@@ -139,6 +139,7 @@ public final class FieldInfo {
       this.indexOptions = null;
       this.normType = null;
     }
+    this.dvGen = dvGen;
     this.attributes = attributes;
     assert checkConsistency();
   }
@@ -158,6 +159,10 @@ public final class FieldInfo {
       // Cannot store payloads unless positions are indexed:
       assert indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0 || !this.storePayloads;
     }
+    
+    if (dvGen != -1) {
+      assert docValueType != null;
+    }
 
     return true;
   }
@@ -169,16 +174,10 @@ public final class FieldInfo {
   // should only be called by FieldInfos#addOrUpdate
   void update(boolean indexed, boolean storeTermVector, boolean omitNorms, boolean storePayloads, IndexOptions indexOptions) {
     //System.out.println("FI.update field=" + name + " indexed=" + indexed + " omitNorms=" + omitNorms + " this.omitNorms=" + this.omitNorms);
-    if (this.indexed != indexed) {
-      this.indexed = true;                      // once indexed, always index
-    }
+    this.indexed |= indexed;  // once indexed, always indexed
     if (indexed) { // if updated field data is not for indexing, leave the updates out
-      if (this.storeTermVector != storeTermVector) {
-        this.storeTermVector = true;                // once vector, always vector
-      }
-      if (this.storePayloads != storePayloads) {
-        this.storePayloads = true;
-      }
+      this.storeTermVector |= storeTermVector;                // once vector, always vector
+      this.storePayloads |= storePayloads;
       if (this.omitNorms != omitNorms) {
         this.omitNorms = true;                // if one require omitNorms at least once, it remains off for life
         this.normType = null;
@@ -227,8 +226,9 @@ public final class FieldInfo {
   }
   
   /** Sets the docValues generation of this field. */
-  public void setDocValuesGen(long dvGen) {
+  void setDocValuesGen(long dvGen) {
     this.dvGen = dvGen;
+    assert checkConsistency();
   }
   
   /**

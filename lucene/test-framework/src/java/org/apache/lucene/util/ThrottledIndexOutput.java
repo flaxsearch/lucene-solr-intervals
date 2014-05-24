@@ -69,12 +69,6 @@ public class ThrottledIndexOutput extends IndexOutput {
   }
 
   @Override
-  public void flush() throws IOException {
-    sleep(flushDelayMillis);
-    delegate.flush();
-  }
-
-  @Override
   public void close() throws IOException {
     try {
       sleep(closeDelayMillis + getDelay(true));
@@ -86,11 +80,6 @@ public class ThrottledIndexOutput extends IndexOutput {
   @Override
   public long getFilePointer() {
     return delegate.getFilePointer();
-  }
-
-  @Override
-  public long length() throws IOException {
-    return delegate.length();
   }
 
   @Override
@@ -137,12 +126,12 @@ public class ThrottledIndexOutput extends IndexOutput {
   }
   
   @Override
-  public void setLength(long length) throws IOException {
-    delegate.setLength(length);
+  public void copyBytes(DataInput input, long numBytes) throws IOException {
+    delegate.copyBytes(input, numBytes);
   }
 
   @Override
-  public void copyBytes(DataInput input, long numBytes) throws IOException {
-    delegate.copyBytes(input, numBytes);
+  public long getChecksum() throws IOException {
+    return delegate.getChecksum();
   }
 }

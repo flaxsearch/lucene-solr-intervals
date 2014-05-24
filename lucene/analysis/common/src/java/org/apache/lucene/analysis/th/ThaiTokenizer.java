@@ -24,6 +24,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.util.CharArrayIterator;
 import org.apache.lucene.analysis.util.SegmentingTokenizerBase;
+import org.apache.lucene.util.AttributeFactory;
 
 /**
  * Tokenizer that use {@link BreakIterator} to tokenize Thai text.
@@ -59,7 +60,7 @@ public class ThaiTokenizer extends SegmentingTokenizerBase {
   
   /** Creates a new ThaiTokenizer */
   public ThaiTokenizer() {
-    this(AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY);
+    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY);
   }
       
   /** Creates a new ThaiTokenizer, supplying the AttributeFactory */
@@ -99,7 +100,7 @@ public class ThaiTokenizer extends SegmentingTokenizerBase {
     }
 
     clearAttributes();
-    termAtt.copyBuffer(buffer, start, end - start);
+    termAtt.copyBuffer(buffer, sentenceStart + start, end - start);
     offsetAtt.setOffset(correctOffset(offset + sentenceStart + start), correctOffset(offset + sentenceStart + end));
     return true;
   }

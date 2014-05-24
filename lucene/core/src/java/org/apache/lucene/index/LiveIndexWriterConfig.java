@@ -97,6 +97,9 @@ public class LiveIndexWriterConfig {
 
   /** True if segment flushes should use compound file format */
   protected volatile boolean useCompoundFile = IndexWriterConfig.DEFAULT_USE_COMPOUND_FILE_SYSTEM;
+  
+  /** True if merging should check integrity of segments before merge */
+  protected volatile boolean checkIntegrityAtMerge = IndexWriterConfig.DEFAULT_CHECK_INTEGRITY_AT_MERGE;
 
   // used by IndexWriterConfig
   LiveIndexWriterConfig(Analyzer analyzer, Version matchVersion) {
@@ -122,7 +125,7 @@ public class LiveIndexWriterConfig {
     mergePolicy = new TieredMergePolicy();
     flushPolicy = new FlushByRamOrCountsPolicy();
     readerPooling = IndexWriterConfig.DEFAULT_READER_POOLING;
-    indexerThreadPool = new ThreadAffinityDocumentsWriterThreadPool(IndexWriterConfig.DEFAULT_MAX_THREAD_STATES);
+    indexerThreadPool = new DocumentsWriterPerThreadPool(IndexWriterConfig.DEFAULT_MAX_THREAD_STATES);
     perThreadHardLimitMB = IndexWriterConfig.DEFAULT_RAM_PER_THREAD_HARD_LIMIT_MB;
   }
   
@@ -152,6 +155,7 @@ public class LiveIndexWriterConfig {
     flushPolicy = config.getFlushPolicy();
     perThreadHardLimitMB = config.getRAMPerThreadHardLimitMB();
     useCompoundFile = config.getUseCompoundFile();
+    checkIntegrityAtMerge = config.getCheckIntegrityAtMerge();
   }
 
   /** Returns the default analyzer to use for indexing documents. */
@@ -244,7 +248,7 @@ public class LiveIndexWriterConfig {
    *           if ramBufferSize is enabled but non-positive, or it disables
    *           ramBufferSize when maxBufferedDocs is already disabled
    */
-  public LiveIndexWriterConfig setRAMBufferSizeMB(double ramBufferSizeMB) {
+  public synchronized LiveIndexWriterConfig setRAMBufferSizeMB(double ramBufferSizeMB) {
     if (ramBufferSizeMB != IndexWriterConfig.DISABLE_AUTO_FLUSH && ramBufferSizeMB <= 0.0) {
       throw new IllegalArgumentException("ramBufferSize should be > 0.0 MB when enabled");
     }
@@ -285,7 +289,7 @@ public class LiveIndexWriterConfig {
    *           if maxBufferedDocs is enabled but smaller than 2, or it disables
    *           maxBufferedDocs when ramBufferSize is already disabled
    */
-  public LiveIndexWriterConfig setMaxBufferedDocs(int maxBufferedDocs) {
+  public synchronized LiveIndexWriterConfig setMaxBufferedDocs(int maxBufferedDocs) {
     if (maxBufferedDocs != IndexWriterConfig.DISABLE_AUTO_FLUSH && maxBufferedDocs < 2) {
       throw new IllegalArgumentException("maxBufferedDocs must at least be 2 when enabled");
     }
@@ -400,11 +404,7 @@ public class LiveIndexWriterConfig {
    * documents at once in IndexWriter.
    */
   public int getMaxThreadStates() {
-    try {
-      return ((ThreadAffinityDocumentsWriterThreadPool) indexerThreadPool).getMaxThreadStates();
-    } catch (ClassCastException cce) {
-      throw new IllegalStateException(cce);
-    }
+    return indexerThreadPool.getMaxThreadStates();
   }
 
   /**
@@ -475,6 +475,26 @@ public class LiveIndexWriterConfig {
     return useCompoundFile ;
   }
   
+  /**
+   * Sets if {@link IndexWriter} should call {@link AtomicReader#checkIntegrity()}
+   * on existing segments before merging them into a new one.
+   * <p>
+   * Use <code>true</code> to enable this safety check, which can help
+   * reduce the risk of propagating index corruption from older segments 
+   * into new ones, at the expense of slower merging.
+   * </p>
+   */
+  public LiveIndexWriterConfig setCheckIntegrityAtMerge(boolean checkIntegrityAtMerge) {
+    this.checkIntegrityAtMerge = checkIntegrityAtMerge;
+    return this;
+  }
+  
+  /** Returns true if {@link AtomicReader#checkIntegrity()} is called before 
+   *  merging segments. */
+  public boolean getCheckIntegrityAtMerge() {
+    return checkIntegrityAtMerge;
+  }
+  
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
@@ -499,9 +519,13 @@ public class LiveIndexWriterConfig {
     sb.append("readerPooling=").append(getReaderPooling()).append("\n");
     sb.append("perThreadHardLimitMB=").append(getRAMPerThreadHardLimitMB()).append("\n");
     sb.append("useCompoundFile=").append(getUseCompoundFile()).append("\n");
+    sb.append("checkIntegrityAtMerge=").append(getCheckIntegrityAtMerge()).append("\n");
     return sb.toString();
   }
 
-
-
+  /** Returns the {@code matchVersion} that was provided to
+   *  the constructor. */
+  public Version getMatchVersion() {
+    return matchVersion;
+  }
 }

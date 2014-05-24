@@ -19,6 +19,7 @@ package org.apache.solr.client.solrj.impl;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
 import java.util.Locale;
 import java.util.Queue;
@@ -172,7 +173,7 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
               public void writeTo(OutputStream out) throws IOException {
                 try {
                   if (isXml) {
-                    out.write("<stream>".getBytes("UTF-8")); // can be anything
+                    out.write("<stream>".getBytes(StandardCharsets.UTF_8)); // can be anything
                   }
                   UpdateRequest req = updateRequest;
                   while (req != null) {
@@ -197,7 +198,7 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
                           byte[] content = String.format(Locale.ROOT,
                               fmt,
                               params.getBool(UpdateParams.WAIT_SEARCHER, false)
-                                  + "").getBytes("UTF-8");
+                                  + "").getBytes(StandardCharsets.UTF_8);
                           out.write(content);
                         }
                       }
@@ -206,7 +207,7 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
                     req = queue.poll(pollQueueTime, TimeUnit.MILLISECONDS);
                   }
                   if (isXml) {
-                    out.write("</stream>".getBytes("UTF-8"));
+                    out.write("</stream>".getBytes(StandardCharsets.UTF_8));
                   }
 
                 } catch (InterruptedException e) {
@@ -238,6 +239,8 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
               msg.append("\n\n");
               msg.append("request: ").append(method.getURI());
               handleError(new SolrException(ErrorCode.getErrorCode(statusCode), msg.toString()));
+            } else {
+              onSuccess(response);
             }
           } finally {
             try {
@@ -403,6 +406,13 @@ public class ConcurrentUpdateSolrServer extends SolrServer {
 
   public void handleError(Throwable ex) {
     log.error("error", ex);
+  }
+  
+  /**
+   * Intended to be used as an extension point for doing post processing after a request completes.
+   */
+  public void onSuccess(HttpResponse resp) {
+    // no-op by design, override to add functionality
   }
 
   @Override

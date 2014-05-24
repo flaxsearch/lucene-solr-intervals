@@ -17,6 +17,20 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.DocValuesProducer;
+import org.apache.lucene.codecs.FieldsProducer;
+import org.apache.lucene.codecs.PostingsFormat;
+import org.apache.lucene.codecs.StoredFieldsReader;
+import org.apache.lucene.codecs.TermVectorsReader;
+import org.apache.lucene.index.AtomicReader.CoreClosedListener;
+import org.apache.lucene.store.AlreadyClosedException;
+import org.apache.lucene.store.CompoundFileDirectory;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
+import org.apache.lucene.util.CloseableThreadLocal;
+import org.apache.lucene.util.IOUtils;
+
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
@@ -24,20 +38,6 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.codecs.DocValuesProducer;
-import org.apache.lucene.codecs.FieldsProducer;
-import org.apache.lucene.codecs.PostingsFormat;
-import org.apache.lucene.codecs.StoredFieldsReader;
-import org.apache.lucene.codecs.TermVectorsReader;
-import org.apache.lucene.index.SegmentReader.CoreClosedListener;
-import org.apache.lucene.store.AlreadyClosedException;
-import org.apache.lucene.store.CompoundFileDirectory;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.IOContext;
-import org.apache.lucene.util.CloseableThreadLocal;
-import org.apache.lucene.util.IOUtils;
 
 /** Holds core readers that are shared (unchanged) when
  * SegmentReader is cloned or reopened */
@@ -149,36 +149,56 @@ final class SegmentCoreReaders {
     throw new AlreadyClosedException("SegmentCoreReaders is already closed");
   }
 
-  NumericDocValues getNormValues(FieldInfo fi) throws IOException {
-    assert normsProducer != null;
-
+  NumericDocValues getNormValues(FieldInfos infos, String field) throws IOException {
     Map<String,Object> normFields = normsLocal.get();
 
-    NumericDocValues norms = (NumericDocValues) normFields.get(fi.name);
-    if (norms == null) {
+    NumericDocValues norms = (NumericDocValues) normFields.get(field);
+    if (norms != null) {
+      return norms;
+    } else {
+      FieldInfo fi = infos.fieldInfo(field);
+      if (fi == null || !fi.hasNorms()) {
+        // Field does not exist or does not index norms
+        return null;
+      }
+      assert normsProducer != null;
       norms = normsProducer.getNumeric(fi);
-      normFields.put(fi.name, norms);
+      normFields.put(field, norms);
+      return norms;
     }
-
-    return norms;
   }
 
   void decRef() throws IOException {
     if (ref.decrementAndGet() == 0) {
 //      System.err.println("--- closing core readers");
-      IOUtils.close(termVectorsLocal, fieldsReaderLocal, normsLocal, fields, termVectorsReaderOrig, fieldsReaderOrig, 
-          cfsReader, normsProducer);
-      notifyCoreClosedListeners();
+      Throwable th = null;
+      try {
+        IOUtils.close(termVectorsLocal, fieldsReaderLocal, normsLocal, fields, termVectorsReaderOrig, fieldsReaderOrig,
+            cfsReader, normsProducer);
+      } catch (Throwable throwable) {
+        th = throwable;
+      } finally {
+        notifyCoreClosedListeners(th);
+      }
     }
   }
   
-  private void notifyCoreClosedListeners() {
+  private void notifyCoreClosedListeners(Throwable th) {
     synchronized(coreClosedListeners) {
       for (CoreClosedListener listener : coreClosedListeners) {
         // SegmentReader uses our instance as its
         // coreCacheKey:
-        listener.onClose(this);
+        try {
+          listener.onClose(this);
+        } catch (Throwable t) {
+          if (th == null) {
+            th = t;
+          } else {
+            th.addSuppressed(t);
+          }
+        }
       }
+      IOUtils.reThrowUnchecked(th);
     }
   }
 

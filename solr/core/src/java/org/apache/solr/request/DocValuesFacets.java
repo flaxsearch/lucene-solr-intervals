@@ -21,10 +21,10 @@ import java.io.IOException;
 import java.util.List;
 
 import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.MultiDocValues.MultiSortedDocValues;
 import org.apache.lucene.index.MultiDocValues.MultiSortedSetDocValues;
 import org.apache.lucene.index.MultiDocValues.OrdinalMap;
-import org.apache.lucene.index.SingletonSortedSetDocValues;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.search.DocIdSet;
@@ -60,17 +60,20 @@ public class DocValuesFacets {
     SchemaField schemaField = searcher.getSchema().getField(fieldName);
     FieldType ft = schemaField.getType();
     NamedList<Integer> res = new NamedList<>();
+    
+    // TODO: remove multiValuedFieldCache(), check dv type / uninversion type?
+    final boolean multiValued = schemaField.multiValued() || ft.multiValuedFieldCache();
 
     final SortedSetDocValues si; // for term lookups only
     OrdinalMap ordinalMap = null; // for mapping per-segment ords to global ones
-    if (schemaField.multiValued()) {
+    if (multiValued) {
       si = searcher.getAtomicReader().getSortedSetDocValues(fieldName);
       if (si instanceof MultiSortedSetDocValues) {
         ordinalMap = ((MultiSortedSetDocValues)si).mapping;
       }
     } else {
       SortedDocValues single = searcher.getAtomicReader().getSortedDocValues(fieldName);
-      si = single == null ? null : new SingletonSortedSetDocValues(single);
+      si = single == null ? null : DocValues.singleton(single);
       if (single instanceof MultiSortedDocValues) {
         ordinalMap = ((MultiSortedDocValues)single).mapping;
       }
@@ -126,22 +129,22 @@ public class DocValuesFacets {
           disi = dis.iterator();
         }
         if (disi != null) {
-          if (schemaField.multiValued()) {
+          if (multiValued) {
             SortedSetDocValues sub = leaf.reader().getSortedSetDocValues(fieldName);
             if (sub == null) {
-              sub = SortedSetDocValues.EMPTY;
+              sub = DocValues.EMPTY_SORTED_SET;
             }
-            if (sub instanceof SingletonSortedSetDocValues) {
+            final SortedDocValues singleton = DocValues.unwrapSingleton(sub);
+            if (singleton != null) {
               // some codecs may optimize SORTED_SET storage for single-valued fields
-              final SortedDocValues values = ((SingletonSortedSetDocValues) sub).getSortedDocValues();
-              accumSingle(counts, startTermIndex, values, disi, subIndex, ordinalMap);
+              accumSingle(counts, startTermIndex, singleton, disi, subIndex, ordinalMap);
             } else {
               accumMulti(counts, startTermIndex, sub, disi, subIndex, ordinalMap);
             }
           } else {
             SortedDocValues sub = leaf.reader().getSortedDocValues(fieldName);
             if (sub == null) {
-              sub = SortedDocValues.EMPTY;
+              sub = DocValues.EMPTY_SORTED;
             }
             accumSingle(counts, startTermIndex, sub, disi, subIndex, ordinalMap);
           }

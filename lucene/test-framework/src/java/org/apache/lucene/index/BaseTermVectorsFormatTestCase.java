@@ -40,6 +40,7 @@ import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.TermsEnum.SeekStatus;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TermQuery;
@@ -47,7 +48,6 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
-import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 
 import com.carrotsearch.randomizedtesting.generators.RandomPicks;
@@ -58,26 +58,7 @@ import com.carrotsearch.randomizedtesting.generators.RandomPicks;
  * uses it and extend this class and override {@link #getCodec()}.
  * @lucene.experimental
  */
-public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
-
-  private Codec savedCodec;
-
-  /**
-   * Returns the Codec to run tests against
-   */
-  protected abstract Codec getCodec();
-
-  public void setUp() throws Exception {
-    super.setUp();
-    // set the default codec, so adding test cases to this isn't fragile
-    savedCodec = Codec.getDefault();
-    Codec.setDefault(getCodec());
-  }
-
-  public void tearDown() throws Exception {
-    Codec.setDefault(savedCodec); // restore
-    super.tearDown();
-  }
+public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatTestCase {
 
   /**
    * A combination of term vectors options.
@@ -124,6 +105,17 @@ public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
     random().nextBytes(payload.bytes);
     payload.length = len;
     return payload;
+  }
+
+  @Override
+  protected void addRandomFields(Document doc) {
+    for (Options opts : validOptions()) {
+      FieldType ft = fieldType(opts);
+      final int numFields = random().nextInt(5);
+      for (int j = 0; j < numFields; ++j) {
+        doc.add(new Field("f_" + opts, TestUtil.randomSimpleString(random(), 2), ft));
+      }
+    }
   }
 
   // custom impl to test cases that are forbidden by the default OffsetAttribute impl
@@ -547,7 +539,7 @@ public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
       final Fields fields = reader.getTermVectors(docWithVectorsID);
       assertEquals(doc, fields);
       reader.close();
-      writer.close();
+      writer.shutdown();
       dir.close();
     }
   }
@@ -565,7 +557,7 @@ public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
       final IndexReader reader = writer.getReader();
       assertEquals(doc, reader.getTermVectors(0));
       reader.close();
-      writer.close();
+      writer.shutdown();
       dir.close();
     }
   }
@@ -580,7 +572,7 @@ public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
       final IndexReader reader = writer.getReader();
       assertEquals(doc, reader.getTermVectors(0));
       reader.close();
-      writer.close();
+      writer.shutdown();
       dir.close();
     }
   }
@@ -606,7 +598,7 @@ public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
         final int doc2ID = docID(reader, "2");
         assertEquals(doc2, reader.getTermVectors(doc2ID));
         reader.close();
-        writer.close();
+        writer.shutdown();
         dir.close();
       }
     }
@@ -630,7 +622,7 @@ public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
       assertEquals(docs[i], reader.getTermVectors(docID));
     }
     reader.close();
-    writer.close();
+    writer.shutdown();
     dir.close();
   }
 
@@ -668,7 +660,7 @@ public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
         }
       }
       reader.close();
-      writer.close();
+      writer.shutdown();
       dir.close();
     }
   }
@@ -719,7 +711,7 @@ public abstract class BaseTermVectorsFormatTestCase extends LuceneTestCase {
         thread.join();
       }
       reader.close();
-      writer.close();
+      writer.shutdown();
       dir.close();
       assertNull("One thread threw an exception", exception.get());
     }

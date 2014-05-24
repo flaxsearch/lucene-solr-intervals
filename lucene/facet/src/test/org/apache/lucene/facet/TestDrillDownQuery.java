@@ -110,7 +110,7 @@ public class TestDrillDownQuery extends FacetTestCase {
     
     taxoWriter.close();
     reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
     
     taxo = new DirectoryTaxonomyReader(taxoDir);
   }
@@ -133,7 +133,6 @@ public class TestDrillDownQuery extends FacetTestCase {
     // Making sure the query yields 25 documents with the facet "a"
     DrillDownQuery q = new DrillDownQuery(config);
     q.add("a");
-    System.out.println("q=" + q);
     QueryUtils.check(q);
     TopDocs docs = searcher.search(q, 100);
     assertEquals(25, docs.totalHits);

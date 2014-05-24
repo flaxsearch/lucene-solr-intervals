@@ -242,7 +242,7 @@ public class TestTaxonomyFacetCounts2 extends FacetTestCase {
     // 4. Segment w/ categories, but only some results
     
     IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
-    conf.setMergePolicy(NoMergePolicy.COMPOUND_FILES); // prevent merges, so we can control the index segments
+    conf.setMergePolicy(NoMergePolicy.INSTANCE); // prevent merges, so we can control the index segments
     IndexWriter indexWriter = new IndexWriter(indexDir, conf);
     TaxonomyWriter taxoWriter = new DirectoryTaxonomyWriter(taxoDir);
 
@@ -260,8 +260,9 @@ public class TestTaxonomyFacetCounts2 extends FacetTestCase {
     
     // segment w/ categories and some content
     indexDocsWithFacetsAndSomeTerms(indexWriter, taxoWriter, allExpectedCounts);
-    
-    IOUtils.close(indexWriter, taxoWriter);
+
+    indexWriter.shutdown();
+    IOUtils.close(taxoWriter);
   }
   
   @Test

@@ -43,10 +43,7 @@ import org.xml.sax.InputSource;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -152,7 +149,7 @@ public class EditFileRequestHandler extends RequestHandlerBase {
           return; // Error already in rsp.
         }
 
-        data = IOUtils.toByteArray(new InputStreamReader(stream.getStream(), "UTF-8"), "UTF-8");
+        data = IOUtils.toByteArray(stream.getStream());
 
         // If it's "solrconfig.xml", try parsing it as that object. Otherwise, if it ends in '.xml',
         // see if it at least parses.
@@ -311,15 +308,6 @@ public class EditFileRequestHandler extends RequestHandlerBase {
       rsp.setException(new SolrException(ErrorCode.SERVER_ERROR,
           "Caught IO exception when trying to verify configs. " + ex.getMessage()));
       return false;
-    } finally {
-      if (home != null) {
-        try {
-          FileUtils.deleteDirectory(home);
-        } catch (IOException e) {
-          log.warn("Caught IO exception trying to delete temporary directory " + home + e.getMessage());
-          return true; // Don't fail for this reason!
-        }
-      }
     }
   }
 

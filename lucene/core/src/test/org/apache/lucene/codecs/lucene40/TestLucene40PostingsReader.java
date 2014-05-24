@@ -53,7 +53,7 @@ public class TestLucene40PostingsReader extends LuceneTestCase {
    *  depends heavily on term vectors cross-check at checkIndex
    */
   public void testPostings() throws Exception {
-    Directory dir = newFSDirectory(TestUtil.getTempDir("postings"));
+    Directory dir = newFSDirectory(createTempDir("postings"));
     IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
     iwc.setCodec(Codec.forName("Lucene40"));
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
@@ -98,7 +98,7 @@ public class TestLucene40PostingsReader extends LuceneTestCase {
       // delete 1-100% of docs
       iw.deleteDocuments(new Term("title", terms[random().nextInt(terms.length)]));
     }
-    iw.close();
+    iw.shutdown();
     dir.close(); // checkindex
   }
   

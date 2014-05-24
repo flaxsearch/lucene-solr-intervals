@@ -17,7 +17,6 @@ package org.apache.solr.store.hdfs;
  * limitations under the License.
  */
 
-import java.io.File;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Random;
@@ -58,10 +57,7 @@ public class HdfsDirectoryTest extends SolrTestCaseJ4 {
 
   @BeforeClass
   public static void beforeClass() throws Exception {
-    createTempDir();
-    dfsCluster = HdfsTestUtil.setupClass(TEMP_DIR.getAbsolutePath()
-        + File.separator + HdfsDirectoryTest.class.getName() + "_hdfsdir-"
-        + System.currentTimeMillis());
+    dfsCluster = HdfsTestUtil.setupClass(createTempDir().getAbsolutePath());
   }
   
   @AfterClass
@@ -77,7 +73,7 @@ public class HdfsDirectoryTest extends SolrTestCaseJ4 {
     Configuration conf = new Configuration();
     conf.set("dfs.permissions.enabled", "false");
     
-    directory = new HdfsDirectory(new Path(dfsCluster.getURI().toString() + dataDir.getAbsolutePath() + "/hdfs"), conf);
+    directory = new HdfsDirectory(new Path(dfsCluster.getURI().toString() + createTempDir().getAbsolutePath() + "/hdfs"), conf);
     
     random = random();
   }
@@ -96,7 +92,6 @@ public class HdfsDirectoryTest extends SolrTestCaseJ4 {
     
     IndexOutput output = directory.createOutput("testing.test", new IOContext());
     output.writeInt(12345);
-    output.flush();
     output.close();
 
     IndexInput input = directory.openInput("testing.test", new IOContext());
@@ -200,9 +195,7 @@ public class HdfsDirectoryTest extends SolrTestCaseJ4 {
     int writes = random.nextInt(MAX_NUMBER_OF_WRITES);
     int fileLength = random.nextInt(MAX_FILE_SIZE - MIN_FILE_SIZE) + MIN_FILE_SIZE;
     IndexOutput fsOutput = fsDir.createOutput(name, new IOContext());
-    fsOutput.setLength(fileLength);
     IndexOutput hdfsOutput = hdfs.createOutput(name, new IOContext());
-    hdfsOutput.setLength(fileLength);
     for (int i = 0; i < writes; i++) {
       byte[] buf = new byte[random.nextInt(Math.min(MAX_BUFFER_SIZE - MIN_BUFFER_SIZE,fileLength)) + MIN_BUFFER_SIZE];
       random.nextBytes(buf);
