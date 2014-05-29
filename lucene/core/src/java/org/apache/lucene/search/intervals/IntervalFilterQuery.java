@@ -53,17 +53,18 @@ public class IntervalFilterQuery extends Query implements Cloneable {
   public static BooleanQuery createFieldConjunction(Query... subqueries) {
     if (subqueries.length == 0)
       throw new IllegalArgumentException("Cannot create empty conjunction");
-    String field = subqueries[0].getField();
-    if (field == null)
-      throw new IllegalArgumentException("Cannot create interval conjunction over null field");
     BooleanQuery bq = new BooleanQuery();
     for (Query query : subqueries) {
-      if (!field.equals(query.getField()))
-        throw new IllegalArgumentException("Cannot create interval conjunction over multiple fields: found "
-                                              + field + " and " + query.getField());
       bq.add(query, BooleanClause.Occur.MUST);
     }
+    ensureSingleFielded(bq);
     return bq;
+  }
+
+  public static String ensureSingleFielded(Query query) {
+    if (query.getFields().size() != 1)
+      throw new IllegalArgumentException("Query must have a single field: found " + query.getFields());
+    return query.getFields().iterator().next();
   }
 
   public static BooleanQuery createConjunction(Query... subqueries) {
@@ -93,8 +94,8 @@ public class IntervalFilterQuery extends Query implements Cloneable {
   }
 
   @Override
-  public String getField() {
-    return inner.getField();
+  public Set<String> getFields() {
+    return inner.getFields();
   }
 
   @Override

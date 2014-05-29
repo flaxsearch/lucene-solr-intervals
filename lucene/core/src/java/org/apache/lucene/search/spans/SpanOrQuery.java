@@ -17,23 +17,22 @@ package org.apache.lucene.search.spans;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
-import java.util.List;
-import java.util.Collection;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
-
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.PriorityQueue;
 import org.apache.lucene.util.ToStringUtils;
-import org.apache.lucene.search.Query;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /** Matches the union of its clauses.*/
 public class SpanOrQuery extends SpanQuery implements Cloneable {
@@ -54,6 +53,7 @@ public class SpanOrQuery extends SpanQuery implements Cloneable {
   public final void addClause(SpanQuery clause) {
     if (field == null) {
       field = clause.getField();
+      fieldset.add(field);
     } else if (clause.getField() != null && !clause.getField().equals(field)) {
       throw new IllegalArgumentException("Clauses must have same field.");
     }

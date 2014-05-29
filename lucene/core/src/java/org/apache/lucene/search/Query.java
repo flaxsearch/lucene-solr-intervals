@@ -21,6 +21,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.Set;
 
 /** The abstract base class for queries.
@@ -69,8 +70,10 @@ public abstract class Query implements Cloneable {
     return toString("");
   }
 
-  public String getField() {
-    return null;
+  protected final Set<String> fieldset = new HashSet<>();
+
+  public Set<String> getFields() {
+    return fieldset;
   }
 
   /**

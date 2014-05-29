@@ -101,6 +101,7 @@ public class PhraseQuery extends Query {
   public void add(Term term, int position) {
     if (terms.size() == 0) {
       field = term.field();
+      fieldset.add(field);
     } else if (!term.field().equals(field)) {
       throw new IllegalArgumentException("All phrase terms must be in the same field: " + term);
     }

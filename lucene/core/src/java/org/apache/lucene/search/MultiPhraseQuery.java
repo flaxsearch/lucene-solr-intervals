@@ -106,8 +106,10 @@ public class MultiPhraseQuery extends Query {
    * @see PhraseQuery#add(Term, int)
    */
   public void add(Term[] terms, int position) {
-    if (termArrays.size() == 0)
+    if (termArrays.size() == 0) {
       field = terms[0].field();
+      fieldset.add(field);
+    }
 
     for (int i = 0; i < terms.length; i++) {
       if (!terms[i].field().equals(field)) {

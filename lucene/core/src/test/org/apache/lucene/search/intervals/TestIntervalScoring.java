@@ -68,7 +68,7 @@ public class TestIntervalScoring extends IntervalTestBase {
     OrderedNearQuery q = new OrderedNearQuery(10, new RegexpQuery(new Term("field", "bar.*")),
         new RegexpQuery(new Term("field", "foo.*")));
     Query rewritten = q.rewrite(searcher.getIndexReader());
-    assertThat(rewritten.getField(), is("field"));
+    assertThat(rewritten.getFields().iterator().next(), is("field"));
   }
 
   public void testRewrittenEmptyBooleans() throws IOException {

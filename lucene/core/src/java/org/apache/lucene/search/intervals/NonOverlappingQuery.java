@@ -77,13 +77,14 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
   public NonOverlappingQuery(Query minuend, Query subtrahend) {
     this.minuend = minuend;
     this.subtrahend = subtrahend;
-    this.field = minuend.getField();
-    if (minuend.getField() == null)
-      throw new IllegalArgumentException("Minuend query must have a field declared");
-    if (subtrahend.getField() == null)
-      throw new IllegalArgumentException("Subtrahend query must have a field declared");
-    if (!minuend.getField().equals(subtrahend.getField()))
-      throw new IllegalArgumentException("Minuend and subtrahend must be on the same field");
+    if (minuend.getFields().size() != 1)
+      throw new IllegalArgumentException("Minuend query must be defined on a single field: found " + minuend.getFields());
+    if (subtrahend.getFields().size() != 1)
+      throw new IllegalArgumentException("Subtrahend query must be defined on a single field: found " + subtrahend.getFields());
+    if (!minuend.getFields().containsAll(subtrahend.getFields()))
+      throw new IllegalArgumentException("Minuend and subtrahend must be on the same field: found "
+                                          + minuend.getFields() + " and " + subtrahend.getFields());
+    field = minuend.getFields().iterator().next();
   }
 
   @Override

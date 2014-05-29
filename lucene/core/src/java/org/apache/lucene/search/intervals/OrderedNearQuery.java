@@ -42,7 +42,8 @@ public class OrderedNearQuery extends IntervalFilterQuery {
    * @param subqueries the subqueries to match.
    */
   public OrderedNearQuery(int slop, boolean collectLeaves, Query... subqueries) {
-    super(createFieldConjunction(subqueries), new WithinOrderedFilter(subqueries[0].getField(), slop, collectLeaves));
+    super(createFieldConjunction(subqueries),
+          new WithinOrderedFilter(ensureSingleFielded(subqueries[0]), slop, collectLeaves));
   }
 
   /**

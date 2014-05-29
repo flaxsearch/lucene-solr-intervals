@@ -143,22 +143,8 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
     if (clauses.size() >= maxClauseCount) {
       throw new TooManyClauses();
     }
-
     clauses.add(clause);
-  }
-
-  @Override
-  public String getField() {
-    if (clauses().size() == 0)
-      return null;
-    final String field = clauses.get(0).getQuery().getField();
-    if (field == null)
-      return null;
-    for (BooleanClause clause : clauses) {
-      if (!field.equals(clause.getQuery().getField()))
-        return null;
-    }
-    return field;
+    fieldset.addAll(clause.getQuery().getFields());
   }
 
   /** Returns the set of clauses in this query. */

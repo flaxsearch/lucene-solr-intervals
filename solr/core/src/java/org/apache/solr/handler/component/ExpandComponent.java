@@ -325,7 +325,7 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       for (IntObjectCursor<Collector> entry : groups) {
         leafCollectors.put(entry.key, entry.value.getLeafCollector(context));
       }
-      return new LeafCollector() {
+      return new SimpleCollector() {
         
         @Override
         public void setScorer(Scorer scorer) throws IOException {

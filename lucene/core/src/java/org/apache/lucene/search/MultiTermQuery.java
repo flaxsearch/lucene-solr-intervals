@@ -254,6 +254,7 @@ public abstract class MultiTermQuery extends Query {
       throw new IllegalArgumentException("field must not be null");
     }
     this.field = field;
+    this.fieldset.add(field);
   }
 
   /** Returns the field name for this query */

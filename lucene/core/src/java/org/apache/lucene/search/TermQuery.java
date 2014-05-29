@@ -156,6 +156,7 @@ public class TermQuery extends Query {
     term = t;
     this.docFreq = docFreq;
     perReaderTermState = null;
+    this.fieldset.add(t.field());
   }
   
   /**
@@ -167,16 +168,12 @@ public class TermQuery extends Query {
     term = t;
     docFreq = states.docFreq();
     perReaderTermState = states;
+    this.fieldset.add(term.field());
   }
   
   /** Returns the term of this query. */
   public Term getTerm() {
     return term;
-  }
-
-  @Override
-  public String getField() {
-    return term.field();
   }
 
   @Override

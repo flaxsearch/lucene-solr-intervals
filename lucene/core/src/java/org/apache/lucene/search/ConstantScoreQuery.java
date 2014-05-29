@@ -78,11 +78,6 @@ public class ConstantScoreQuery extends Query {
   }
 
   @Override
-  public String getField() {
-    return field;
-  }
-
-  @Override
   public Query rewrite(IndexReader reader) throws IOException {
     if (query != null) {
       Query rewritten = query.rewrite(reader);
