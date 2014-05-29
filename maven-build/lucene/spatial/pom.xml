@@ -52,6 +52,10 @@
       <artifactId>lucene-queries</artifactId>
     </dependency>
     <dependency>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
+      <artifactId>lucene-misc</artifactId>
+    </dependency>
+    <dependency>
       <groupId>com.spatial4j</groupId>
       <artifactId>spatial4j</artifactId>
     </dependency>

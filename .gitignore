@@ -21,6 +21,7 @@
 /bin.*
 /nbproject
 /nb-build
+test-lib/
 
 /solr/package
 
