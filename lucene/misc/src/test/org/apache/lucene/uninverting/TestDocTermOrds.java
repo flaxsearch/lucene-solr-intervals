@@ -66,7 +66,7 @@ public class TestDocTermOrds extends LuceneTestCase {
 
   public void testSimple() throws Exception {
     Directory dir = newDirectory();
-    final RandomIndexWriter w = new RandomIndexWriter(random(), dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+    final RandomIndexWriter w = new RandomIndexWriter(random(), dir, newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     Document doc = new Document();
     Field field = newTextField("field", "", Field.Store.NO);
     doc.add(field);
@@ -80,7 +80,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     w.addDocument(doc);
     
     final IndexReader r = w.getReader();
-    w.shutdown();
+    w.close();
 
     final AtomicReader ar = SlowCompositeReaderWrapper.wrap(r);
     final DocTermOrds dto = new DocTermOrds(ar, ar.getLiveDocs(), "field");
@@ -124,7 +124,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     
     final int NUM_DOCS = atLeast(100);
 
-    IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig conf = newIndexWriterConfig(new MockAnalyzer(random()));
 
     // Sometimes swap in codec that impls ord():
     if (random().nextInt(10) == 7) {
@@ -167,7 +167,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     }
     
     final DirectoryReader r = w.getReader();
-    w.shutdown();
+    w.close();
 
     if (VERBOSE) {
       System.out.println("TEST: reader=" + r);
@@ -222,7 +222,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     
     final int NUM_DOCS = atLeast(100);
 
-    IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig conf = newIndexWriterConfig(new MockAnalyzer(random()));
 
     // Sometimes swap in codec that impls ord():
     if (random().nextInt(10) == 7) {
@@ -264,7 +264,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     }
     
     final DirectoryReader r = w.getReader();
-    w.shutdown();
+    w.close();
 
     if (VERBOSE) {
       System.out.println("TEST: reader=" + r);
@@ -395,7 +395,7 @@ public class TestDocTermOrds extends LuceneTestCase {
   
   public void testBackToTheFuture() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
     
     Document doc = new Document();
     doc.add(newStringField("foo", "bar", Field.Store.NO));
@@ -419,7 +419,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     v.setDocument(1);
     assertEquals(1, v.nextOrd());
     
-    iw.shutdown();
+    iw.close();
     r1.close();
     r2.close();
     dir.close();
@@ -427,7 +427,7 @@ public class TestDocTermOrds extends LuceneTestCase {
   
   public void testNumericEncoded32() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
     
     Document doc = new Document();
     doc.add(new IntField("foo", 5, Field.Store.NO));
@@ -439,7 +439,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     iw.addDocument(doc);
     
     iw.forceMerge(1);
-    iw.shutdown();
+    iw.close();
     
     DirectoryReader ir = DirectoryReader.open(dir);
     AtomicReader ar = getOnlySegmentReader(ir);
@@ -456,11 +456,10 @@ public class TestDocTermOrds extends LuceneTestCase {
     assertEquals(1, v.nextOrd());
     assertEquals(SortedSetDocValues.NO_MORE_ORDS, v.nextOrd());
     
-    BytesRef value = new BytesRef();
-    v.lookupOrd(0, value);
+    BytesRef value = v.lookupOrd(0);
     assertEquals(-3, NumericUtils.prefixCodedToInt(value));
     
-    v.lookupOrd(1, value);
+    value = v.lookupOrd(1);
     assertEquals(5, NumericUtils.prefixCodedToInt(value));
     
     ir.close();
@@ -469,7 +468,7 @@ public class TestDocTermOrds extends LuceneTestCase {
   
   public void testNumericEncoded64() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
     
     Document doc = new Document();
     doc.add(new LongField("foo", 5, Field.Store.NO));
@@ -481,7 +480,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     iw.addDocument(doc);
     
     iw.forceMerge(1);
-    iw.shutdown();
+    iw.close();
     
     DirectoryReader ir = DirectoryReader.open(dir);
     AtomicReader ar = getOnlySegmentReader(ir);
@@ -498,11 +497,10 @@ public class TestDocTermOrds extends LuceneTestCase {
     assertEquals(1, v.nextOrd());
     assertEquals(SortedSetDocValues.NO_MORE_ORDS, v.nextOrd());
     
-    BytesRef value = new BytesRef();
-    v.lookupOrd(0, value);
+    BytesRef value = v.lookupOrd(0);
     assertEquals(-3, NumericUtils.prefixCodedToLong(value));
     
-    v.lookupOrd(1, value);
+    value = v.lookupOrd(1);
     assertEquals(5, NumericUtils.prefixCodedToLong(value));
     
     ir.close();
@@ -512,7 +510,7 @@ public class TestDocTermOrds extends LuceneTestCase {
   public void testSortedTermsEnum() throws IOException {
     Directory directory = newDirectory();
     Analyzer analyzer = new MockAnalyzer(random());
-    IndexWriterConfig iwconfig = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwconfig = newIndexWriterConfig(analyzer);
     iwconfig.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iwriter = new RandomIndexWriter(random(), directory, iwconfig);
     
@@ -532,7 +530,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     iwriter.forceMerge(1);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.shutdown();
+    iwriter.close();
 
     AtomicReader ar = getOnlySegmentReader(ireader);
     SortedSetDocValues dv = FieldCache.DEFAULT.getDocTermOrds(ar, "field", null);
@@ -595,7 +593,7 @@ public class TestDocTermOrds extends LuceneTestCase {
   
   public void testActuallySingleValued() throws IOException {
     Directory dir = newDirectory();
-    IndexWriterConfig iwconfig =  newIndexWriterConfig(TEST_VERSION_CURRENT, null);
+    IndexWriterConfig iwconfig =  newIndexWriterConfig(null);
     iwconfig.setMergePolicy(newLogMergePolicy());
     IndexWriter iw = new IndexWriter(dir, iwconfig);
     
@@ -616,7 +614,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     iw.addDocument(doc);
     
     iw.forceMerge(1);
-    iw.shutdown();
+    iw.close();
     
     DirectoryReader ir = DirectoryReader.open(dir);
     AtomicReader ar = getOnlySegmentReader(ir);
@@ -640,11 +638,10 @@ public class TestDocTermOrds extends LuceneTestCase {
     assertEquals(1, v.nextOrd());
     assertEquals(SortedSetDocValues.NO_MORE_ORDS, v.nextOrd());
     
-    BytesRef value = new BytesRef();
-    v.lookupOrd(0, value);
+    BytesRef value = v.lookupOrd(0);
     assertEquals("bar", value.utf8ToString());
     
-    v.lookupOrd(1, value);
+    value = v.lookupOrd(1);
     assertEquals("baz", value.utf8ToString());
     
     ir.close();

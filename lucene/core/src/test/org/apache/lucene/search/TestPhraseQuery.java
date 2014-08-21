@@ -79,7 +79,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     writer.addDocument(doc);
 
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     searcher = newSearcher(reader);
   }
@@ -215,12 +215,12 @@ public class TestPhraseQuery extends LuceneTestCase {
     Directory directory = newDirectory();
     Analyzer stopAnalyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET);
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, stopAnalyzer));
+        newIndexWriterConfig(stopAnalyzer));
     Document doc = new Document();
     doc.add(newTextField("field", "the stop words are here", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     IndexSearcher searcher = newSearcher(reader);
 
@@ -250,7 +250,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     writer.addDocument(doc);
     
     IndexReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     IndexSearcher searcher = newSearcher(reader);
     
@@ -274,7 +274,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     reader.close();
     
     writer = new RandomIndexWriter(random(), directory, 
-        newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.CREATE));
+        newIndexWriterConfig(new MockAnalyzer(random())).setOpenMode(OpenMode.CREATE));
     doc = new Document();
     doc.add(newTextField("contents", "map entry woo", Field.Store.YES));
     writer.addDocument(doc);
@@ -288,7 +288,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     writer.addDocument(doc);
 
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     searcher = newSearcher(reader);
     
@@ -324,7 +324,7 @@ public class TestPhraseQuery extends LuceneTestCase {
   public void testSlopScoring() throws IOException {
     Directory directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+        newIndexWriterConfig(new MockAnalyzer(random()))
           .setMergePolicy(newLogMergePolicy())
           .setSimilarity(new DefaultSimilarity()));
 
@@ -341,7 +341,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     writer.addDocument(doc3);
     
     IndexReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     IndexSearcher searcher = newSearcher(reader);
     searcher.setSimilarity(new DefaultSimilarity());
@@ -589,7 +589,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     Directory dir = newDirectory();
     Analyzer analyzer = new MockAnalyzer(random());
 
-    RandomIndexWriter w  = new RandomIndexWriter(random(), dir, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer).setMergePolicy(newLogMergePolicy()));
+    RandomIndexWriter w  = new RandomIndexWriter(random(), dir, newIndexWriterConfig(analyzer).setMergePolicy(newLogMergePolicy()));
     List<List<String>> docs = new ArrayList<>();
     Document d = new Document();
     Field f = newTextField("f", "", Field.Store.NO);
@@ -644,7 +644,7 @@ public class TestPhraseQuery extends LuceneTestCase {
 
     IndexReader reader = w.getReader();
     IndexSearcher s = newSearcher(reader);
-    w.shutdown();
+    w.close();
 
     // now search
     int num = atLeast(10);

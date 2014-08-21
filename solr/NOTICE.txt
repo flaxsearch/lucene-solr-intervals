@@ -3,7 +3,7 @@
  Copyright 2006-2014 The Apache Software Foundation
 ==============================================================
 
-This product includes software developed by
+This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).
 
 Includes software from other Apache Software Foundation projects,
@@ -65,8 +65,8 @@ Copyright (c) 2004, Sun Microsystems, Inc.
 Copyright (c) 2006, John Kristian 
 License: The BSD License (http://www.opensource.org/licenses/bsd-license.php)
 
-JavaMail API 1.4.1: https://glassfish.dev.java.net/javaee5/mail/
-License: Common Development and Distribution License (CDDL) v1.0 (https://glassfish.dev.java.net/public/CDDLv1.0.html)
+JavaMail API 1.5.1: https://glassfish.dev.java.net/javaee5/mail/
+License: Common Development and Distribution License (CDDL) v1.1 (https://glassfish.java.net/public/CDDL+GPL_1_1.html)
 
 JavaBeans Activation Framework (JAF): http://java.sun.com/products/javabeans/jaf/index.jsp
 License: Common Development and Distribution License (CDDL) v1.0 (https://glassfish.dev.java.net/public/CDDLv1.0.html)
@@ -87,7 +87,7 @@ the Apache Blur incubating project and are Apache License 2.0.
 Apache Lucene
 Copyright 2014 The Apache Software Foundation
 
-This product includes software developed by
+This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).
 
 Includes software from other Apache Software Foundation projects,

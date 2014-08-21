@@ -42,7 +42,7 @@ public class TestSearch extends LuceneTestCase {
     Directory directory = newDirectory();
     try {
       Analyzer analyzer = new MockAnalyzer(random());
-      IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+      IndexWriterConfig conf = newIndexWriterConfig(analyzer);
       
       IndexWriter writer = new IndexWriter(directory, conf);
       try {
@@ -50,7 +50,7 @@ public class TestSearch extends LuceneTestCase {
         d.add(newTextField("foo", "bar", Field.Store.YES));
         writer.addDocument(d);
       } finally {
-        writer.shutdown();
+        writer.close();
       }
       
       IndexReader reader = DirectoryReader.open(directory);
@@ -110,7 +110,7 @@ public class TestSearch extends LuceneTestCase {
     throws Exception {
       Directory directory = newDirectory();
       Analyzer analyzer = new MockAnalyzer(random);
-      IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+      IndexWriterConfig conf = newIndexWriterConfig(analyzer);
       MergePolicy mp = conf.getMergePolicy();
       mp.setNoCFSRatio(useCompoundFile ? 1.0 : 0.0);
       IndexWriter writer = new IndexWriter(directory, conf);
@@ -130,7 +130,7 @@ public class TestSearch extends LuceneTestCase {
         d.add(new IntField("id", j, Field.Store.NO));
         writer.addDocument(d);
       }
-      writer.shutdown();
+      writer.close();
 
       IndexReader reader = DirectoryReader.open(directory);
       IndexSearcher searcher = newSearcher(reader);

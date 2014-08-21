@@ -39,7 +39,7 @@ public class TestPayloadsOnVectors extends LuceneTestCase {
   /** some docs have payload att, some not */
   public void testMixupDocs() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir, iwc);
     Document doc = new Document();
@@ -76,7 +76,7 @@ public class TestPayloadsOnVectors extends LuceneTestCase {
     assertEquals(0, de.nextDoc());
     assertEquals(0, de.nextPosition());
     assertEquals(new BytesRef("test"), de.getPayload());
-    writer.shutdown();
+    writer.close();
     reader.close();
     dir.close();
   }
@@ -118,7 +118,7 @@ public class TestPayloadsOnVectors extends LuceneTestCase {
     assertEquals(0, de.nextDoc());
     assertEquals(3, de.nextPosition());
     assertEquals(new BytesRef("test"), de.getPayload());
-    writer.shutdown();
+    writer.close();
     reader.close();
     dir.close();
   }
@@ -139,7 +139,7 @@ public class TestPayloadsOnVectors extends LuceneTestCase {
     } catch (IllegalArgumentException expected) {
       // expected
     }
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
 

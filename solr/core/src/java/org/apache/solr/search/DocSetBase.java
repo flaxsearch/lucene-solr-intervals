@@ -186,6 +186,11 @@ abstract class DocSetBase implements DocSet {
         }
       };
     }
+
+    @Override
+    public long ramBytesUsed() {
+      return 0;
+    }
   };
 
   @Override
@@ -245,6 +250,11 @@ abstract class DocSetBase implements DocSet {
           @Override
           public boolean isCacheable() {
             return true;
+          }
+
+          @Override
+          public long ramBytesUsed() {
+            return bs.ramBytesUsed();
           }
 
           @Override

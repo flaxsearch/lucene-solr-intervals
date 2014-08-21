@@ -28,11 +28,13 @@ import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.AnalyzerWrapper;
+import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.ngram.EdgeNGramTokenFilter;
+import org.apache.lucene.analysis.ngram.Lucene43EdgeNGramTokenFilter;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
-import org.apache.lucene.codecs.lucene46.Lucene46Codec;
+import org.apache.lucene.codecs.lucene410.Lucene410Codec;
 import org.apache.lucene.document.BinaryDocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -77,7 +79,6 @@ import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.Version;
 
@@ -175,16 +176,16 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
     if (DirectoryReader.indexExists(dir)) {
       // Already built; open it:
       writer = new IndexWriter(dir,
-                               getIndexWriterConfig(matchVersion, getGramAnalyzer(), IndexWriterConfig.OpenMode.APPEND));
+                               getIndexWriterConfig(getGramAnalyzer(), IndexWriterConfig.OpenMode.APPEND));
       searcherMgr = new SearcherManager(writer, true, null);
     }
   }
 
   /** Override this to customize index settings, e.g. which
    *  codec to use. */
-  protected IndexWriterConfig getIndexWriterConfig(Version matchVersion, Analyzer indexAnalyzer, IndexWriterConfig.OpenMode openMode) {
-    IndexWriterConfig iwc = new IndexWriterConfig(matchVersion, indexAnalyzer);
-    iwc.setCodec(new Lucene46Codec());
+  protected IndexWriterConfig getIndexWriterConfig(Analyzer indexAnalyzer, IndexWriterConfig.OpenMode openMode) {
+    IndexWriterConfig iwc = new IndexWriterConfig(indexAnalyzer);
+    iwc.setCodec(new Lucene410Codec());
     iwc.setOpenMode(openMode);
 
     // This way all merged segments will be sorted at
@@ -210,7 +211,7 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
     }
 
     if (writer != null) {
-      writer.shutdown();
+      writer.close();
       writer = null;
     }
 
@@ -219,7 +220,7 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
       // First pass: build a temporary normal Lucene index,
       // just indexing the suggestions as they iterate:
       writer = new IndexWriter(dir,
-                               getIndexWriterConfig(matchVersion, getGramAnalyzer(), IndexWriterConfig.OpenMode.CREATE));
+                               getIndexWriterConfig(getGramAnalyzer(), IndexWriterConfig.OpenMode.CREATE));
       //long t0 = System.nanoTime();
 
       // TODO: use threads?
@@ -257,10 +258,14 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
       @Override
       protected TokenStreamComponents wrapComponents(String fieldName, TokenStreamComponents components) {
         if (fieldName.equals("textgrams") && minPrefixChars > 0) {
-          return new TokenStreamComponents(components.getTokenizer(),
-                                           new EdgeNGramTokenFilter(matchVersion,
-                                                                    components.getTokenStream(),
-                                                                    1, minPrefixChars));
+          // TODO: should use an EdgeNGramTokenFilterFactory here
+          TokenFilter filter;
+          if (matchVersion.onOrAfter(Version.LUCENE_4_4_0)) {
+            filter = new EdgeNGramTokenFilter(components.getTokenStream(), 1, minPrefixChars);
+          } else {
+            filter = new Lucene43EdgeNGramTokenFilter(components.getTokenStream(), 1, minPrefixChars);
+          }
+          return new TokenStreamComponents(components.getTokenizer(), filter);
         } else {
           return components;
         }
@@ -488,17 +493,15 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
     BinaryDocValues payloadsDV = MultiDocValues.getBinaryValues(searcher.getIndexReader(), "payloads");
     List<AtomicReaderContext> leaves = searcher.getIndexReader().leaves();
     List<LookupResult> results = new ArrayList<>();
-    BytesRef scratch = new BytesRef();
     for (int i=0;i<hits.scoreDocs.length;i++) {
       FieldDoc fd = (FieldDoc) hits.scoreDocs[i];
-      textDV.get(fd.doc, scratch);
-      String text = scratch.utf8ToString();
+      BytesRef term = textDV.get(fd.doc);
+      String text = term.utf8ToString();
       long score = (Long) fd.fields[0];
 
       BytesRef payload;
       if (payloadsDV != null) {
-        payload = new BytesRef();
-        payloadsDV.get(fd.doc, payload);
+        payload = BytesRef.deepCopyOf(payloadsDV.get(fd.doc));
       } else {
         payload = null;
       }
@@ -512,8 +515,7 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
         contextsDV.setDocument(fd.doc - leaves.get(segment).docBase);
         long ord;
         while ((ord = contextsDV.nextOrd()) != SortedSetDocValues.NO_MORE_ORDS) {
-          BytesRef context = new BytesRef();
-          contextsDV.lookupOrd(ord, context);
+          BytesRef context = BytesRef.deepCopyOf(contextsDV.lookupOrd(ord));
           contexts.add(context);
         }
       } else {
@@ -640,14 +642,14 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
       searcherMgr = null;
     }
     if (writer != null) {
-      writer.shutdown();
+      writer.close();
       dir.close();
       writer = null;
     }
   }
 
   @Override
-  public long sizeInBytes() {
+  public long ramBytesUsed() {
     long mem = RamUsageEstimator.shallowSizeOf(this);
     try {
       if (searcherMgr != null) {

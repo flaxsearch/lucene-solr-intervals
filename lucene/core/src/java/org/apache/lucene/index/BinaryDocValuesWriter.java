@@ -26,12 +26,13 @@ import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.PagedBytes;
 import org.apache.lucene.util.RamUsageEstimator;
-import org.apache.lucene.util.packed.AppendingDeltaPackedLongBuffer;
 import org.apache.lucene.util.packed.PackedInts;
+import org.apache.lucene.util.packed.PackedLongValues;
 
 /** Buffers up pending byte[] per doc, then flushes when
  *  segment flushes. */
@@ -47,7 +48,7 @@ class BinaryDocValuesWriter extends DocValuesWriter {
   private final DataOutput bytesOut;
 
   private final Counter iwBytesUsed;
-  private final AppendingDeltaPackedLongBuffer lengths;
+  private final PackedLongValues.Builder lengths;
   private FixedBitSet docsWithField;
   private final FieldInfo fieldInfo;
   private int addedValues;
@@ -57,7 +58,7 @@ class BinaryDocValuesWriter extends DocValuesWriter {
     this.fieldInfo = fieldInfo;
     this.bytes = new PagedBytes(BLOCK_BITS);
     this.bytesOut = bytes.getDataOutput();
-    this.lengths = new AppendingDeltaPackedLongBuffer(PackedInts.COMPACT);
+    this.lengths = PackedLongValues.deltaPackedBuilder(PackedInts.COMPACT);
     this.iwBytesUsed = iwBytesUsed;
     this.docsWithField = new FixedBitSet(64);
     this.bytesUsed = docsWithFieldBytesUsed();
@@ -112,26 +113,28 @@ class BinaryDocValuesWriter extends DocValuesWriter {
   public void flush(SegmentWriteState state, DocValuesConsumer dvConsumer) throws IOException {
     final int maxDoc = state.segmentInfo.getDocCount();
     bytes.freeze(false);
+    final PackedLongValues lengths = this.lengths.build();
     dvConsumer.addBinaryField(fieldInfo,
                               new Iterable<BytesRef>() {
                                 @Override
                                 public Iterator<BytesRef> iterator() {
-                                   return new BytesIterator(maxDoc);                                 
+                                   return new BytesIterator(maxDoc, lengths);
                                 }
                               });
   }
 
   // iterates over the values we have in ram
   private class BytesIterator implements Iterator<BytesRef> {
-    final BytesRef value = new BytesRef();
-    final AppendingDeltaPackedLongBuffer.Iterator lengthsIterator = lengths.iterator();
+    final BytesRefBuilder value = new BytesRefBuilder();
+    final PackedLongValues.Iterator lengthsIterator;
     final DataInput bytesIterator = bytes.getDataInput();
     final int size = (int) lengths.size();
     final int maxDoc;
     int upto;
     
-    BytesIterator(int maxDoc) {
+    BytesIterator(int maxDoc, PackedLongValues lengths) {
       this.maxDoc = maxDoc;
+      this.lengthsIterator = lengths.iterator();
     }
     
     @Override
@@ -148,15 +151,15 @@ class BinaryDocValuesWriter extends DocValuesWriter {
       if (upto < size) {
         int length = (int) lengthsIterator.next();
         value.grow(length);
-        value.length = length;
+        value.setLength(length);
         try {
-          bytesIterator.readBytes(value.bytes, value.offset, value.length);
+          bytesIterator.readBytes(value.bytes(), 0, value.length());
         } catch (IOException ioe) {
           // Should never happen!
           throw new RuntimeException(ioe);
         }
         if (docsWithField.get(upto)) {
-          v = value;
+          v = value.get();
         } else {
           v = null;
         }

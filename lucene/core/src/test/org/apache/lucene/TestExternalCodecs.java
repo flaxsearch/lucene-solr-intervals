@@ -19,7 +19,7 @@ package org.apache.lucene;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.PostingsFormat;
-import org.apache.lucene.codecs.lucene46.Lucene46Codec;
+import org.apache.lucene.codecs.lucene410.Lucene410Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.DirectoryReader;
@@ -37,7 +37,7 @@ import org.apache.lucene.util.LuceneTestCase;
 
 public class TestExternalCodecs extends LuceneTestCase {
 
-  private static final class CustomPerFieldCodec extends Lucene46Codec {
+  private static final class CustomPerFieldCodec extends Lucene410Codec {
     
     private final PostingsFormat ramFormat = PostingsFormat.forName("RAMOnly");
     private final PostingsFormat defaultFormat = PostingsFormat.forName("Lucene41");
@@ -69,7 +69,7 @@ public class TestExternalCodecs extends LuceneTestCase {
     dir.setCheckIndexOnClose(false); // we use a custom codec provider
     IndexWriter w = new IndexWriter(
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
+        newIndexWriterConfig(new MockAnalyzer(random())).
         setCodec(new CustomPerFieldCodec()).
             setMergePolicy(newLogMergePolicy(3))
     );
@@ -130,7 +130,7 @@ public class TestExternalCodecs extends LuceneTestCase {
     }
     r.close();
 
-    w.shutdown();
+    w.close();
 
     dir.close();
   }

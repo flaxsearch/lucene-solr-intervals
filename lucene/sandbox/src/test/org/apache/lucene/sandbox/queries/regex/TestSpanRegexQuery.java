@@ -53,8 +53,7 @@ public class TestSpanRegexQuery extends LuceneTestCase {
   
   public void testSpanRegex() throws Exception {
     Directory directory = newDirectory();
-    IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig(new MockAnalyzer(random())));
     Document doc = new Document();
     // doc.add(newField("field", "the quick brown fox jumps over the lazy dog",
     // Field.Store.NO, Field.Index.ANALYZED));
@@ -66,7 +65,7 @@ public class TestSpanRegexQuery extends LuceneTestCase {
     doc.add(newTextField("field", "first auto update", Field.Store.NO));
     writer.addDocument(doc);
     writer.forceMerge(1);
-    writer.shutdown();
+    writer.close();
 
     IndexReader reader = DirectoryReader.open(directory);
     IndexSearcher searcher = newSearcher(reader);

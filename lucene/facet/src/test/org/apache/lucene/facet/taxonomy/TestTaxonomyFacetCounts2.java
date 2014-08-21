@@ -37,8 +37,6 @@ import org.apache.lucene.facet.Facets;
 import org.apache.lucene.facet.FacetsCollector;
 import org.apache.lucene.facet.FacetsConfig;
 import org.apache.lucene.facet.LabelAndValue;
-import org.apache.lucene.facet.taxonomy.TaxonomyReader;
-import org.apache.lucene.facet.taxonomy.TaxonomyWriter;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyReader;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
 import org.apache.lucene.index.DirectoryReader;
@@ -241,7 +239,7 @@ public class TestTaxonomyFacetCounts2 extends FacetTestCase {
     // 3. Segment w/ categories and results
     // 4. Segment w/ categories, but only some results
     
-    IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig conf = newIndexWriterConfig(new MockAnalyzer(random()));
     conf.setMergePolicy(NoMergePolicy.INSTANCE); // prevent merges, so we can control the index segments
     IndexWriter indexWriter = new IndexWriter(indexDir, conf);
     TaxonomyWriter taxoWriter = new DirectoryTaxonomyWriter(taxoDir);
@@ -261,7 +259,7 @@ public class TestTaxonomyFacetCounts2 extends FacetTestCase {
     // segment w/ categories and some content
     indexDocsWithFacetsAndSomeTerms(indexWriter, taxoWriter, allExpectedCounts);
 
-    indexWriter.shutdown();
+    indexWriter.close();
     IOUtils.close(taxoWriter);
   }
   

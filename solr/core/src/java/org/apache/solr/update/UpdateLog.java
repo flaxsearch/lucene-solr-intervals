@@ -259,7 +259,7 @@ public class UpdateLog implements PluginInfoInitialized {
     }
 
     // Record first two logs (oldest first) at startup for potential tlog recovery.
-    // It's possible that at abnormal shutdown both "tlog" and "prevTlog" were uncapped.
+    // It's possible that at abnormal close both "tlog" and "prevTlog" were uncapped.
     for (TransactionLog ll : logs) {
       newestLogsOnStartup.addFirst(ll);
       if (newestLogsOnStartup.size() >= 2) break;
@@ -794,7 +794,7 @@ public class UpdateLog implements PluginInfoInitialized {
           continue;
         }
       } catch (IOException e) {
-        log.error("Error inspecting tlog " + ll);
+        log.error("Error inspecting tlog " + ll, e);
         ll.decref();
         continue;
       }

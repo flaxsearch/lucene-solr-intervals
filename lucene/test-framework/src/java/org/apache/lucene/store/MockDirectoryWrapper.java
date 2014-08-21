@@ -192,6 +192,9 @@ public class MockDirectoryWrapper extends BaseDirectoryWrapper {
   private boolean mustSync() {
     Directory delegate = in;
     while (delegate instanceof FilterDirectory) {
+      if (delegate instanceof NRTCachingDirectory) {
+        return true;
+      }
       delegate = ((FilterDirectory) delegate).getDelegate();
     }
     return delegate instanceof NRTCachingDirectory;
@@ -219,7 +222,7 @@ public class MockDirectoryWrapper extends BaseDirectoryWrapper {
 
   public synchronized final long sizeInBytes() throws IOException {
     if (in instanceof RAMDirectory)
-      return ((RAMDirectory) in).sizeInBytes();
+      return ((RAMDirectory) in).ramBytesUsed();
     else {
       // hack
       long size = 0;
@@ -607,7 +610,7 @@ public class MockDirectoryWrapper extends BaseDirectoryWrapper {
       return sizeInBytes();
     long size = 0;
     for(final RAMFile file: ((RAMDirectory)in).fileMap.values()) {
-      size += file.getSizeInBytes();
+      size += file.ramBytesUsed();
     }
     return size;
   }
@@ -689,7 +692,7 @@ public class MockDirectoryWrapper extends BaseDirectoryWrapper {
         if (LuceneTestCase.VERBOSE) {
           System.out.println("\nNOTE: MockDirectoryWrapper: now run CheckIndex");
         } 
-        TestUtil.checkIndex(this, getCrossCheckTermVectorsOnClose());
+        TestUtil.checkIndex(this, getCrossCheckTermVectorsOnClose(), true);
 
         // TODO: factor this out / share w/ TestIW.assertNoUnreferencedFiles
         if (assertNoUnreferencedFilesOnClose) {
@@ -697,7 +700,7 @@ public class MockDirectoryWrapper extends BaseDirectoryWrapper {
           Set<String> allFiles = new HashSet<>(Arrays.asList(listAll()));
           allFiles.removeAll(pendingDeletions);
           String[] startFiles = allFiles.toArray(new String[0]);
-          IndexWriterConfig iwc = new IndexWriterConfig(LuceneTestCase.TEST_VERSION_CURRENT, null);
+          IndexWriterConfig iwc = new IndexWriterConfig(null);
           iwc.setIndexDeletionPolicy(NoDeletionPolicy.INSTANCE);
           new IndexWriter(in, iwc).rollback();
           String[] endFiles = in.listAll();
@@ -788,7 +791,7 @@ public class MockDirectoryWrapper extends BaseDirectoryWrapper {
           DirectoryReader ir1 = DirectoryReader.open(this);
           int numDocs1 = ir1.numDocs();
           ir1.close();
-          new IndexWriter(this, new IndexWriterConfig(LuceneTestCase.TEST_VERSION_CURRENT, null)).shutdown();
+          new IndexWriter(this, new IndexWriterConfig(null)).close();
           DirectoryReader ir2 = DirectoryReader.open(this);
           int numDocs2 = ir2.numDocs();
           ir2.close();

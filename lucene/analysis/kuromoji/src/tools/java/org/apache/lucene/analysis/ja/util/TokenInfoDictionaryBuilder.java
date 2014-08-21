@@ -34,6 +34,7 @@ import java.util.List;
 
 import org.apache.lucene.analysis.ja.util.DictionaryBuilder.DictionaryFormat;
 import org.apache.lucene.util.IntsRef;
+import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.PositiveIntOutputs;
@@ -132,8 +133,8 @@ public class TokenInfoDictionaryBuilder {
     System.out.println("  encode...");
 
     PositiveIntOutputs fstOutput = PositiveIntOutputs.getSingleton();
-    Builder<Long> fstBuilder = new Builder<>(FST.INPUT_TYPE.BYTE2, 0, 0, true, true, Integer.MAX_VALUE, fstOutput, null, true, PackedInts.DEFAULT, true, 15);
-    IntsRef scratch = new IntsRef();
+    Builder<Long> fstBuilder = new Builder<>(FST.INPUT_TYPE.BYTE2, 0, 0, true, true, Integer.MAX_VALUE, fstOutput, true, PackedInts.DEFAULT, true, 15);
+    IntsRefBuilder scratch = new IntsRefBuilder();
     long ord = -1; // first ord will be 0
     String lastValue = null;
 
@@ -152,11 +153,11 @@ public class TokenInfoDictionaryBuilder {
         ord++;
         lastValue = token;
         scratch.grow(token.length());
-        scratch.length = token.length();
+        scratch.setLength(token.length());
         for (int i = 0; i < token.length(); i++) {
-          scratch.ints[i] = (int) token.charAt(i);
+          scratch.setIntAt(i, (int) token.charAt(i));
         }
-        fstBuilder.add(scratch, ord);
+        fstBuilder.add(scratch.get(), ord);
       }
       dictionary.addMapping((int)ord, offset);
       offset = next;
@@ -164,7 +165,7 @@ public class TokenInfoDictionaryBuilder {
     
     final FST<Long> fst = fstBuilder.finish();
     
-    System.out.print("  " + fst.getNodeCount() + " nodes, " + fst.getArcCount() + " arcs, " + fst.sizeInBytes() + " bytes...  ");
+    System.out.print("  " + fst.getNodeCount() + " nodes, " + fst.getArcCount() + " arcs, " + fst.ramBytesUsed() + " bytes...  ");
     dictionary.setFST(fst);
     System.out.println(" done");
     

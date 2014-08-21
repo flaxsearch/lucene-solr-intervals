@@ -17,8 +17,6 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import java.util.Random;
-
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.SortedDocValuesField;
@@ -45,7 +43,7 @@ public class Test2BSortedDocValues extends LuceneTestCase {
     }
     
     IndexWriter w = new IndexWriter(dir,
-        new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+        new IndexWriterConfig(new MockAnalyzer(random()))
         .setMaxBufferedDocs(IndexWriterConfig.DISABLE_AUTO_FLUSH)
         .setRAMBufferSizeMB(256.0)
         .setMergeScheduler(new ConcurrentMergeScheduler())
@@ -69,7 +67,7 @@ public class Test2BSortedDocValues extends LuceneTestCase {
     }
     
     w.forceMerge(1);
-    w.shutdown();
+    w.close();
     
     System.out.println("verifying...");
     System.out.flush();
@@ -78,13 +76,12 @@ public class Test2BSortedDocValues extends LuceneTestCase {
     int expectedValue = 0;
     for (AtomicReaderContext context : r.leaves()) {
       AtomicReader reader = context.reader();
-      BytesRef scratch = new BytesRef();
       BinaryDocValues dv = reader.getSortedDocValues("dv");
       for (int i = 0; i < reader.maxDoc(); i++) {
         bytes[0] = (byte)(expectedValue >> 8);
         bytes[1] = (byte) expectedValue;
-        dv.get(i, scratch);
-        assertEquals(data, scratch);
+        final BytesRef term = dv.get(i);
+        assertEquals(data, term);
         expectedValue++;
       }
     }
@@ -101,7 +98,7 @@ public class Test2BSortedDocValues extends LuceneTestCase {
     }
     
     IndexWriter w = new IndexWriter(dir,
-        new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+        new IndexWriterConfig(new MockAnalyzer(random()))
         .setMaxBufferedDocs(IndexWriterConfig.DISABLE_AUTO_FLUSH)
         .setRAMBufferSizeMB(256.0)
         .setMergeScheduler(new ConcurrentMergeScheduler())
@@ -127,7 +124,7 @@ public class Test2BSortedDocValues extends LuceneTestCase {
     }
     
     w.forceMerge(1);
-    w.shutdown();
+    w.close();
     
     System.out.println("verifying...");
     System.out.flush();
@@ -144,8 +141,8 @@ public class Test2BSortedDocValues extends LuceneTestCase {
         bytes[2] = (byte) (counter >> 8);
         bytes[3] = (byte) counter;
         counter++;
-        dv.get(i, scratch);
-        assertEquals(data, scratch);
+        final BytesRef term = dv.get(i);
+        assertEquals(data, term);
       }
     }
     

@@ -18,17 +18,18 @@ package org.apache.solr.cloud;
  */
 
 import static org.apache.solr.cloud.OverseerCollectionProcessor.CREATE_NODE_SET;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.REPLICATION_FACTOR;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.SHARDS_PROP;
 import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
+import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -61,7 +62,6 @@ import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
-import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
@@ -271,33 +271,44 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   protected void createServers(int numServers) throws Exception {
     
     System.setProperty("collection", "control_collection");
-    String numShards = System.getProperty(ZkStateReader.NUM_SHARDS_PROP);
 
     // we want hashes by default for the control, so set to 1 shard as opposed to leaving unset
-    // System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);
+    String oldNumShards = System.getProperty(ZkStateReader.NUM_SHARDS_PROP);
     System.setProperty(ZkStateReader.NUM_SHARDS_PROP, "1");
+    
+    try {
+      
+      File controlJettyDir = createTempDir();
+      setupJettySolrHome(controlJettyDir);
+      
+      controlJetty = createJetty(controlJettyDir, useJettyDataDir ? getDataDir(testDir
+          + "/control/data") : null); // don't pass shard name... let it default to
+                               // "shard1"
 
-    File controlJettyDir = createTempDir();
-    setupJettySolrHome(controlJettyDir);
 
-    controlJetty = createJetty(controlJettyDir, testDir + "/control/data");  // don't pass shard name... let it default to "shard1"
-    System.clearProperty("collection");
-    if(numShards != null) {
-      System.setProperty(ZkStateReader.NUM_SHARDS_PROP, numShards);
-    } else {
-      System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);
-    }
-    controlClient = createNewSolrServer(controlJetty.getLocalPort());
-
-    if (sliceCount <= 0) {
-      // for now, just create the cloud client for the control if we don't create the normal cloud client.
-      // this can change if more tests need it.
-      controlClientCloud = createCloudClient("control_collection");
-      controlClientCloud.connect();
-      waitForCollection(controlClientCloud.getZkStateReader(), "control_collection", 0);
-      // NOTE: we are skipping creation of the chaos monkey by returning here
-      cloudClient = controlClientCloud;  // temporary - some code needs/uses cloudClient
-      return;
+      controlClient = createNewSolrServer(controlJetty.getLocalPort());
+      
+      if (sliceCount <= 0) {
+        // for now, just create the cloud client for the control if we don't
+        // create the normal cloud client.
+        // this can change if more tests need it.
+        controlClientCloud = createCloudClient("control_collection");
+        controlClientCloud.connect();
+        waitForCollection(controlClientCloud.getZkStateReader(),
+            "control_collection", 0);
+        // NOTE: we are skipping creation of the chaos monkey by returning here
+        cloudClient = controlClientCloud; // temporary - some code needs/uses
+                                          // cloudClient
+        return;
+      }
+      
+    } finally {
+      System.clearProperty("collection");
+      if (oldNumShards != null) {
+        System.setProperty(ZkStateReader.NUM_SHARDS_PROP, oldNumShards);
+      } else {
+        System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);
+      }
     }
 
 
@@ -1473,8 +1484,8 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
       numShards = StrUtils.splitSmart(shardNames,',').size();
     }
     Integer replicationFactor = (Integer) collectionProps.get(REPLICATION_FACTOR);
-    if(numShards==null){
-      numShards = (Integer) OverseerCollectionProcessor.COLL_PROPS.get(REPLICATION_FACTOR);
+    if(replicationFactor==null){
+      replicationFactor = (Integer) OverseerCollectionProcessor.COLL_PROPS.get(REPLICATION_FACTOR);
     }
 
     if (confSetName != null) {
@@ -1707,9 +1718,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     while (System.currentTimeMillis() < timeoutAt) {
       getCommonCloudSolrServer().getZkStateReader().updateClusterState(true);
       ClusterState clusterState = getCommonCloudSolrServer().getZkStateReader().getClusterState();
-//      Map<String,DocCollection> collections = clusterState
-//          .getCollectionStates();
-      if (! clusterState.hasCollection(collectionName)) {
+      if (!clusterState.hasCollection(collectionName)) {
         found = false;
         break;
       }
@@ -1755,4 +1764,75 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     createCollection(collectionInfos, collName, props, client);
   }
 
+  protected List<Replica> ensureAllReplicasAreActive(String testCollectionName, String shardId, int shards, int rf, int maxWaitSecs) throws Exception {
+    long startMs = System.currentTimeMillis();
+    
+    Map<String,Replica> notLeaders = new HashMap<String,Replica>();
+    
+    ZkStateReader zkr = cloudClient.getZkStateReader();
+    zkr.updateClusterState(true); // force the state to be fresh
+
+    ClusterState cs = zkr.getClusterState();
+    Collection<Slice> slices = cs.getActiveSlices(testCollectionName);
+    assertTrue(slices.size() == shards);
+    boolean allReplicasUp = false;
+    long waitMs = 0L;
+    long maxWaitMs = maxWaitSecs * 1000L;
+    Replica leader = null;
+    while (waitMs < maxWaitMs && !allReplicasUp) {
+      // refresh state every 2 secs
+      if (waitMs % 2000 == 0)
+        cloudClient.getZkStateReader().updateClusterState(true);
+      
+      cs = cloudClient.getZkStateReader().getClusterState();
+      assertNotNull(cs);
+      Slice shard = cs.getSlice(testCollectionName, shardId);
+      assertNotNull("No Slice for "+shardId, shard);
+      allReplicasUp = true; // assume true
+      Collection<Replica> replicas = shard.getReplicas();
+      assertTrue(replicas.size() == rf);
+      leader = shard.getLeader();
+      assertNotNull(leader);
+      log.info("Found "+replicas.size()+" replicas and leader on "+
+        leader.getNodeName()+" for "+shardId+" in "+testCollectionName);
+      
+      // ensure all replicas are "active" and identify the non-leader replica
+      for (Replica replica : replicas) {
+        String replicaState = replica.getStr(ZkStateReader.STATE_PROP);
+        if (!ZkStateReader.ACTIVE.equals(replicaState)) {
+          log.info("Replica " + replica.getName() + " is currently " + replicaState);
+          allReplicasUp = false;
+        }
+        
+        if (!leader.equals(replica)) 
+          notLeaders.put(replica.getName(), replica);
+      }
+      
+      if (!allReplicasUp) {
+        try {
+          Thread.sleep(500L);
+        } catch (Exception ignoreMe) {}
+        waitMs += 500L;
+      }
+    } // end while
+    
+    if (!allReplicasUp) 
+      fail("Didn't see all replicas for shard "+shardId+" in "+testCollectionName+
+          " come up within " + maxWaitMs + " ms! ClusterState: " + printClusterStateInfo());
+    
+    if (notLeaders.isEmpty()) 
+      fail("Didn't isolate any replicas that are not the leader! ClusterState: " + printClusterStateInfo());
+    
+    long diffMs = (System.currentTimeMillis() - startMs);
+    log.info("Took " + diffMs + " ms to see all replicas become active.");
+    
+    List<Replica> replicas = new ArrayList<Replica>();
+    replicas.addAll(notLeaders.values());
+    return replicas;
+  }  
+  
+  protected String printClusterStateInfo() throws Exception {
+    cloudClient.getZkStateReader().updateClusterState(true);
+    return String.valueOf(cloudClient.getZkStateReader().getClusterState());
+  }   
 }

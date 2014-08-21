@@ -46,7 +46,7 @@ public class TestExpressionValueSource extends LuceneTestCase {
   public void setUp() throws Exception {
     super.setUp();
     dir = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -70,7 +70,7 @@ public class TestExpressionValueSource extends LuceneTestCase {
     iw.forceMerge(1);
     
     reader = iw.getReader();
-    iw.shutdown();
+    iw.close();
   }
   
   @Override

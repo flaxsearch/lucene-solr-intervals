@@ -41,9 +41,9 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.TrackingDirectoryWrapper;
-import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.Version;
 
 
 /** JUnit adaptation of an older test case DocTest. */
@@ -123,7 +123,7 @@ public class TestDoc extends LuceneTestCase {
 
       IndexWriter writer = new IndexWriter(
           directory,
-          newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
+          newIndexWriterConfig(new MockAnalyzer(random())).
               setOpenMode(OpenMode.CREATE).
               setMaxBufferedDocs(-1).
               setMergePolicy(newLogMergePolicy(10))
@@ -134,7 +134,7 @@ public class TestDoc extends LuceneTestCase {
 
       SegmentCommitInfo si2 = indexDoc(writer, "test2.txt");
       printSegment(out, si2);
-      writer.shutdown();
+      writer.close();
 
       SegmentCommitInfo siMerge = merge(directory, si1, si2, "_merge", false);
       printSegment(out, siMerge);
@@ -165,7 +165,7 @@ public class TestDoc extends LuceneTestCase {
 
       writer = new IndexWriter(
           directory,
-          newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
+          newIndexWriterConfig(new MockAnalyzer(random())).
               setOpenMode(OpenMode.CREATE).
               setMaxBufferedDocs(-1).
               setMergePolicy(newLogMergePolicy(10))
@@ -176,7 +176,7 @@ public class TestDoc extends LuceneTestCase {
 
       si2 = indexDoc(writer, "test2.txt");
       printSegment(out, si2);
-      writer.shutdown();
+      writer.close();
 
       siMerge = merge(directory, si1, si2, "_merge", true);
       printSegment(out, siMerge);
@@ -217,7 +217,7 @@ public class TestDoc extends LuceneTestCase {
 
       final Codec codec = Codec.getDefault();
       TrackingDirectoryWrapper trackingDir = new TrackingDirectoryWrapper(si1.info.dir);
-      final SegmentInfo si = new SegmentInfo(si1.info.dir, Constants.LUCENE_MAIN_VERSION, merged, -1, false, codec, null);
+      final SegmentInfo si = new SegmentInfo(si1.info.dir, Version.LATEST, merged, -1, false, codec, null);
 
       SegmentMerger merger = new SegmentMerger(Arrays.<AtomicReader>asList(r1, r2),
           si, InfoStream.getDefault(), trackingDir,
@@ -226,7 +226,7 @@ public class TestDoc extends LuceneTestCase {
       MergeState mergeState = merger.merge();
       r1.close();
       r2.close();
-      final SegmentInfo info = new SegmentInfo(si1.info.dir, Constants.LUCENE_MAIN_VERSION, merged,
+      final SegmentInfo info = new SegmentInfo(si1.info.dir, Version.LATEST, merged,
                                                si1.info.getDocCount() + si2.info.getDocCount(),
                                                false, codec, null);
       info.setFiles(new HashSet<>(trackingDir.getCreatedFiles()));

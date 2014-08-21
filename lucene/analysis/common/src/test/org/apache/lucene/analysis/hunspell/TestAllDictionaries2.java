@@ -24,9 +24,9 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import org.apache.lucene.analysis.hunspell.Dictionary;
-import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.RamUsageTester;
+import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
 import org.junit.Ignore;
 
 /**
@@ -35,6 +35,7 @@ import org.junit.Ignore;
  * You must click and download every file: sorry!
  */
 @Ignore("enable manually")
+@SuppressSysoutChecks(bugUrl = "prints important memory utilization stats per dictionary")
 public class TestAllDictionaries2 extends LuceneTestCase {
   
   // set this to the location of where you downloaded all the files
@@ -183,14 +184,14 @@ public class TestAllDictionaries2 extends LuceneTestCase {
         try (InputStream dictionary = zip.getInputStream(dicEntry);
              InputStream affix = zip.getInputStream(affEntry)) {
           Dictionary dic = new Dictionary(affix, dictionary);
-          System.out.println(tests[i] + "\t" + RamUsageEstimator.humanSizeOf(dic) + "\t(" +
-                             "words=" + RamUsageEstimator.humanSizeOf(dic.words) + ", " +
-                             "flags=" + RamUsageEstimator.humanSizeOf(dic.flagLookup) + ", " +
-                             "strips=" + RamUsageEstimator.humanSizeOf(dic.stripData) + ", " +
-                             "conditions=" + RamUsageEstimator.humanSizeOf(dic.patterns) + ", " +
-                             "affixData=" + RamUsageEstimator.humanSizeOf(dic.affixData) + ", " +
-                             "prefixes=" + RamUsageEstimator.humanSizeOf(dic.prefixes) + ", " +
-                             "suffixes=" + RamUsageEstimator.humanSizeOf(dic.suffixes) + ")");
+          System.out.println(tests[i] + "\t" + RamUsageTester.humanSizeOf(dic) + "\t(" +
+                             "words=" + RamUsageTester.humanSizeOf(dic.words) + ", " +
+                             "flags=" + RamUsageTester.humanSizeOf(dic.flagLookup) + ", " +
+                             "strips=" + RamUsageTester.humanSizeOf(dic.stripData) + ", " +
+                             "conditions=" + RamUsageTester.humanSizeOf(dic.patterns) + ", " +
+                             "affixData=" + RamUsageTester.humanSizeOf(dic.affixData) + ", " +
+                             "prefixes=" + RamUsageTester.humanSizeOf(dic.prefixes) + ", " +
+                             "suffixes=" + RamUsageTester.humanSizeOf(dic.suffixes) + ")");
         }
       }
     }

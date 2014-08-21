@@ -19,8 +19,6 @@ package org.apache.lucene.uninverting;
 
 import java.io.IOException;
 import java.util.Collections;
-import java.util.EnumSet;
-import java.util.Set;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -28,7 +26,6 @@ import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.LongField;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.FieldInfo.DocValuesType;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.store.Directory;
@@ -36,12 +33,13 @@ import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.NumericUtils;
+import org.apache.lucene.util.TestUtil;
 
 public class TestUninvertingReader extends LuceneTestCase {
   
   public void testSortedSetInteger() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
     
     Document doc = new Document();
     doc.add(new IntField("foo", 5, Field.Store.NO));
@@ -53,14 +51,12 @@ public class TestUninvertingReader extends LuceneTestCase {
     iw.addDocument(doc);
     
     iw.forceMerge(1);
-    iw.shutdown();
+    iw.close();
     
     DirectoryReader ir = UninvertingReader.wrap(DirectoryReader.open(dir), 
                          Collections.singletonMap("foo", Type.SORTED_SET_INTEGER));
     AtomicReader ar = ir.leaves().get(0).reader();
-    assertNoSilentInsanity(ar, "foo", DocValuesType.SORTED_SET);
     SortedSetDocValues v = ar.getSortedSetDocValues("foo");
-    assertNoSilentInsanity(ar, "foo", DocValuesType.SORTED_SET);
     assertEquals(2, v.getValueCount());
     
     v.setDocument(0);
@@ -72,20 +68,19 @@ public class TestUninvertingReader extends LuceneTestCase {
     assertEquals(1, v.nextOrd());
     assertEquals(SortedSetDocValues.NO_MORE_ORDS, v.nextOrd());
     
-    BytesRef value = new BytesRef();
-    v.lookupOrd(0, value);
+    BytesRef value = v.lookupOrd(0);
     assertEquals(-3, NumericUtils.prefixCodedToInt(value));
     
-    v.lookupOrd(1, value);
+    value = v.lookupOrd(1);
     assertEquals(5, NumericUtils.prefixCodedToInt(value));
-    
+    TestUtil.checkReader(ir);
     ir.close();
     dir.close();
   }
   
   public void testSortedSetFloat() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
     
     Document doc = new Document();
     doc.add(new IntField("foo", Float.floatToRawIntBits(5f), Field.Store.NO));
@@ -97,15 +92,13 @@ public class TestUninvertingReader extends LuceneTestCase {
     iw.addDocument(doc);
     
     iw.forceMerge(1);
-    iw.shutdown();
+    iw.close();
     
     DirectoryReader ir = UninvertingReader.wrap(DirectoryReader.open(dir), 
                          Collections.singletonMap("foo", Type.SORTED_SET_FLOAT));
     AtomicReader ar = ir.leaves().get(0).reader();
     
-    assertNoSilentInsanity(ar, "foo", DocValuesType.SORTED_SET);
     SortedSetDocValues v = ar.getSortedSetDocValues("foo");
-    assertNoSilentInsanity(ar, "foo", DocValuesType.SORTED_SET);
     assertEquals(2, v.getValueCount());
     
     v.setDocument(0);
@@ -117,20 +110,19 @@ public class TestUninvertingReader extends LuceneTestCase {
     assertEquals(1, v.nextOrd());
     assertEquals(SortedSetDocValues.NO_MORE_ORDS, v.nextOrd());
     
-    BytesRef value = new BytesRef();
-    v.lookupOrd(0, value);
+    BytesRef value = v.lookupOrd(0);
     assertEquals(Float.floatToRawIntBits(-3f), NumericUtils.prefixCodedToInt(value));
     
-    v.lookupOrd(1, value);
+    value = v.lookupOrd(1);
     assertEquals(Float.floatToRawIntBits(5f), NumericUtils.prefixCodedToInt(value));
-    
+    TestUtil.checkReader(ir);
     ir.close();
     dir.close();
   }
   
   public void testSortedSetLong() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
     
     Document doc = new Document();
     doc.add(new LongField("foo", 5, Field.Store.NO));
@@ -142,14 +134,12 @@ public class TestUninvertingReader extends LuceneTestCase {
     iw.addDocument(doc);
     
     iw.forceMerge(1);
-    iw.shutdown();
+    iw.close();
     
     DirectoryReader ir = UninvertingReader.wrap(DirectoryReader.open(dir), 
         Collections.singletonMap("foo", Type.SORTED_SET_LONG));
     AtomicReader ar = ir.leaves().get(0).reader();
-    assertNoSilentInsanity(ar, "foo", DocValuesType.SORTED_SET);
     SortedSetDocValues v = ar.getSortedSetDocValues("foo");
-    assertNoSilentInsanity(ar, "foo", DocValuesType.SORTED_SET);
     assertEquals(2, v.getValueCount());
     
     v.setDocument(0);
@@ -161,20 +151,19 @@ public class TestUninvertingReader extends LuceneTestCase {
     assertEquals(1, v.nextOrd());
     assertEquals(SortedSetDocValues.NO_MORE_ORDS, v.nextOrd());
     
-    BytesRef value = new BytesRef();
-    v.lookupOrd(0, value);
+    BytesRef value = v.lookupOrd(0);
     assertEquals(-3, NumericUtils.prefixCodedToLong(value));
     
-    v.lookupOrd(1, value);
+    value = v.lookupOrd(1);
     assertEquals(5, NumericUtils.prefixCodedToLong(value));
-    
+    TestUtil.checkReader(ir);
     ir.close();
     dir.close();
   }
   
   public void testSortedSetDouble() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
     
     Document doc = new Document();
     doc.add(new LongField("foo", Double.doubleToRawLongBits(5d), Field.Store.NO));
@@ -186,14 +175,12 @@ public class TestUninvertingReader extends LuceneTestCase {
     iw.addDocument(doc);
     
     iw.forceMerge(1);
-    iw.shutdown();
+    iw.close();
     
     DirectoryReader ir = UninvertingReader.wrap(DirectoryReader.open(dir), 
         Collections.singletonMap("foo", Type.SORTED_SET_DOUBLE));
     AtomicReader ar = ir.leaves().get(0).reader();
-    assertNoSilentInsanity(ar, "foo", DocValuesType.SORTED_SET);
     SortedSetDocValues v = ar.getSortedSetDocValues("foo");
-    assertNoSilentInsanity(ar, "foo", DocValuesType.SORTED_SET);
     assertEquals(2, v.getValueCount());
     
     v.setDocument(0);
@@ -205,44 +192,13 @@ public class TestUninvertingReader extends LuceneTestCase {
     assertEquals(1, v.nextOrd());
     assertEquals(SortedSetDocValues.NO_MORE_ORDS, v.nextOrd());
     
-    BytesRef value = new BytesRef();
-    v.lookupOrd(0, value);
+    BytesRef value = v.lookupOrd(0);
     assertEquals(Double.doubleToRawLongBits(-3d), NumericUtils.prefixCodedToLong(value));
     
-    v.lookupOrd(1, value);
+    value = v.lookupOrd(1);
     assertEquals(Double.doubleToRawLongBits(5d), NumericUtils.prefixCodedToLong(value));
-    
+    TestUtil.checkReader(ir);
     ir.close();
     dir.close();
-  }
-  
-  private void assertNoSilentInsanity(AtomicReader reader, String field, DocValuesType type) throws IOException {
-    Set<DocValuesType> insaneTypes = EnumSet.allOf(DocValuesType.class);
-    insaneTypes.remove(type);
-    
-    for (DocValuesType t : insaneTypes) {
-      tryToBeInsane(reader, field, type, t);
-    }
-  }
-  
-  private void tryToBeInsane(AtomicReader reader, String field, DocValuesType actualType, DocValuesType insaneType) throws IOException {
-    try {
-      switch(insaneType) {
-        case NUMERIC:
-          reader.getNumericDocValues(field);
-          break;
-        case SORTED:
-          reader.getSortedDocValues(field);
-          break;
-        case BINARY:
-          reader.getBinaryDocValues(field);
-          break;
-        case SORTED_SET:
-          reader.getSortedSetDocValues(field);
-        default:
-          throw new AssertionError();
-      }
-      fail("didn't get expected exception: actual=" + actualType + ",insane=" + insaneType);
-    } catch (IllegalStateException expected) {}
   }
 }

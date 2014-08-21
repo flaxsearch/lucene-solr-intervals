@@ -28,7 +28,6 @@ import java.io.PrintStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.CharBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -46,7 +45,7 @@ import java.util.zip.ZipFile;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.PostingsFormat;
-import org.apache.lucene.codecs.lucene46.Lucene46Codec;
+import org.apache.lucene.codecs.lucene410.Lucene410Codec;
 import org.apache.lucene.codecs.perfield.PerFieldDocValuesFormat;
 import org.apache.lucene.codecs.perfield.PerFieldPostingsFormat;
 import org.apache.lucene.document.BinaryDocValuesField;
@@ -120,14 +119,16 @@ public final class TestUtil {
   }
 
   private static LinkedHashSet<File> rm(LinkedHashSet<File> unremoved, File... locations) {
-    for (File location : locations) {
-      if (location.exists()) {
-        if (location.isDirectory()) {
-          rm(unremoved, location.listFiles());
-        }
-
-        if (!location.delete()) {
-          unremoved.add(location);
+    if (locations != null) {
+      for (File location : locations) {
+        if (location != null && location.exists()) {
+          if (location.isDirectory()) {
+            rm(unremoved, location.listFiles());
+          }
+  
+          if (!location.delete()) {
+            unremoved.add(location);
+          }
         }
       }
     }
@@ -192,9 +193,16 @@ public final class TestUtil {
   }
 
   public static CheckIndex.Status checkIndex(Directory dir, boolean crossCheckTermVectors) throws IOException {
+    return checkIndex(dir, crossCheckTermVectors, false);
+  }
+
+  /** If failFast is true, then throw the first exception when index corruption is hit, instead of moving on to other fields/segments to
+   *  look for any other corruption.  */
+  public static CheckIndex.Status checkIndex(Directory dir, boolean crossCheckTermVectors, boolean failFast) throws IOException {
     ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
     CheckIndex checker = new CheckIndex(dir);
     checker.setCrossCheckTermVectors(crossCheckTermVectors);
+    checker.setFailFast(failFast);
     checker.setInfoStream(new PrintStream(bos, false, IOUtils.UTF_8), false);
     CheckIndex.Status indexStatus = checker.checkIndex(null);
     if (indexStatus == null || indexStatus.clean == false) {
@@ -222,24 +230,14 @@ public final class TestUtil {
     PrintStream infoStream = new PrintStream(bos, false, IOUtils.UTF_8);
 
     reader.checkIntegrity();
-    FieldNormStatus fieldNormStatus = CheckIndex.testFieldNorms(reader, infoStream);
-    TermIndexStatus termIndexStatus = CheckIndex.testPostings(reader, infoStream);
-    StoredFieldStatus storedFieldStatus = CheckIndex.testStoredFields(reader, infoStream);
-    TermVectorStatus termVectorStatus = CheckIndex.testTermVectors(reader, infoStream, false, crossCheckTermVectors);
-    DocValuesStatus docValuesStatus = CheckIndex.testDocValues(reader, infoStream);
+    FieldNormStatus fieldNormStatus = CheckIndex.testFieldNorms(reader, infoStream, true);
+    TermIndexStatus termIndexStatus = CheckIndex.testPostings(reader, infoStream, false, true);
+    StoredFieldStatus storedFieldStatus = CheckIndex.testStoredFields(reader, infoStream, true);
+    TermVectorStatus termVectorStatus = CheckIndex.testTermVectors(reader, infoStream, false, crossCheckTermVectors, true);
+    DocValuesStatus docValuesStatus = CheckIndex.testDocValues(reader, infoStream, true);
     
-    if (fieldNormStatus.error != null || 
-      termIndexStatus.error != null ||
-      storedFieldStatus.error != null ||
-      termVectorStatus.error != null ||
-      docValuesStatus.error != null) {
-      System.out.println("CheckReader failed");
+    if (LuceneTestCase.INFOSTREAM) {
       System.out.println(bos.toString(IOUtils.UTF_8));
-      throw new RuntimeException("CheckReader failed");
-    } else {
-      if (LuceneTestCase.INFOSTREAM) {
-        System.out.println(bos.toString(IOUtils.UTF_8));
-      }
     }
   }
 
@@ -680,7 +678,7 @@ public final class TestUtil {
     if (LuceneTestCase.VERBOSE) {
       System.out.println("forcing postings format to:" + format);
     }
-    return new Lucene46Codec() {
+    return new Lucene410Codec() {
       @Override
       public PostingsFormat getPostingsFormatForField(String field) {
         return format;
@@ -698,7 +696,7 @@ public final class TestUtil {
     if (LuceneTestCase.VERBOSE) {
       System.out.println("forcing docvalues format to:" + format);
     }
-    return new Lucene46Codec() {
+    return new Lucene410Codec() {
       @Override
       public DocValuesFormat getDocValuesFormatForField(String field) {
         return format;
@@ -904,9 +902,9 @@ public final class TestUtil {
   public static CharSequence bytesToCharSequence(BytesRef ref, Random random) {
     switch(random.nextInt(5)) {
     case 4:
-      CharsRef chars = new CharsRef(ref.length);
-      UnicodeUtil.UTF8toUTF16(ref.bytes, ref.offset, ref.length, chars);
-      return chars;
+      final char[] chars = new char[ref.length];
+      final int len = UnicodeUtil.UTF8toUTF16(ref.bytes, ref.offset, ref.length, chars);
+      return new CharsRef(chars, 0, len);
     case 3:
       return CharBuffer.wrap(ref.utf8ToString());
     default:
@@ -924,7 +922,7 @@ public final class TestUtil {
         ex.awaitTermination(1, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         // Just report it on the syserr.
-        System.err.println("Could not properly shutdown executor service.");
+        System.err.println("Could not properly close executor service.");
         e.printStackTrace(System.err);
       }
     }

@@ -24,20 +24,19 @@ import java.util.List;
 
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.FilteredTermsEnum;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.index.FilteredTermsEnum;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.automaton.Automaton;
-import org.apache.lucene.util.automaton.BasicAutomata;
-import org.apache.lucene.util.automaton.BasicOperations;
 import org.apache.lucene.util.automaton.ByteRunAutomaton;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.automaton.LevenshteinAutomata;
@@ -152,9 +151,9 @@ public class FuzzyTermsEnum extends TermsEnum {
       throws IOException {
     final List<CompiledAutomaton> runAutomata = initAutomata(editDistance);
     if (editDistance < runAutomata.size()) {
-      //if (BlockTreeTermsWriter.DEBUG) System.out.println("FuzzyTE.getAEnum: ed=" + editDistance + " lastTerm=" + (lastTerm==null ? "null" : lastTerm.utf8ToString()));
+      //System.out.println("FuzzyTE.getAEnum: ed=" + editDistance + " lastTerm=" + (lastTerm==null ? "null" : lastTerm.utf8ToString()));
       final CompiledAutomaton compiled = runAutomata.get(editDistance);
-      return new AutomatonFuzzyTermsEnum(terms.intersect(compiled, lastTerm == null ? null : compiled.floor(lastTerm, new BytesRef())),
+      return new AutomatonFuzzyTermsEnum(terms.intersect(compiled, lastTerm == null ? null : compiled.floor(lastTerm, new BytesRefBuilder())),
                                          runAutomata.subList(0, editDistance + 1).toArray(new CompiledAutomaton[editDistance + 1]));
     } else {
       return null;
@@ -165,20 +164,15 @@ public class FuzzyTermsEnum extends TermsEnum {
   private List<CompiledAutomaton> initAutomata(int maxDistance) {
     final List<CompiledAutomaton> runAutomata = dfaAtt.automata();
     //System.out.println("cached automata size: " + runAutomata.size());
-    if (runAutomata.size() <= maxDistance && 
+    if (runAutomata.size() <= maxDistance &&
         maxDistance <= LevenshteinAutomata.MAXIMUM_SUPPORTED_DISTANCE) {
       LevenshteinAutomata builder = 
         new LevenshteinAutomata(UnicodeUtil.newString(termText, realPrefixLength, termText.length - realPrefixLength), transpositions);
 
+      String prefix = UnicodeUtil.newString(termText, 0, realPrefixLength);
       for (int i = runAutomata.size(); i <= maxDistance; i++) {
-        Automaton a = builder.toAutomaton(i);
+        Automaton a = builder.toAutomaton(i, prefix);
         //System.out.println("compute automaton n=" + i);
-        // constant prefix
-        if (realPrefixLength > 0) {
-          Automaton prefix = BasicAutomata.makeString(
-            UnicodeUtil.newString(termText, 0, realPrefixLength));
-          a = BasicOperations.concatenate(prefix, a);
-        }
         runAutomata.add(new CompiledAutomaton(a, true, false));
       }
     }

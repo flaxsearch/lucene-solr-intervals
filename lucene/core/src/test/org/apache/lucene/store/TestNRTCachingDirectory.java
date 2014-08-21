@@ -54,7 +54,7 @@ public class TestNRTCachingDirectory extends BaseDirectoryTestCase {
     NRTCachingDirectory cachedDir = new NRTCachingDirectory(dir, 2.0, 25.0);
     MockAnalyzer analyzer = new MockAnalyzer(random());
     analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
-    IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig conf = newIndexWriterConfig(analyzer);
     RandomIndexWriter w = new RandomIndexWriter(random(), cachedDir, conf);
     final LineFileDocs docs = new LineFileDocs(random(), true);
     final int numDocs = TestUtil.nextInt(random(), 100, 400);
@@ -93,7 +93,7 @@ public class TestNRTCachingDirectory extends BaseDirectoryTestCase {
     }
 
     // Close should force cache to clear since all files are sync'd
-    w.shutdown();
+    w.close();
 
     final String[] cachedFiles = cachedDir.listCachedFiles();
     for(String file : cachedFiles) {
@@ -117,9 +117,26 @@ public class TestNRTCachingDirectory extends BaseDirectoryTestCase {
 
     Directory fsDir = FSDirectory.open(new File("/path/to/index"));
     NRTCachingDirectory cachedFSDir = new NRTCachingDirectory(fsDir, 2.0, 25.0);
-    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig conf = new IndexWriterConfig(analyzer);
     IndexWriter writer = new IndexWriter(cachedFSDir, conf);
     writer.close();
     cachedFSDir.close();
+  }
+
+  // LUCENE-5724
+  public void testLargeCFS() throws IOException {
+    Directory dir = new NRTCachingDirectory(newFSDirectory(createTempDir()), 2.0, 25.0);
+    IOContext context = new IOContext(new FlushInfo(0, 512*1024*1024));
+    IndexOutput out = dir.createOutput("big.bin", context);
+    byte[] bytes = new byte[512];
+    for(int i=0;i<1024*1024;i++) {
+      out.writeBytes(bytes, 0, bytes.length);
+    }
+    out.close();
+
+    Directory cfsDir = new CompoundFileDirectory(dir, "big.cfs", context, true);
+    dir.copy(cfsDir, "big.bin", "big.bin", context);
+    cfsDir.close();
+    dir.close();
   }
 }

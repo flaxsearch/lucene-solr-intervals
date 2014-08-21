@@ -17,15 +17,17 @@
 
 package org.apache.solr.util;
 
-import org.apache.lucene.index.*;
-import org.apache.lucene.index.MergePolicy.MergeSpecification;
-import org.apache.lucene.util.LuceneTestCase;
+import java.io.IOException;
+import java.util.Map;
 
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.MergePolicy;
+import org.apache.lucene.index.MergeTrigger;
+import org.apache.lucene.index.SegmentCommitInfo;
+import org.apache.lucene.index.SegmentInfos;
+import org.apache.lucene.util.LuceneTestCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.Map;
-import java.io.IOException;
 
 /**
  * A {@link MergePolicy} with a no-arg constructor that proxies to a 
@@ -41,11 +43,12 @@ public final class RandomMergePolicy extends MergePolicy {
    * Not private so tests can inspect it, 
    * Not final so it can be set on clone
    */
-  MergePolicy inner;
+  final MergePolicy inner;
 
   public RandomMergePolicy() {
     this(LuceneTestCase.newMergePolicy());
   }
+
   private RandomMergePolicy(MergePolicy inner) {
     super(inner.getNoCFSRatio(), 
           (long) (inner.getMaxCFSSegmentSizeMB() * 1024 * 1024));
@@ -54,45 +57,39 @@ public final class RandomMergePolicy extends MergePolicy {
              inner.getClass(), inner);
   }
 
-  public RandomMergePolicy clone() {
-    RandomMergePolicy clone = (RandomMergePolicy) super.clone();
-    clone.inner = this.inner.clone();
-    return clone;
-  }
-
-  public void close() {
-    inner.close();
-  }
-
-  public MergeSpecification findForcedDeletesMerges(SegmentInfos segmentInfos) 
+  @Override
+  public MergeSpecification findForcedDeletesMerges(SegmentInfos segmentInfos, IndexWriter writer) 
     throws IOException {
 
-    return inner.findForcedDeletesMerges(segmentInfos);
+    return inner.findForcedDeletesMerges(segmentInfos, writer);
   }
+
+  @Override
   public MergeSpecification findForcedMerges(SegmentInfos segmentInfos, 
                                              int maxSegmentCount, 
-                                             Map<SegmentCommitInfo,Boolean> segmentsToMerge) 
+                                             Map<SegmentCommitInfo,Boolean> segmentsToMerge,
+                                             IndexWriter writer) 
     throws IOException {
     
-    return inner.findForcedMerges(segmentInfos, maxSegmentCount, segmentsToMerge);
+    return inner.findForcedMerges(segmentInfos, maxSegmentCount, segmentsToMerge, writer);
   }
 
+  @Override
   public MergeSpecification findMerges(MergeTrigger mergeTrigger, 
-                                       SegmentInfos segmentInfos)
+                                       SegmentInfos segmentInfos,
+                                       IndexWriter writer)
     throws IOException {
 
-    return inner.findMerges(mergeTrigger, segmentInfos);
+    return inner.findMerges(mergeTrigger, segmentInfos, writer);
   }
 
-  public void setIndexWriter(IndexWriter writer) {
-    inner.setIndexWriter(writer);
-  }
-
+  @Override
   public boolean useCompoundFile(SegmentInfos infos,
-                                 SegmentCommitInfo mergedInfo)
+                                 SegmentCommitInfo mergedInfo,
+                                 IndexWriter writer)
     throws IOException {
     
-    return inner.useCompoundFile(infos, mergedInfo);
+    return inner.useCompoundFile(infos, mergedInfo, writer);
   }
 
 }

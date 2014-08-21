@@ -23,6 +23,7 @@ import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.request.CoreAdminRequest.RequestSyncShard;
+import org.apache.solr.cloud.DistributedQueue;
 import org.apache.solr.cloud.DistributedQueue.QueueEvent;
 import org.apache.solr.cloud.Overseer;
 import org.apache.solr.cloud.OverseerCollectionProcessor;
@@ -30,7 +31,6 @@ import org.apache.solr.cloud.OverseerSolrResponse;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.ClusterState;
-import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.ImplicitDocRouter;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
@@ -65,14 +65,14 @@ import static org.apache.solr.cloud.OverseerCollectionProcessor.COLL_CONF;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.CREATESHARD;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.CREATE_NODE_SET;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.DELETEREPLICA;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.REPLICATION_FACTOR;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.REQUESTID;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.ROUTER;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.SHARDS_PROP;
 import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import static org.apache.solr.common.cloud.ZkStateReader.AUTO_ADD_REPLICAS;
 import static org.apache.solr.common.cloud.ZkStateReader.COLLECTION_PROP;
+import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.common.cloud.ZkStateReader.SHARD_ID_PROP;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.ADDROLE;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.CLUSTERPROP;
@@ -290,6 +290,11 @@ public class CollectionsHandler extends RequestHandlerBase {
       } else if (coreContainer.getZkController().getOverseerRunningMap().contains(requestId)) {
         SimpleOrderedMap success = new SimpleOrderedMap();
         success.add("state", "running");
+        success.add("msg", "found " + requestId + " in running tasks");
+        results.add("status", success);
+      } else if(overseerCollectionQueueContains(requestId)){
+        SimpleOrderedMap success = new SimpleOrderedMap();
+        success.add("state", "submitted");
         success.add("msg", "found " + requestId + " in submitted tasks");
         results.add("status", success);
       } else {
@@ -302,6 +307,11 @@ public class CollectionsHandler extends RequestHandlerBase {
 
       rsp.getValues().addAll(response.getResponse());
     }
+  }
+
+  private boolean overseerCollectionQueueContains(String asyncId) throws KeeperException, InterruptedException {
+    DistributedQueue collectionQueue = coreContainer.getZkController().getOverseerCollectionQueue();
+    return collectionQueue.containsTaskWithRequestId(asyncId);
   }
 
   private void handleResponse(String operation, ZkNodeProps m,
@@ -325,13 +335,13 @@ public class CollectionsHandler extends RequestHandlerBase {
  
        if (coreContainer.getZkController().getOverseerCompletedMap().contains(asyncId) ||
            coreContainer.getZkController().getOverseerFailureMap().contains(asyncId) ||
-           coreContainer.getZkController().getOverseerRunningMap().contains(asyncId)) {
+           coreContainer.getZkController().getOverseerRunningMap().contains(asyncId) ||
+           overseerCollectionQueueContains(asyncId)) {
          r.add("error", "Task with the same requestid already exists.");
  
        } else {
          coreContainer.getZkController().getOverseerCollectionQueue()
              .offer(ZkStateReader.toJSON(m));
- 
        }
        r.add(CoreAdminParams.REQUESTID, (String) m.get(ASYNC));
        SolrResponse response = new OverseerSolrResponse(r);
@@ -457,15 +467,16 @@ public class CollectionsHandler extends RequestHandlerBase {
         Overseer.QUEUE_OPERATION,
         OverseerCollectionProcessor.CREATECOLLECTION,
         "fromApi","true");
-    copyIfNotNull(req.getParams(),props,
-        "name",
-        REPLICATION_FACTOR,
+    copyIfNotNull(req.getParams(), props,
+         "name",
+         ZkStateReader.REPLICATION_FACTOR,
          COLL_CONF,
          NUM_SLICES,
          MAX_SHARDS_PER_NODE,
-        CREATE_NODE_SET ,
-        SHARDS_PROP,
-        ASYNC,
+         CREATE_NODE_SET,
+         SHARDS_PROP,
+         ASYNC,
+         AUTO_ADD_REPLICAS,
         "router.");
 
     copyPropertiesIfNotNull(req.getParams(), props);
@@ -492,7 +503,7 @@ public class CollectionsHandler extends RequestHandlerBase {
       throw new SolrException(ErrorCode.BAD_REQUEST, "shards can be added only to 'implicit' collections" );
 
     Map<String, Object> map = makeMap(QUEUE_OPERATION, CREATESHARD);
-    copyIfNotNull(req.getParams(),map,COLLECTION_PROP, SHARD_ID_PROP, REPLICATION_FACTOR,CREATE_NODE_SET, ASYNC);
+    copyIfNotNull(req.getParams(),map,COLLECTION_PROP, SHARD_ID_PROP, ZkStateReader.REPLICATION_FACTOR, CREATE_NODE_SET, ASYNC);
     copyPropertiesIfNotNull(req.getParams(), map);
     ZkNodeProps m = new ZkNodeProps(map);
     handleResponse(CREATESHARD, m, rsp);
@@ -657,10 +668,5 @@ public class CollectionsHandler extends RequestHandlerBase {
   @Override
   public String getDescription() {
     return "Manage SolrCloud Collections";
-  }
-
-  @Override
-  public String getSource() {
-    return "$URL: https://svn.apache.org/repos/asf/lucene/dev/trunk/solr/core/src/java/org/apache/solr/handler/admin/CollectionHandler.java $";
   }
 }

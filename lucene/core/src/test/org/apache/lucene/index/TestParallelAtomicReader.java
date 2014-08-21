@@ -144,12 +144,12 @@ public class TestParallelAtomicReader extends LuceneTestCase {
 
     // one document only:
     Directory dir2 = newDirectory();
-    IndexWriter w2 = new IndexWriter(dir2, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter w2 = new IndexWriter(dir2, newIndexWriterConfig(new MockAnalyzer(random())));
     Document d3 = new Document();
 
     d3.add(newTextField("f3", "v1", Field.Store.YES));
     w2.addDocument(d3);
-    w2.shutdown();
+    w2.close();
     
     AtomicReader ir1 = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir1));
     AtomicReader ir2 = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(dir2));
@@ -261,7 +261,7 @@ public class TestParallelAtomicReader extends LuceneTestCase {
   // Fields 1-4 indexed together:
   private IndexSearcher single(Random random) throws IOException {
     dir = newDirectory();
-    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
+    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random)));
     Document d1 = new Document();
     d1.add(newTextField("f1", "v1", Field.Store.YES));
     d1.add(newTextField("f2", "v1", Field.Store.YES));
@@ -274,7 +274,7 @@ public class TestParallelAtomicReader extends LuceneTestCase {
     d2.add(newTextField("f3", "v2", Field.Store.YES));
     d2.add(newTextField("f4", "v2", Field.Store.YES));
     w.addDocument(d2);
-    w.shutdown();
+    w.close();
 
     DirectoryReader ir = DirectoryReader.open(dir);
     return newSearcher(ir);
@@ -293,7 +293,7 @@ public class TestParallelAtomicReader extends LuceneTestCase {
 
   private Directory getDir1(Random random) throws IOException {
     Directory dir1 = newDirectory();
-    IndexWriter w1 = new IndexWriter(dir1, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
+    IndexWriter w1 = new IndexWriter(dir1, newIndexWriterConfig(new MockAnalyzer(random)));
     Document d1 = new Document();
     d1.add(newTextField("f1", "v1", Field.Store.YES));
     d1.add(newTextField("f2", "v1", Field.Store.YES));
@@ -302,13 +302,13 @@ public class TestParallelAtomicReader extends LuceneTestCase {
     d2.add(newTextField("f1", "v2", Field.Store.YES));
     d2.add(newTextField("f2", "v2", Field.Store.YES));
     w1.addDocument(d2);
-    w1.shutdown();
+    w1.close();
     return dir1;
   }
 
   private Directory getDir2(Random random) throws IOException {
     Directory dir2 = newDirectory();
-    IndexWriter w2 = new IndexWriter(dir2, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)));
+    IndexWriter w2 = new IndexWriter(dir2, newIndexWriterConfig(new MockAnalyzer(random)));
     Document d3 = new Document();
     d3.add(newTextField("f3", "v1", Field.Store.YES));
     d3.add(newTextField("f4", "v1", Field.Store.YES));
@@ -317,7 +317,7 @@ public class TestParallelAtomicReader extends LuceneTestCase {
     d4.add(newTextField("f3", "v2", Field.Store.YES));
     d4.add(newTextField("f4", "v2", Field.Store.YES));
     w2.addDocument(d4);
-    w2.shutdown();
+    w2.close();
     return dir2;
   }
 

@@ -20,14 +20,12 @@ package org.apache.lucene.index;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.CommandLineUtil;
-import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.PrintStreamInfoStream;
 import org.apache.lucene.util.Version;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.util.Collection;
 
 /**
@@ -43,7 +41,7 @@ import java.util.Collection;
   * refuses to run by default. Specify {@code -delete-prior-commits}
   * to override this, allowing the tool to delete all but the last commit.
   * From Java code this can be enabled by passing {@code true} to
-  * {@link #IndexUpgrader(Directory,Version,InfoStream,boolean)}.
+  * {@link #IndexUpgrader(Directory,InfoStream,boolean)}.
   * <p><b>Warning:</b> This tool may reorder documents if the index was partially
   * upgraded before execution (e.g., documents were added). If your application relies
   * on &quot;monotonicity&quot; of doc IDs (which means that the order in which the documents
@@ -110,7 +108,7 @@ public final class IndexUpgrader {
     } else {
       dir = CommandLineUtil.newFSDirectory(dirImpl, new File(path));
     }
-    return new IndexUpgrader(dir, Version.LUCENE_CURRENT, out, deletePriorCommits);
+    return new IndexUpgrader(dir, out, deletePriorCommits);
   }
   
   private final Directory dir;
@@ -119,15 +117,15 @@ public final class IndexUpgrader {
   
   /** Creates index upgrader on the given directory, using an {@link IndexWriter} using the given
    * {@code matchVersion}. The tool refuses to upgrade indexes with multiple commit points. */
-  public IndexUpgrader(Directory dir, Version matchVersion) {
-    this(dir, new IndexWriterConfig(matchVersion, null), false);
+  public IndexUpgrader(Directory dir) {
+    this(dir, new IndexWriterConfig(null), false);
   }
   
   /** Creates index upgrader on the given directory, using an {@link IndexWriter} using the given
    * {@code matchVersion}. You have the possibility to upgrade indexes with multiple commit points by removing
    * all older ones. If {@code infoStream} is not {@code null}, all logging output will be sent to this stream. */
-  public IndexUpgrader(Directory dir, Version matchVersion, InfoStream infoStream, boolean deletePriorCommits) {
-    this(dir, new IndexWriterConfig(matchVersion, null), deletePriorCommits);
+  public IndexUpgrader(Directory dir, InfoStream infoStream, boolean deletePriorCommits) {
+    this(dir, new IndexWriterConfig(null), deletePriorCommits);
     if (null != infoStream) {
       this.iwc.setInfoStream(infoStream);
     }
@@ -155,22 +153,21 @@ public final class IndexUpgrader {
       }
     }
     
-    final IndexWriterConfig c = iwc.clone();
-    c.setMergePolicy(new UpgradeIndexMergePolicy(c.getMergePolicy()));
-    c.setIndexDeletionPolicy(new KeepOnlyLastCommitDeletionPolicy());
+    iwc.setMergePolicy(new UpgradeIndexMergePolicy(iwc.getMergePolicy()));
+    iwc.setIndexDeletionPolicy(new KeepOnlyLastCommitDeletionPolicy());
     
-    final IndexWriter w = new IndexWriter(dir, c);
+    final IndexWriter w = new IndexWriter(dir, iwc);
     try {
-      InfoStream infoStream = c.getInfoStream();
+      InfoStream infoStream = iwc.getInfoStream();
       if (infoStream.isEnabled("IndexUpgrader")) {
-        infoStream.message("IndexUpgrader", "Upgrading all pre-" + Constants.LUCENE_MAIN_VERSION + " segments of index directory '" + dir + "' to version " + Constants.LUCENE_MAIN_VERSION + "...");
+        infoStream.message("IndexUpgrader", "Upgrading all pre-" + Version.LATEST + " segments of index directory '" + dir + "' to version " + Version.LATEST + "...");
       }
       w.forceMerge(1);
       if (infoStream.isEnabled("IndexUpgrader")) {
-        infoStream.message("IndexUpgrader", "All segments upgraded to version " + Constants.LUCENE_MAIN_VERSION);
+        infoStream.message("IndexUpgrader", "All segments upgraded to version " + Version.LATEST);
       }
     } finally {
-      w.shutdown();
+      w.close();
     }
   }
   

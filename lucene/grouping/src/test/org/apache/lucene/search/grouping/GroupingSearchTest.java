@@ -57,8 +57,7 @@ public class GroupingSearchTest extends LuceneTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random(),
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-            new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     boolean canUseIDV = true;
     List<Document> documents = new ArrayList<>();
     // 0
@@ -119,7 +118,7 @@ public class GroupingSearchTest extends LuceneTestCase {
     w.addDocument(doc);
 
     IndexSearcher indexSearcher = newSearcher(w.getReader());
-    w.shutdown();
+    w.close();
 
     Sort groupSort = Sort.RELEVANCE;
     GroupingSearch groupingSearch = createRandomGroupingSearch(groupField, groupSort, 5, canUseIDV);
@@ -196,7 +195,7 @@ public class GroupingSearchTest extends LuceneTestCase {
       assertEquals(new BytesRef(expected), group.groupValue);
     } else if (group.groupValue.getClass().isAssignableFrom(MutableValueStr.class)) {
       MutableValueStr v = new MutableValueStr();
-      v.value = new BytesRef(expected);
+      v.value.copyChars(expected);
       assertEquals(v, group.groupValue);
     } else {
       fail();
@@ -227,14 +226,13 @@ public class GroupingSearchTest extends LuceneTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random(),
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-            new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     Document doc = new Document();
     doc.add(newField("group", "foo", StringField.TYPE_NOT_STORED));
     w.addDocument(doc);
 
     IndexSearcher indexSearcher = newSearcher(w.getReader());
-    w.shutdown();
+    w.close();
 
     GroupingSearch gs = new GroupingSearch("group");
     gs.setAllGroups(true);

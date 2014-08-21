@@ -32,6 +32,7 @@ import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SortedDocValues;
+import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
@@ -327,11 +328,14 @@ final class Lucene40DocValuesReader extends DocValuesProducer {
       final PagedBytes.Reader bytesReader = bytes.freeze(true);
       CodecUtil.checkEOF(input);
       success = true;
-      ramBytesUsed.addAndGet(bytes.ramBytesUsed());
+      ramBytesUsed.addAndGet(bytesReader.ramBytesUsed());
       return new BinaryDocValues() {
+
         @Override
-        public void get(int docID, BytesRef result) {
-          bytesReader.fillSlice(result, fixedLength * (long)docID, fixedLength);
+        public BytesRef get(int docID) {
+          final BytesRef term = new BytesRef();
+          bytesReader.fillSlice(term, fixedLength * (long)docID, fixedLength);
+          return term;
         }
       };
     } finally {
@@ -366,13 +370,15 @@ final class Lucene40DocValuesReader extends DocValuesProducer {
       CodecUtil.checkEOF(data);
       CodecUtil.checkEOF(index);
       success = true;
-      ramBytesUsed.addAndGet(bytes.ramBytesUsed() + reader.ramBytesUsed());
+      ramBytesUsed.addAndGet(bytesReader.ramBytesUsed() + reader.ramBytesUsed());
       return new BinaryDocValues() {
         @Override
-        public void get(int docID, BytesRef result) {
+        public BytesRef get(int docID) {
+          final BytesRef term = new BytesRef();
           long startAddress = reader.get(docID);
           long endAddress = reader.get(docID+1);
-          bytesReader.fillSlice(result, startAddress, (int)(endAddress - startAddress));
+          bytesReader.fillSlice(term, startAddress, (int)(endAddress - startAddress));
+          return term;
         }
       };
     } finally {
@@ -408,13 +414,15 @@ final class Lucene40DocValuesReader extends DocValuesProducer {
       final PackedInts.Reader reader = PackedInts.getReader(index);
       CodecUtil.checkEOF(data);
       CodecUtil.checkEOF(index);
-      ramBytesUsed.addAndGet(bytes.ramBytesUsed() + reader.ramBytesUsed());
+      ramBytesUsed.addAndGet(bytesReader.ramBytesUsed() + reader.ramBytesUsed());
       success = true;
       return new BinaryDocValues() {
         @Override
-        public void get(int docID, BytesRef result) {
+        public BytesRef get(int docID) {
+          final BytesRef term = new BytesRef();
           final long offset = fixedLength * reader.get(docID);
-          bytesReader.fillSlice(result, offset, fixedLength);
+          bytesReader.fillSlice(term, offset, fixedLength);
+          return term;
         }
       };
     } finally {
@@ -449,23 +457,26 @@ final class Lucene40DocValuesReader extends DocValuesProducer {
       final PackedInts.Reader reader = PackedInts.getReader(index);
       CodecUtil.checkEOF(data);
       CodecUtil.checkEOF(index);
-      ramBytesUsed.addAndGet(bytes.ramBytesUsed() + reader.ramBytesUsed());
+      ramBytesUsed.addAndGet(bytesReader.ramBytesUsed() + reader.ramBytesUsed());
       success = true;
       return new BinaryDocValues() {
+        
         @Override
-        public void get(int docID, BytesRef result) {
+        public BytesRef get(int docID) {
+          final BytesRef term = new BytesRef();
           long startAddress = reader.get(docID);
           BytesRef lengthBytes = new BytesRef();
           bytesReader.fillSlice(lengthBytes, startAddress, 1);
           byte code = lengthBytes.bytes[lengthBytes.offset];
           if ((code & 128) == 0) {
             // length is 1 byte
-            bytesReader.fillSlice(result, startAddress + 1, (int) code);
+            bytesReader.fillSlice(term, startAddress + 1, (int) code);
           } else {
             bytesReader.fillSlice(lengthBytes, startAddress + 1, 1);
             int length = ((code & 0x7f) << 8) | (lengthBytes.bytes[lengthBytes.offset] & 0xff);
-            bytesReader.fillSlice(result, startAddress + 2, length);
+            bytesReader.fillSlice(term, startAddress + 2, length);
           }
+          return term;
         }
       };
     } finally {
@@ -529,7 +540,7 @@ final class Lucene40DocValuesReader extends DocValuesProducer {
     bytes.copy(data, fixedLength * (long) valueCount);
     final PagedBytes.Reader bytesReader = bytes.freeze(true);
     final PackedInts.Reader reader = PackedInts.getReader(index);
-    ramBytesUsed.addAndGet(bytes.ramBytesUsed() + reader.ramBytesUsed());
+    ramBytesUsed.addAndGet(bytesReader.ramBytesUsed() + reader.ramBytesUsed());
 
     return correctBuggyOrds(new SortedDocValues() {
       @Override
@@ -538,8 +549,10 @@ final class Lucene40DocValuesReader extends DocValuesProducer {
       }
 
       @Override
-      public void lookupOrd(int ord, BytesRef result) {
-        bytesReader.fillSlice(result, fixedLength * (long) ord, fixedLength);
+      public BytesRef lookupOrd(int ord) {
+        final BytesRef term = new BytesRef();
+        bytesReader.fillSlice(term, fixedLength * (long) ord, fixedLength);
+        return term;
       }
 
       @Override
@@ -565,7 +578,7 @@ final class Lucene40DocValuesReader extends DocValuesProducer {
     final PackedInts.Reader ordsReader = PackedInts.getReader(index);
 
     final int valueCount = addressReader.size() - 1;
-    ramBytesUsed.addAndGet(bytes.ramBytesUsed() + addressReader.ramBytesUsed() + ordsReader.ramBytesUsed());
+    ramBytesUsed.addAndGet(bytesReader.ramBytesUsed() + addressReader.ramBytesUsed() + ordsReader.ramBytesUsed());
 
     return correctBuggyOrds(new SortedDocValues() {
       @Override
@@ -574,10 +587,12 @@ final class Lucene40DocValuesReader extends DocValuesProducer {
       }
 
       @Override
-      public void lookupOrd(int ord, BytesRef result) {
+      public BytesRef lookupOrd(int ord) {
+        final BytesRef term = new BytesRef();
         long startAddress = addressReader.get(ord);
         long endAddress = addressReader.get(ord+1);
-        bytesReader.fillSlice(result, startAddress, (int)(endAddress - startAddress));
+        bytesReader.fillSlice(term, startAddress, (int)(endAddress - startAddress));
+        return term;
       }
 
       @Override
@@ -604,8 +619,8 @@ final class Lucene40DocValuesReader extends DocValuesProducer {
       }
 
       @Override
-      public void lookupOrd(int ord, BytesRef result) {
-        in.lookupOrd(ord+1, result);
+      public BytesRef lookupOrd(int ord) {
+        return in.lookupOrd(ord+1);
       }
 
       @Override
@@ -613,6 +628,11 @@ final class Lucene40DocValuesReader extends DocValuesProducer {
         return in.getValueCount() - 1;
       }
     };
+  }
+  
+  @Override
+  public SortedNumericDocValues getSortedNumeric(FieldInfo field) throws IOException {
+    throw new IllegalStateException("Lucene 4.0 does not support SortedNumeric: how did you pull this off?");
   }
 
   @Override

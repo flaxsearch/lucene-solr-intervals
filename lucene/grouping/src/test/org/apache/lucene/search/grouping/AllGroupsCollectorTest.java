@@ -49,8 +49,7 @@ public class AllGroupsCollectorTest extends LuceneTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random(),
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-            new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
 
     // 0
     Document doc = new Document();
@@ -102,7 +101,7 @@ public class AllGroupsCollectorTest extends LuceneTestCase {
     w.addDocument(doc);
 
     IndexSearcher indexSearcher = newSearcher(w.getReader());
-    w.shutdown();
+    w.close();
 
     AbstractAllGroupsCollector<?> allGroupsCollector = createRandomCollector(groupField);
     indexSearcher.search(new TermQuery(new Term("content", "random")), allGroupsCollector);

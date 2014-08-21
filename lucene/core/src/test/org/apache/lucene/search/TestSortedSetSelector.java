@@ -18,19 +18,13 @@ package org.apache.lucene.search;
  */
 
 import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.codecs.diskdv.DiskDocValuesFormat;
-import org.apache.lucene.codecs.lucene45.Lucene45DocValuesFormat;
+import org.apache.lucene.codecs.lucene410.Lucene410DocValuesFormat;
 import org.apache.lucene.codecs.memory.DirectDocValuesFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.MatchAllDocsQuery;
-import org.apache.lucene.search.Sort;
-import org.apache.lucene.search.SortField;
-import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
@@ -47,11 +41,10 @@ public class TestSortedSetSelector extends LuceneTestCase {
   public static void beforeClass() throws Exception {
     savedCodec = Codec.getDefault();
     // currently only these codecs that support random access ordinals
-    int victim = random().nextInt(3);
+    int victim = random().nextInt(2);
     switch(victim) {
       case 0:  Codec.setDefault(TestUtil.alwaysDocValuesFormat(new DirectDocValuesFormat())); break;
-      case 1:  Codec.setDefault(TestUtil.alwaysDocValuesFormat(new DiskDocValuesFormat())); break;
-      default: Codec.setDefault(TestUtil.alwaysDocValuesFormat(new Lucene45DocValuesFormat()));
+      default: Codec.setDefault(TestUtil.alwaysDocValuesFormat(new Lucene410DocValuesFormat()));
     }
   }
   
@@ -73,7 +66,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "2", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -103,7 +96,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "2", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -136,7 +129,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "3", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -173,7 +166,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "3", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -206,7 +199,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "1", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -237,7 +230,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "1", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -268,7 +261,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "2", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -302,7 +295,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "1", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -340,7 +333,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "1", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -372,7 +365,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "1", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -403,7 +396,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "2", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -434,7 +427,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "1", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -468,7 +461,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "2", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -506,7 +499,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "2", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);
@@ -538,7 +531,7 @@ public class TestSortedSetSelector extends LuceneTestCase {
     doc.add(newStringField("id", "1", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader ir = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // slow wrapper does not support random access ordinals (there is no need for that!)
     IndexSearcher searcher = newSearcher(ir, false);

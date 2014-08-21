@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Factory for {@link JaspellLookup}
+ * <b>Note:</b> This Suggester is not very RAM efficient.
  */
 public class JaspellLookupFactory extends LookupFactory {
   private static final Logger LOG = LoggerFactory.getLogger(JaspellLookup.class);

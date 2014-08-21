@@ -50,14 +50,14 @@ public class TestConjunctions extends LuceneTestCase {
     super.setUp();
     analyzer = new MockAnalyzer(random());
     dir = newDirectory();
-    IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig config = newIndexWriterConfig(analyzer);
     config.setMergePolicy(newLogMergePolicy()); // we will use docids to validate
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir, config);
     writer.addDocument(doc("lucene", "lucene is a very popular search engine library"));
     writer.addDocument(doc("solr", "solr is a very popular search server and is using lucene"));
     writer.addDocument(doc("nutch", "nutch is an internet search engine with web crawler and is using lucene and hadoop"));
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
     searcher = newSearcher(reader);
     searcher.setSimilarity(new TFSimilarity());
   }

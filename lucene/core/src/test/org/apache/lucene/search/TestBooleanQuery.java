@@ -141,7 +141,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     assertEquals(1, s.search(dmq, 10).totalHits);
     
     r.close();
-    w.shutdown();
+    w.close();
     dir.close();
   }
 
@@ -152,7 +152,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     doc1.add(newTextField("field", "foo bar", Field.Store.NO));
     iw1.addDocument(doc1);
     IndexReader reader1 = iw1.getReader();
-    iw1.shutdown();
+    iw1.close();
     
     Directory dir2 = newDirectory();
     RandomIndexWriter iw2 = new RandomIndexWriter(random(), dir2);
@@ -160,7 +160,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     doc2.add(newTextField("field", "foo baz", Field.Store.NO));
     iw2.addDocument(doc2);
     IndexReader reader2 = iw2.getReader();
-    iw2.shutdown();
+    iw2.close();
 
     BooleanQuery query = new BooleanQuery(); // Query: +foo -ba*
     query.add(new TermQuery(new Term("field", "foo")), BooleanClause.Occur.MUST);
@@ -215,7 +215,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     w.forceMerge(1);
     final IndexReader r = w.getReader();
     final IndexSearcher s = newSearcher(r);
-    w.shutdown();
+    w.close();
 
     for(int iter=0;iter<10*RANDOM_MULTIPLIER;iter++) {
       if (VERBOSE) {
@@ -296,8 +296,7 @@ public class TestBooleanQuery extends LuceneTestCase {
   
  public void testConjunctionPositions() throws IOException {
      Directory directory = newDirectory();
-     RandomIndexWriter writer = new RandomIndexWriter(random(), directory,
-         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+     RandomIndexWriter writer = new RandomIndexWriter(random(), directory);
      {
        Document doc = new Document();
        doc.add(newField(
@@ -346,13 +345,13 @@ public class TestBooleanQuery extends LuceneTestCase {
     Directory directory = newDirectory();
     Analyzer indexerAnalyzer = new MockAnalyzer(random());
 
-    IndexWriterConfig config = new IndexWriterConfig(TEST_VERSION_CURRENT, indexerAnalyzer);
+    IndexWriterConfig config = new IndexWriterConfig(indexerAnalyzer);
     IndexWriter writer = new IndexWriter(directory, config);
     String FIELD = "content";
     Document d = new Document();
     d.add(new TextField(FIELD, "clockwork orange", Field.Store.YES));
     writer.addDocument(d);
-    writer.shutdown();
+    writer.close();
 
     IndexReader indexReader = DirectoryReader.open(directory);
     IndexSearcher searcher = newSearcher(indexReader);
@@ -382,7 +381,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     doc.add(newTextField("field", "some text here", Field.Store.NO));
     w.addDocument(doc);
     IndexReader r = w.getReader();
-    w.shutdown();
+    w.close();
     IndexSearcher s = new IndexSearcher(r) {
         @Override
         protected void search(List<AtomicReaderContext> leaves, Weight weight, Collector collector) throws IOException {
@@ -406,7 +405,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     final String VALUE = "foo";
       
     Directory dir = newDirectory();
-    (new RandomIndexWriter(random(), dir)).shutdown();
+    (new RandomIndexWriter(random(), dir)).close();
     IndexReader r = DirectoryReader.open(dir);
 
     TermQuery expected = new TermQuery(new Term(FIELD, VALUE));

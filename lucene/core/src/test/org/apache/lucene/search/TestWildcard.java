@@ -253,7 +253,7 @@ public class TestWildcard
       doc.add(newTextField(field, contents[i], Field.Store.YES));
       writer.addDocument(doc);
     }
-    writer.shutdown();
+    writer.close();
 
     return indexStore;
   }
@@ -268,7 +268,7 @@ public class TestWildcard
    * Test that wild card queries are parsed to the correct type and are searched correctly.
    * This test looks at both parsing and execution of wildcard queries.
    * Although placed here, it also tests prefix queries, verifying that
-   * prefix queries are not parsed into wild card queries, and viceversa.
+   * prefix queries are not parsed into wild card queries, and vice-versa.
    */
   public void testParsingAndSearching() throws Exception {
     String field = "content";
@@ -345,14 +345,14 @@ public class TestWildcard
     // prepare the index
     Directory dir = newDirectory();
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+        newIndexWriterConfig(new MockAnalyzer(random()))
         .setMergePolicy(newLogMergePolicy()));
     for (int i = 0; i < docs.length; i++) {
       Document doc = new Document();
       doc.add(newTextField(field, docs[i], Field.Store.NO));
       iw.addDocument(doc);
     }
-    iw.shutdown();
+    iw.close();
     
     IndexReader reader = DirectoryReader.open(dir);
     IndexSearcher searcher = newSearcher(reader);

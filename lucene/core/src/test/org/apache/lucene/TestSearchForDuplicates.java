@@ -70,7 +70,7 @@ public class TestSearchForDuplicates extends LuceneTestCase {
   private void doTest(Random random, PrintWriter out, boolean useCompoundFiles, int MAX_DOCS) throws Exception {
       Directory directory = newDirectory();
       Analyzer analyzer = new MockAnalyzer(random);
-      IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+      IndexWriterConfig conf = newIndexWriterConfig(analyzer);
       final MergePolicy mp = conf.getMergePolicy();
       mp.setNoCFSRatio(useCompoundFiles ? 1.0 : 0.0);
       IndexWriter writer = new IndexWriter(directory, conf);
@@ -82,9 +82,10 @@ public class TestSearchForDuplicates extends LuceneTestCase {
         Document d = new Document();
         d.add(newTextField(PRIORITY_FIELD, HIGH_PRIORITY, Field.Store.YES));
         d.add(new IntField(ID_FIELD, j, Field.Store.YES));
+        d.add(new NumericDocValuesField(ID_FIELD, j));
         writer.addDocument(d);
       }
-      writer.shutdown();
+      writer.close();
 
       // try a search without OR
       IndexReader reader = DirectoryReader.open(directory);

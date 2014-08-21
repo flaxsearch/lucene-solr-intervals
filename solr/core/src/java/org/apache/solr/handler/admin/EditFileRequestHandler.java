@@ -316,10 +316,10 @@ public class EditFileRequestHandler extends RequestHandlerBase {
     try {
       cc = CoreContainer.createAndLoad(home.getAbsolutePath(), new File(home, "solr.xml"));
       if (cc.getCoreInitFailures().size() > 0) {
-        for (Exception ex : cc.getCoreInitFailures().values()) {
-          log.error("Error when attempting to reload core: " + ex.getMessage());
+        for (CoreContainer.CoreLoadFailure ex : cc.getCoreInitFailures().values()) {
+          log.error("Error when attempting to reload core: " + ex.exception.getMessage());
           rsp.setException(new SolrException(ErrorCode.BAD_REQUEST,
-              "Error when attempting to reload core after writing config" + ex.getMessage()));
+              "Error when attempting to reload core after writing config" + ex.exception.getMessage()));
         }
         return false;
       }
@@ -336,10 +336,5 @@ public class EditFileRequestHandler extends RequestHandlerBase {
   @Override
   public String getDescription() {
     return "Admin Config File -- update config files directly";
-  }
-
-  @Override
-  public String getSource() {
-    return "$URL: https://svn.apache.org/repos/asf/lucene/dev/trunk/solr/core/src/java/org/apache/solr/handler/admin/ShowFileRequestHandler.java $";
   }
 }

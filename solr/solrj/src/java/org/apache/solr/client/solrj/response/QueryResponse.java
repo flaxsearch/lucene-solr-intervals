@@ -17,14 +17,19 @@
 
 package org.apache.solr.client.solrj.response;
 
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.beans.DocumentObjectBinder;
 import org.apache.solr.common.SolrDocumentList;
+import org.apache.solr.common.params.CursorMarkParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
-import org.apache.solr.common.params.CursorMarkParams;
-
-import java.util.*;
 
 /**
  * 
@@ -41,7 +46,7 @@ public class QueryResponse extends SolrResponseBase
   private NamedList<Object> _facetInfo = null;
   private NamedList<Object> _debugInfo = null;
   private NamedList<Object> _highlightingInfo = null;
-  private NamedList<NamedList<Object>> _spellInfo = null;
+  private NamedList<Object> _spellInfo = null;
   private NamedList<Object> _statsInfo = null;
   private NamedList<NamedList<Number>> _termsInfo = null;
   private String _cursorMarkNext = null;
@@ -60,6 +65,7 @@ public class QueryResponse extends SolrResponseBase
   private List<FacetField> _facetDates = null;
   private List<RangeFacet> _facetRanges = null;
   private NamedList<List<PivotField>> _facetPivot = null;
+  private List<IntervalFacet> _intervalFacets = null;
 
   // Highlight Info
   private Map<String,Map<String,List<String>>> _highlighting = null;
@@ -130,7 +136,7 @@ public class QueryResponse extends SolrResponseBase
         extractHighlightingInfo( _highlightingInfo );
       }
       else if ( "spellcheck".equals( n ) )  {
-        _spellInfo = (NamedList<NamedList<Object>>) res.getVal( i );
+        _spellInfo = (NamedList<Object>) res.getVal( i );
         extractSpellCheckInfo( _spellInfo );
       }
       else if ( "stats".equals( n ) )  {
@@ -148,7 +154,7 @@ public class QueryResponse extends SolrResponseBase
     if(_facetInfo != null) extractFacetInfo( _facetInfo );
   }
 
-  private void extractSpellCheckInfo(NamedList<NamedList<Object>> spellInfo) {
+  private void extractSpellCheckInfo(NamedList<Object> spellInfo) {
     _spellResponse = new SpellCheckResponse(spellInfo);
   }
 
@@ -363,6 +369,20 @@ public class QueryResponse extends SolrResponseBase
         _facetPivot.add( pf.getName(i), readPivots( (List<NamedList>)pf.getVal(i) ) );
       }
     }
+    
+    //Parse interval facets
+    NamedList<NamedList<Object>> intervalsNL = (NamedList<NamedList<Object>>) info.get("facet_intervals");
+    if (intervalsNL != null) {
+      _intervalFacets = new ArrayList<>(intervalsNL.size());
+      for (Map.Entry<String, NamedList<Object>> intervalField : intervalsNL) {
+        String field = intervalField.getKey();
+        List<IntervalFacet.Count> counts = new ArrayList<IntervalFacet.Count>(intervalField.getValue().size());
+        for (Map.Entry<String, Object> interval : intervalField.getValue()) {
+          counts.add(new IntervalFacet.Count(interval.getKey(), (Integer)interval.getValue()));
+        }
+        _intervalFacets.add(new IntervalFacet(field, counts));
+      }
+    }
   }
   
   protected List<PivotField> readPivots( List<NamedList> list )
@@ -370,10 +390,19 @@ public class QueryResponse extends SolrResponseBase
     ArrayList<PivotField> values = new ArrayList<>( list.size() );
     for( NamedList nl : list ) {
       // NOTE, this is cheating, but we know the order they are written in, so no need to check
+      assert "field".equals(nl.getName(0));
       String f = (String)nl.getVal( 0 );
+      assert "value".equals(nl.getName(1));
       Object v = nl.getVal( 1 );
+      assert "count".equals(nl.getName(2));
       int cnt = ((Integer)nl.getVal( 2 )).intValue();
-      List<PivotField> p = (nl.size()<4)?null:readPivots((List<NamedList>)nl.getVal(3) );
+      List<PivotField> p = null;
+      if (4 <= nl.size()) {
+        assert "pivot".equals(nl.getName(3));
+        Object subPiv = nl.getVal(3);
+        assert null != subPiv : "Server sent back 'null' for sub pivots?";
+        p = readPivots( (List<NamedList>) subPiv );
+      }
       values.add( new PivotField( f, v, cnt, p ) );
     }
     return values;
@@ -464,6 +493,10 @@ public class QueryResponse extends SolrResponseBase
 
   public NamedList<List<PivotField>> getFacetPivot()   {
     return _facetPivot;
+  }
+  
+  public List<IntervalFacet> getIntervalFacets() {
+    return _intervalFacets;
   }
   
   /** get

@@ -92,7 +92,7 @@ public class TokenSourcesTest extends LuceneTestCase {
     final String TEXT = "the fox did not jump";
     final Directory directory = newDirectory();
     final IndexWriter indexWriter = new IndexWriter(directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+        newIndexWriterConfig(null));
     try {
       final Document document = new Document();
       FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
@@ -101,7 +101,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       document.add(new Field(FIELD, new OverlappingTokenStream(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.shutdown();
+      indexWriter.close();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     assertEquals(1, indexReader.numDocs());
@@ -136,7 +136,7 @@ public class TokenSourcesTest extends LuceneTestCase {
     final String TEXT = "the fox did not jump";
     final Directory directory = newDirectory();
     final IndexWriter indexWriter = new IndexWriter(directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+        newIndexWriterConfig(null));
     try {
       final Document document = new Document();
       FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
@@ -146,7 +146,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       document.add(new Field(FIELD, new OverlappingTokenStream(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.shutdown();
+      indexWriter.close();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -181,7 +181,7 @@ public class TokenSourcesTest extends LuceneTestCase {
     final String TEXT = "the fox did not jump";
     final Directory directory = newDirectory();
     final IndexWriter indexWriter = new IndexWriter(directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+        newIndexWriterConfig(null));
     try {
       final Document document = new Document();
       FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
@@ -190,7 +190,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       document.add(new Field(FIELD, new OverlappingTokenStream(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.shutdown();
+      indexWriter.close();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -225,7 +225,7 @@ public class TokenSourcesTest extends LuceneTestCase {
     final String TEXT = "the fox did not jump";
     final Directory directory = newDirectory();
     final IndexWriter indexWriter = new IndexWriter(directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+        newIndexWriterConfig(null));
     try {
       final Document document = new Document();
       FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
@@ -234,7 +234,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       document.add(new Field(FIELD, new OverlappingTokenStream(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.shutdown();
+      indexWriter.close();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -268,7 +268,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       throws IOException, InvalidTokenOffsetsException {
     final Directory directory = newDirectory();
     final IndexWriter indexWriter = new IndexWriter(directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+        newIndexWriterConfig(null));
     try {
       final Document document = new Document();
       FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
@@ -278,7 +278,7 @@ public class TokenSourcesTest extends LuceneTestCase {
       document.add(new Field(FIELD, new OverlappingTokenStream(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.shutdown();
+      indexWriter.close();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -332,7 +332,7 @@ public class TokenSourcesTest extends LuceneTestCase {
     writer.addDocument(doc);
   
     IndexReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
     assertEquals(1, reader.numDocs());
 
     for(int i=0;i<2;i++) {

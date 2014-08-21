@@ -18,7 +18,6 @@ package org.apache.lucene.search;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -150,7 +149,7 @@ public class TestBooleanOr extends LuceneTestCase {
     reader = writer.getReader();
     //
     searcher = newSearcher(reader);
-    writer.shutdown();
+    writer.close();
   }
 
   @Override
@@ -162,7 +161,7 @@ public class TestBooleanOr extends LuceneTestCase {
 
   public void testBooleanScorerMax() throws IOException {
     Directory dir = newDirectory();
-    RandomIndexWriter riw = new RandomIndexWriter(random(), dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    RandomIndexWriter riw = new RandomIndexWriter(random(), dir, newIndexWriterConfig(new MockAnalyzer(random())));
 
     int docCount = atLeast(10000);
 
@@ -174,7 +173,7 @@ public class TestBooleanOr extends LuceneTestCase {
 
     riw.forceMerge(1);
     IndexReader r = riw.getReader();
-    riw.shutdown();
+    riw.close();
 
     IndexSearcher s = newSearcher(r);
     BooleanQuery bq = new BooleanQuery();

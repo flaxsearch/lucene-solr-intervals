@@ -58,7 +58,7 @@ import org.apache.lucene.store.DataOutput;
  * @lucene.internal
  */
 public final class BlockPackedWriter extends AbstractBlockPackedWriter {
-
+  
   /**
    * Sole constructor.
    * @param blockSize the number of values of a single block, must be a power of 2
@@ -76,7 +76,7 @@ public final class BlockPackedWriter extends AbstractBlockPackedWriter {
     }
 
     final long delta = max - min;
-    final int bitsRequired = delta < 0 ? 64 : delta == 0L ? 0 : PackedInts.bitsRequired(delta);
+    int bitsRequired = delta == 0 ? 0 : PackedInts.unsignedBitsRequired(delta);
     if (bitsRequired == 64) {
       // no need to delta-encode
       min = 0L;

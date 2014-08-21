@@ -44,7 +44,6 @@ import org.apache.lucene.document.Field;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
-import java.io.Reader;
 import java.io.IOException;
 
 
@@ -117,8 +116,8 @@ public class TestPayloadTermQuery extends LuceneTestCase {
   public static void beforeClass() throws Exception {
     directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new PayloadAnalyzer())
-                                                     .setSimilarity(similarity).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new PayloadAnalyzer())
+           .setSimilarity(similarity).setMergePolicy(newLogMergePolicy()));
     //writer.infoStream = System.out;
     for (int i = 0; i < 1000; i++) {
       Document doc = new Document();
@@ -130,7 +129,7 @@ public class TestPayloadTermQuery extends LuceneTestCase {
       writer.addDocument(doc);
     }
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     searcher = newSearcher(reader);
     searcher.setSimilarity(similarity);

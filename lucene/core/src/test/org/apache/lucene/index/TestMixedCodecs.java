@@ -45,7 +45,7 @@ public class TestMixedCodecs extends LuceneTestCase {
         System.out.println("TEST: " + docUpto + " of " + NUM_DOCS);
       }
       if (docsLeftInThisSegment == 0) {
-        final IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+        final IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
         if (random().nextBoolean()) {
           // Make sure we aggressively mix in SimpleText
           // since it has different impls for all codec
@@ -53,7 +53,7 @@ public class TestMixedCodecs extends LuceneTestCase {
           iwc.setCodec(Codec.forName("SimpleText"));
         }
         if (w != null) {
-          w.shutdown();
+          w.close();
         }
         w = new RandomIndexWriter(random(), dir, iwc);
         docsLeftInThisSegment = TestUtil.nextInt(random(), 10, 100);
@@ -84,7 +84,7 @@ public class TestMixedCodecs extends LuceneTestCase {
       }
     }
 
-    w.shutdown();
+    w.close();
     dir.close();
   }
 }

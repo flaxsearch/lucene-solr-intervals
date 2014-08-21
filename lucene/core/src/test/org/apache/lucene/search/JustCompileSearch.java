@@ -72,7 +72,11 @@ final class JustCompileSearch {
     public DocIdSetIterator iterator() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
-    
+
+    @Override
+    public long ramBytesUsed() {
+      return 0L;
+    }
   }
 
   static final class JustCompileDocIdSetIterator extends DocIdSetIterator {

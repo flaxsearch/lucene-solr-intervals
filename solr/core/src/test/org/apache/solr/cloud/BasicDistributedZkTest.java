@@ -156,7 +156,6 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
     waitForRecoveriesToFinish(false);
     
     handle.clear();
-    handle.put("QTime", SKIPVAL);
     handle.put("timestamp", SKIPVAL);
 
     del("*:*");
@@ -344,7 +343,7 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
     }
     
     for (SolrServer client : clients) {
-      assertEquals("commitWithin did not work", before + 1, client.query(new SolrQuery("*:*")).getResults().getNumFound());
+      assertEquals("commitWithin did not work on node: " + ((HttpSolrServer)client).getBaseURL(), before + 1, client.query(new SolrQuery("*:*")).getResults().getNumFound());
     }
     
     // TODO: This test currently fails because debug info is obtained only
@@ -588,8 +587,8 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
     params.set("action", CollectionAction.CREATE.toString());
 
     params.set(OverseerCollectionProcessor.NUM_SLICES, numShards);
-    params.set(OverseerCollectionProcessor.REPLICATION_FACTOR, numReplicas);
-    params.set(OverseerCollectionProcessor.MAX_SHARDS_PER_NODE, maxShardsPerNode);
+    params.set(ZkStateReader.REPLICATION_FACTOR, numReplicas);
+    params.set(ZkStateReader.MAX_SHARDS_PER_NODE, maxShardsPerNode);
     if (createNodeSetStr != null) params.set(OverseerCollectionProcessor.CREATE_NODE_SET, createNodeSetStr);
 
     int clientIndex = clients.size() > 1 ? random().nextInt(2) : 0;

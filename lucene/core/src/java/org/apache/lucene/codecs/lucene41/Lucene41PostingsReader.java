@@ -43,6 +43,7 @@ import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.RamUsageEstimator;
 
 /**
  * Concrete class that reads docId(maybe frq,pos,offset,payloads) list
@@ -52,6 +53,8 @@ import org.apache.lucene.util.IOUtils;
  * @lucene.experimental
  */
 public final class Lucene41PostingsReader extends PostingsReaderBase {
+
+  private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(Lucene41PostingsReader.class);
 
   private final IndexInput docIn;
   private final IndexInput posIn;
@@ -76,16 +79,40 @@ public final class Lucene41PostingsReader extends PostingsReaderBase {
                             Lucene41PostingsWriter.VERSION_START,
                             Lucene41PostingsWriter.VERSION_CURRENT);
       forUtil = new ForUtil(docIn);
+      
+      if (version >= Lucene41PostingsWriter.VERSION_CHECKSUM) {
+        // NOTE: data file is too costly to verify checksum against all the bytes on open,
+        // but for now we at least verify proper structure of the checksum footer: which looks
+        // for FOOTER_MAGIC + algorithmID. This is cheap and can detect some forms of corruption
+        // such as file truncation.
+        CodecUtil.retrieveChecksum(docIn);
+      }
 
       if (fieldInfos.hasProx()) {
         posIn = dir.openInput(IndexFileNames.segmentFileName(segmentInfo.name, segmentSuffix, Lucene41PostingsFormat.POS_EXTENSION),
                               ioContext);
         CodecUtil.checkHeader(posIn, Lucene41PostingsWriter.POS_CODEC, version, version);
+        
+        if (version >= Lucene41PostingsWriter.VERSION_CHECKSUM) {
+          // NOTE: data file is too costly to verify checksum against all the bytes on open,
+          // but for now we at least verify proper structure of the checksum footer: which looks
+          // for FOOTER_MAGIC + algorithmID. This is cheap and can detect some forms of corruption
+          // such as file truncation.
+          CodecUtil.retrieveChecksum(posIn);
+        }
 
         if (fieldInfos.hasPayloads() || fieldInfos.hasOffsets()) {
           payIn = dir.openInput(IndexFileNames.segmentFileName(segmentInfo.name, segmentSuffix, Lucene41PostingsFormat.PAY_EXTENSION),
                                 ioContext);
           CodecUtil.checkHeader(payIn, Lucene41PostingsWriter.PAY_CODEC, version, version);
+          
+          if (version >= Lucene41PostingsWriter.VERSION_CHECKSUM) {
+            // NOTE: data file is too costly to verify checksum against all the bytes on open,
+            // but for now we at least verify proper structure of the checksum footer: which looks
+            // for FOOTER_MAGIC + algorithmID. This is cheap and can detect some forms of corruption
+            // such as file truncation.
+            CodecUtil.retrieveChecksum(payIn);
+          }
         }
       }
 
@@ -653,7 +680,11 @@ public final class Lucene41PostingsReader extends PostingsReaderBase {
       doc = -1;
       accum = 0;
       docUpto = 0;
-      nextSkipDoc = BLOCK_SIZE - 1;
+      if (docFreq > BLOCK_SIZE) {
+        nextSkipDoc = BLOCK_SIZE - 1; // we won't skip if target is found in first block
+      } else {
+        nextSkipDoc = NO_MORE_DOCS; // not enough docs for skipping
+      }
       docBufferUpto = BLOCK_SIZE;
       skipped = false;
       return this;
@@ -778,7 +809,7 @@ public final class Lucene41PostingsReader extends PostingsReaderBase {
       //   System.out.println("  FPR.advance target=" + target);
       // }
 
-      if (docFreq > BLOCK_SIZE && target > nextSkipDoc) {
+      if (target > nextSkipDoc) {
         // if (DEBUG) {
         //   System.out.println("    try skipper");
         // }
@@ -1114,7 +1145,11 @@ public final class Lucene41PostingsReader extends PostingsReaderBase {
       doc = -1;
       accum = 0;
       docUpto = 0;
-      nextSkipDoc = BLOCK_SIZE - 1;
+      if (docFreq > BLOCK_SIZE) {
+        nextSkipDoc = BLOCK_SIZE - 1; // we won't skip if target is found in first block
+      } else {
+        nextSkipDoc = NO_MORE_DOCS; // not enough docs for skipping
+      }
       docBufferUpto = BLOCK_SIZE;
       skipped = false;
       return this;
@@ -1298,7 +1333,7 @@ public final class Lucene41PostingsReader extends PostingsReaderBase {
       //   System.out.println("  FPR.advance target=" + target);
       // }
 
-      if (docFreq > BLOCK_SIZE && target > nextSkipDoc) {
+      if (target > nextSkipDoc) {
 
         // if (DEBUG) {
         //   System.out.println("    try skipper");
@@ -1543,7 +1578,7 @@ public final class Lucene41PostingsReader extends PostingsReaderBase {
 
   @Override
   public long ramBytesUsed() {
-    return 0;
+    return BASE_RAM_BYTES_USED;
   }
 
   @Override

@@ -30,9 +30,9 @@ import org.apache.lucene.util.LuceneTestCase;
 public class TestHighFrequencyDictionary extends LuceneTestCase {
   public void testEmpty() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
     writer.commit();
-    writer.shutdown();
+    writer.close();
     IndexReader ir = DirectoryReader.open(dir);
     Dictionary dictionary = new HighFrequencyDictionary(ir, "bogus", 0.1f);
     BytesRefIterator tf = dictionary.getEntryIterator();

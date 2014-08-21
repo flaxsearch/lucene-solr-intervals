@@ -36,8 +36,7 @@ public class TestPKIndexSplitter extends LuceneTestCase {
   public void testSplit() throws Exception {    
     NumberFormat format = new DecimalFormat("000000000", DecimalFormatSymbols.getInstance(Locale.ROOT));
     Directory dir = newDirectory();
-    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false))
+    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false))
         .setOpenMode(OpenMode.CREATE).setMergePolicy(NoMergePolicy.INSTANCE));
     for (int x = 0; x < 11; x++) {
       Document doc = createDocument(x, "1", 3, format);
@@ -49,19 +48,18 @@ public class TestPKIndexSplitter extends LuceneTestCase {
       w.addDocument(doc);
       if (x%3==0) w.commit();
     }
-    w.shutdown();
+    w.close();
     
     final Term midTerm = new Term("id", format.format(11));
     
     checkSplitting(dir, midTerm, 11, 9);
     
     // delete some documents
-    w = new IndexWriter(dir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false))
+    w = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false))
         .setOpenMode(OpenMode.APPEND).setMergePolicy(NoMergePolicy.INSTANCE));
     w.deleteDocuments(midTerm);
     w.deleteDocuments(new Term("id", format.format(2)));
-    w.shutdown();
+    w.close();
     
     checkSplitting(dir, midTerm, 10, 8);
     
@@ -72,8 +70,8 @@ public class TestPKIndexSplitter extends LuceneTestCase {
     Directory dir1 = newDirectory();
     Directory dir2 = newDirectory();
     PKIndexSplitter splitter = new PKIndexSplitter(dir, dir1, dir2, splitTerm,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())),
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+        newIndexWriterConfig(new MockAnalyzer(random())),
+        newIndexWriterConfig(new MockAnalyzer(random())));
     splitter.split();
     
     IndexReader ir1 = DirectoryReader.open(dir1);

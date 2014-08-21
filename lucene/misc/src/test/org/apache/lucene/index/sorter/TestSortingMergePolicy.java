@@ -103,8 +103,8 @@ public class TestSortingMergePolicy extends LuceneTestCase {
     }
     terms = new ArrayList<>(randomTerms);
     final long seed = random().nextLong();
-    final IndexWriterConfig iwc1 = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(new Random(seed)));
-    final IndexWriterConfig iwc2 = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(new Random(seed)));
+    final IndexWriterConfig iwc1 = newIndexWriterConfig(new MockAnalyzer(new Random(seed)));
+    final IndexWriterConfig iwc2 = newIndexWriterConfig(new MockAnalyzer(new Random(seed)));
     iwc2.setMergePolicy(newSortingMergePolicy(sort));
     final RandomIndexWriter iw1 = new RandomIndexWriter(new Random(seed), dir1, iwc1);
     final RandomIndexWriter iw2 = new RandomIndexWriter(new Random(seed), dir2, iwc2);
@@ -145,8 +145,8 @@ public class TestSortingMergePolicy extends LuceneTestCase {
     
     iw1.forceMerge(1);
     iw2.forceMerge(1);
-    iw1.shutdown();
-    iw2.shutdown();
+    iw1.close();
+    iw2.close();
     reader = DirectoryReader.open(dir1);
     sortedReader = DirectoryReader.open(dir2);
   }

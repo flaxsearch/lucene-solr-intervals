@@ -25,7 +25,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -36,16 +35,16 @@ import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.InputStreamDataInput;
 import org.apache.lucene.store.OutputStreamDataOutput;
 import org.apache.lucene.store.RAMOutputStream;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.PriorityQueue;
+import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.fst.Builder.UnCompiledNode;
 import org.apache.lucene.util.packed.GrowableWriter;
 import org.apache.lucene.util.packed.PackedInts;
-//import java.io.Writer;
-//import java.io.OutputStreamWriter;
 
 // TODO: break this into WritableFST and ReadOnlyFST.. then
 // we can have subclasses of ReadOnlyFST to handle the
@@ -70,7 +69,11 @@ import org.apache.lucene.util.packed.PackedInts;
  *
  * @lucene.experimental
  */
-public final class FST<T> {
+public final class FST<T> implements Accountable {
+
+  private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(FST.class);
+  private static final long ARC_SHALLOW_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(Arc.class);
+
   /** Specifies allowed range of each int input label for
    *  this FST. */
   public static enum INPUT_TYPE {BYTE1, BYTE2, BYTE4};
@@ -82,7 +85,10 @@ public final class FST<T> {
 
   // TODO: we can free up a bit if we can nuke this:
   final static int BIT_STOP_NODE = 1 << 3;
-  final static int BIT_ARC_HAS_OUTPUT = 1 << 4;
+
+  /** This flag is set if the arc has an output. */
+  public final static int BIT_ARC_HAS_OUTPUT = 1 << 4;
+
   final static int BIT_ARC_HAS_FINAL_OUTPUT = 1 << 5;
 
   // Arcs are stored as fixed-size (per entry) array, so
@@ -193,11 +199,22 @@ public final class FST<T> {
     // address (into the byte[]), or ord/address if label == END_LABEL
     long nextArc;
 
-    // This is non-zero if current arcs are fixed array:
-    long posArcsStart;
-    int bytesPerArc;
-    int arcIdx;
-    int numArcs;
+    /** Where the first arc in the array starts; only valid if
+     *  bytesPerArc != 0 */
+    public long posArcsStart;
+    
+    /** Non-zero if this arc is part of an array, which means all
+     *  arcs for the node are encoded with a fixed number of bytes so
+     *  that we can random access by index.  We do when there are enough
+     *  arcs leaving one node.  It wastes some bytes but gives faster
+     *  lookups. */
+    public int bytesPerArc;
+
+    /** Where we are in the array; only valid if bytesPerArc != 0. */
+    public int arcIdx;
+
+    /** How many arcs in the array; only valid if bytesPerArc != 0. */
+    public int numArcs;
 
     /** Returns this */
     public Arc<T> copyFrom(Arc<T> other) {
@@ -392,15 +409,39 @@ public final class FST<T> {
     return inputType;
   }
 
-  /** Returns bytes used to represent the FST */
-  public long sizeInBytes() {
-    long size = bytes.getPosition();
+  private long ramBytesUsed(Arc<T>[] arcs) {
+    long size = 0;
+    if (arcs != null) {
+      size += RamUsageEstimator.shallowSizeOf(arcs);
+      for (Arc<T> arc : arcs) {
+        if (arc != null) {
+          size += ARC_SHALLOW_RAM_BYTES_USED;
+          if (arc.output != null && arc.output != outputs.getNoOutput()) {
+            size += outputs.ramBytesUsed(arc.output);
+          }
+          if (arc.nextFinalOutput != null && arc.nextFinalOutput != outputs.getNoOutput()) {
+            size += outputs.ramBytesUsed(arc.nextFinalOutput);
+          }
+        }
+      }
+    }
+    return size;
+  }
+
+  private int cachedArcsBytesUsed;
+
+  @Override
+  public long ramBytesUsed() {
+    long size = BASE_RAM_BYTES_USED;
+    size += bytes.ramBytesUsed();
     if (packed) {
       size += nodeRefToAddress.ramBytesUsed();
     } else if (nodeAddress != null) {
       size += nodeAddress.ramBytesUsed();
       size += inCounts.ramBytesUsed();
     }
+    size += cachedArcsBytesUsed;
+    size += RamUsageEstimator.sizeOf(bytesPerArc);
     return size;
   }
 
@@ -432,6 +473,7 @@ public final class FST<T> {
   private void cacheRootArcs() throws IOException {
     cachedRootArcs = (Arc<T>[]) new Arc[0x80];
     readRootArcs(cachedRootArcs);
+    cachedArcsBytesUsed += ramBytesUsed(cachedRootArcs);
     
     assert setAssertingRootArcs(cachedRootArcs);
     assert assertRootArcs();
@@ -462,6 +504,7 @@ public final class FST<T> {
   private boolean setAssertingRootArcs(Arc<T>[] arcs) throws IOException {
     assertingCachedRootArcs = (Arc<T>[]) new Arc[arcs.length];
     readRootArcs(assertingCachedRootArcs);
+    cachedArcsBytesUsed *= 2;
     return true;
   }
   
@@ -618,7 +661,8 @@ public final class FST<T> {
     }
   }
 
-  int readLabel(DataInput in) throws IOException {
+  /** Reads one BYTE1/2/4 label from the provided {@link DataInput}. */
+  public int readLabel(DataInput in) throws IOException {
     final int v;
     if (inputType == INPUT_TYPE.BYTE1) {
       // Unsigned byte:

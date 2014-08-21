@@ -18,6 +18,7 @@ package org.apache.lucene.index;
 
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.util.ThreadInterruptedException;
 
 /**
@@ -35,7 +36,7 @@ import org.apache.lucene.util.ThreadInterruptedException;
  * new {@link DocumentsWriterPerThread} instance.
  * </p>
  */
-final class DocumentsWriterPerThreadPool implements Cloneable {
+final class DocumentsWriterPerThreadPool {
   
   /**
    * {@link ThreadState} references and guards a
@@ -148,16 +149,6 @@ final class DocumentsWriterPerThreadPool implements Cloneable {
     freeList = new ThreadState[maxNumThreadStates];
   }
 
-  @Override
-  public DocumentsWriterPerThreadPool clone() {
-    // We should only be cloned before being used:
-    if (numThreadStatesActive != 0) {
-      throw new IllegalStateException("clone this object before it is used!");
-    }
-
-    return new DocumentsWriterPerThreadPool(threadStates.length);
-  }
-  
   /**
    * Returns the max number of {@link ThreadState} instances available in this
    * {@link DocumentsWriterPerThreadPool}
@@ -200,7 +191,7 @@ final class DocumentsWriterPerThreadPool implements Cloneable {
       }
       // we are closed: unlock since the threadstate is not active anymore
       assert assertUnreleasedThreadStatesInactive();
-      return null;
+      throw new AlreadyClosedException("this IndexWriter is closed");
     } finally {
       if (unlock) {
         // in any case make sure we unlock if we fail 

@@ -199,7 +199,7 @@ public class SolrIndexConfig {
     // for the default analyzer, and explicitly pass an analyzer on 
     // appropriate calls to IndexWriter
     
-    IndexWriterConfig iwc = new IndexWriterConfig(luceneVersion, null);
+    IndexWriterConfig iwc = new IndexWriterConfig(null);
     if (maxBufferedDocs != -1)
       iwc.setMaxBufferedDocs(maxBufferedDocs);
 
@@ -320,7 +320,7 @@ public class SolrIndexConfig {
   /**
    * Lucene 4.4 removed the setUseCompoundFile(boolean) method from the two 
    * conrete MergePolicies provided with Lucene/Solr and added it to the 
-   * IndexWRiterConfig.  
+   * IndexWriterConfig.  
    * In the event that users have a value explicitly configured for this 
    * setter in their MergePolicy init args, we remove it from the MergePolicy 
    * init args, update the 'effective' useCompoundFile setting used by the 

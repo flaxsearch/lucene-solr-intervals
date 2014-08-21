@@ -72,8 +72,7 @@ public class DistinctValuesCollectorTest extends AbstractGroupingTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random,
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-            new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
     Document doc = new Document();
     addField(doc, groupField, "1");
     addField(doc, countField, "1");
@@ -129,7 +128,7 @@ public class DistinctValuesCollectorTest extends AbstractGroupingTestCase {
     w.addDocument(doc);
 
     IndexSearcher indexSearcher = newSearcher(w.getReader());
-    w.shutdown();
+    w.close();
 
     Comparator<AbstractDistinctValuesCollector.GroupCount<Comparable<Object>>> cmp = new Comparator<AbstractDistinctValuesCollector.GroupCount<Comparable<Object>>>() {
 
@@ -324,7 +323,7 @@ public class DistinctValuesCollectorTest extends AbstractGroupingTestCase {
       assertEquals(Long.parseLong(expected), groupValue);
     } else if (MutableValue.class.isAssignableFrom(groupValue.getClass())) {
       MutableValueStr mutableValue = new MutableValueStr();
-      mutableValue.value = new BytesRef(expected);
+      mutableValue.value.copyChars(expected);
       assertEquals(mutableValue, groupValue);
     } else {
       fail();
@@ -409,8 +408,7 @@ public class DistinctValuesCollectorTest extends AbstractGroupingTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random,
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-        new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy())
+        newIndexWriterConfig(new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy())
       );
 
     int numDocs = 86 + random.nextInt(1087) * RANDOM_MULTIPLIER;
@@ -462,7 +460,7 @@ public class DistinctValuesCollectorTest extends AbstractGroupingTestCase {
       }
     }
 
-    w.shutdown();
+    w.close();
     return new IndexContext(dir, reader, searchTermToGroupCounts, contentStrings.toArray(new String[contentStrings.size()]));
   }
 

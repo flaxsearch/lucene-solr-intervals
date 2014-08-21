@@ -116,7 +116,7 @@ public class TestFilterAtomicReader extends LuceneTestCase {
   public void testFilterIndexReader() throws Exception {
     Directory directory = newDirectory();
 
-    IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter writer = new IndexWriter(directory, newIndexWriterConfig(new MockAnalyzer(random())));
 
     Document d1 = new Document();
     d1.add(newTextField("default", "one two", Field.Store.YES));
@@ -130,17 +130,17 @@ public class TestFilterAtomicReader extends LuceneTestCase {
     d3.add(newTextField("default", "two four", Field.Store.YES));
     writer.addDocument(d3);
 
-    writer.shutdown();
+    writer.close();
 
     Directory target = newDirectory();
 
     // We mess with the postings so this can fail:
     ((BaseDirectoryWrapper) target).setCrossCheckTermVectorsOnClose(false);
 
-    writer = new IndexWriter(target, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    writer = new IndexWriter(target, newIndexWriterConfig(new MockAnalyzer(random())));
     IndexReader reader = new TestReader(DirectoryReader.open(directory));
     writer.addIndexes(reader);
-    writer.shutdown();
+    writer.close();
     reader.close();
     reader = DirectoryReader.open(target);
     

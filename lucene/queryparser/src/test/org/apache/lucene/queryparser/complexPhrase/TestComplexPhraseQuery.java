@@ -27,7 +27,6 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.StoredDocument;
-import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -87,7 +86,7 @@ public class TestComplexPhraseQuery extends LuceneTestCase {
   }
 
   private void checkBadQuery(String qString) {
-    ComplexPhraseQueryParser qp = new ComplexPhraseQueryParser(TEST_VERSION_CURRENT, defaultFieldName, analyzer);
+    ComplexPhraseQueryParser qp = new ComplexPhraseQueryParser(defaultFieldName, analyzer);
     qp.setInOrder(inOrder);
     Throwable expected = null;
     try {
@@ -101,7 +100,7 @@ public class TestComplexPhraseQuery extends LuceneTestCase {
 
   private void checkMatches(String qString, String expectedVals)
       throws Exception {
-    ComplexPhraseQueryParser qp = new ComplexPhraseQueryParser(TEST_VERSION_CURRENT, defaultFieldName, analyzer);
+    ComplexPhraseQueryParser qp = new ComplexPhraseQueryParser(defaultFieldName, analyzer);
     qp.setInOrder(inOrder);
     qp.setFuzzyPrefixLength(1); // usually a good idea
 
@@ -141,7 +140,7 @@ public class TestComplexPhraseQuery extends LuceneTestCase {
   }
 
   public void testHashcodeEquals() throws Exception {
-    ComplexPhraseQueryParser qp = new ComplexPhraseQueryParser(TEST_VERSION_CURRENT, defaultFieldName, analyzer);
+    ComplexPhraseQueryParser qp = new ComplexPhraseQueryParser(defaultFieldName, analyzer);
     qp.setInOrder(true);
     qp.setFuzzyPrefixLength(1);
 
@@ -171,7 +170,7 @@ public class TestComplexPhraseQuery extends LuceneTestCase {
     
     analyzer = new MockAnalyzer(random());
     rd = newDirectory();
-    IndexWriter w = new IndexWriter(rd, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter w = new IndexWriter(rd, newIndexWriterConfig(analyzer));
     for (int i = 0; i < docsContent.length; i++) {
       Document doc = new Document();
       doc.add(newTextField("name", docsContent[i].name, Field.Store.YES));
@@ -179,7 +178,7 @@ public class TestComplexPhraseQuery extends LuceneTestCase {
       doc.add(newTextField("role", docsContent[i].role, Field.Store.YES));
       w.addDocument(doc);
     }
-    w.shutdown();
+    w.close();
     reader = DirectoryReader.open(rd);
     searcher = newSearcher(reader);
   }

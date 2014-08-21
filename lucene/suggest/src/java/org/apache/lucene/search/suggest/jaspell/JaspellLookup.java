@@ -27,8 +27,10 @@ import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.jaspell.JaspellTernarySearchTrie.TSTNode;
 import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.DataOutput;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.UnicodeUtil;
 
 /**
@@ -36,8 +38,10 @@ import org.apache.lucene.util.UnicodeUtil;
  * <a href="http://jaspell.sourceforge.net/">JaSpell</a>.
  * 
  * @see JaspellTernarySearchTrie
+ * @deprecated Migrate to one of the newer suggesters which are much more RAM efficient.
  */
-public class JaspellLookup extends Lookup {
+@Deprecated
+public class JaspellLookup extends Lookup implements Accountable {
   JaspellTernarySearchTrie trie = new JaspellTernarySearchTrie();
   private boolean usePrefix = true;
   private int editDistance = 2;
@@ -63,15 +67,14 @@ public class JaspellLookup extends Lookup {
     trie = new JaspellTernarySearchTrie();
     trie.setMatchAlmostDiff(editDistance);
     BytesRef spare;
-    final CharsRef charsSpare = new CharsRef();
+    final CharsRefBuilder charsSpare = new CharsRefBuilder();
 
     while ((spare = iterator.next()) != null) {
       final long weight = iterator.weight();
       if (spare.length == 0) {
         continue;
       }
-      charsSpare.grow(spare.length);
-      UnicodeUtil.UTF8toUTF16(spare.bytes, spare.offset, spare.length, charsSpare);
+      charsSpare.copyUTF8Bytes(spare);
       trie.put(charsSpare.toString(), Long.valueOf(weight));
       count++;
     }
@@ -201,10 +204,9 @@ public class JaspellLookup extends Lookup {
     return true;
   }
 
-  /** Returns byte size of the underlying TST. */
   @Override
-  public long sizeInBytes() {
-    return trie.sizeInBytes();
+  public long ramBytesUsed() {
+    return trie.ramBytesUsed();
   }
   
   @Override

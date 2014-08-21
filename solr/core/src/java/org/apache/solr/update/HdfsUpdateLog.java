@@ -201,7 +201,7 @@ public class HdfsUpdateLog extends UpdateLog {
     
     // Record first two logs (oldest first) at startup for potential tlog
     // recovery.
-    // It's possible that at abnormal shutdown both "tlog" and "prevTlog" were
+    // It's possible that at abnormal close both "tlog" and "prevTlog" were
     // uncapped.
     for (TransactionLog ll : logs) {
       newestLogsOnStartup.addFirst(ll);
@@ -305,7 +305,7 @@ public class HdfsUpdateLog extends UpdateLog {
     if (ulogPluginInfo == null) return;
     Path tlogDir = new Path(getTlogDir(core, ulogPluginInfo));
     try {
-      if (fs.exists(tlogDir)) {
+      if (fs != null && fs.exists(tlogDir)) {
         String[] files = getLogList(tlogDir);
         for (String file : files) {
           Path f = new Path(tlogDir, file);

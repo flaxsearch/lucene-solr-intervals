@@ -35,6 +35,7 @@ import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.IntsRef;
+import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.MathUtil;
 import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.FST.INPUT_TYPE;
@@ -254,7 +255,7 @@ class Lucene42DocValuesConsumer extends DocValuesConsumer {
     meta.writeLong(data.getFilePointer());
     PositiveIntOutputs outputs = PositiveIntOutputs.getSingleton();
     Builder<Long> builder = new Builder<>(INPUT_TYPE.BYTE1, outputs);
-    IntsRef scratch = new IntsRef();
+    IntsRefBuilder scratch = new IntsRefBuilder();
     long ord = 0;
     for (BytesRef v : values) {
       builder.add(Util.toIntsRef(v, scratch), ord);
@@ -377,5 +378,10 @@ class Lucene42DocValuesConsumer extends DocValuesConsumer {
     public void remove() {
       throw new UnsupportedOperationException();
     }
+  }
+
+  @Override
+  public void addSortedNumericField(FieldInfo field, Iterable<Number> docToValueCount, Iterable<Number> values) throws IOException {
+    throw new UnsupportedOperationException("Lucene 4.2 does not support SORTED_NUMERIC");
   }
 }

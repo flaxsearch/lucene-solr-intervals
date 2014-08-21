@@ -49,7 +49,7 @@ public class TestSegmentTermEnum extends LuceneTestCase {
   public void testTermEnum() throws IOException {
     IndexWriter writer = null;
 
-    writer  = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    writer  = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
 
     // ADD 100 documents with term : aaa
     // add 100 documents with terms: aaa bbb
@@ -59,15 +59,16 @@ public class TestSegmentTermEnum extends LuceneTestCase {
       addDoc(writer, "aaa bbb");
     }
 
-    writer.shutdown();
+    writer.close();
 
     // verify document frequency of terms in an multi segment index
     verifyDocFreq();
 
     // merge segments
-    writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.APPEND));
+    writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
+                                    .setOpenMode(OpenMode.APPEND));
     writer.forceMerge(1);
-    writer.shutdown();
+    writer.close();
 
     // verify document frequency of terms in a single segment index
     verifyDocFreq();
@@ -75,9 +76,10 @@ public class TestSegmentTermEnum extends LuceneTestCase {
 
   public void testPrevTermAtEnd() throws IOException
   {
-    IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setCodec(TestUtil.alwaysPostingsFormat(new Lucene41PostingsFormat())));
+    IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
+                                .setCodec(TestUtil.alwaysPostingsFormat(new Lucene41PostingsFormat())));
     addDoc(writer, "aaa bbb");
-    writer.shutdown();
+    writer.close();
     SegmentReader reader = getOnlySegmentReader(DirectoryReader.open(dir));
     TermsEnum terms = reader.fields().terms("content").iterator(null);
     assertNotNull(terms.next());

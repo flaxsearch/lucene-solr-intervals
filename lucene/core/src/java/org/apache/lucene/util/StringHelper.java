@@ -46,48 +46,26 @@ public abstract class StringHelper {
         return i;
     return len;
   }
+  
+  /** 
+   * Returns the length of {@code currentTerm} needed for use as a sort key.
+   * so that {@link BytesRef#compareTo(BytesRef)} still returns the same result.
+   * This method assumes currentTerm comes after priorTerm.
+   */
+  public static int sortKeyLength(final BytesRef priorTerm, final BytesRef currentTerm) {
+    final int currentTermOffset = currentTerm.offset;
+    final int priorTermOffset = priorTerm.offset;
+    final int limit = Math.min(priorTerm.length, currentTerm.length);
+    for (int i = 0; i < limit; i++) {
+      if (priorTerm.bytes[priorTermOffset+i] != currentTerm.bytes[currentTermOffset+i]) {
+        return i+1;
+      }
+    }
+    return Math.min(1+priorTerm.length, currentTerm.length);
+  }
 
   private StringHelper() {
   }
-  
-  /**
-   * @return a Comparator over versioned strings such as X.YY.Z
-   * @lucene.internal
-   */
-  public static Comparator<String> getVersionComparator() {
-    return versionComparator;
-  }
-  
-  private static Comparator<String> versionComparator = new Comparator<String>() {
-    @Override
-    public int compare(String a, String b) {
-      StringTokenizer aTokens = new StringTokenizer(a, ".");
-      StringTokenizer bTokens = new StringTokenizer(b, ".");
-      
-      while (aTokens.hasMoreTokens()) {
-        int aToken = Integer.parseInt(aTokens.nextToken());
-        if (bTokens.hasMoreTokens()) {
-          int bToken = Integer.parseInt(bTokens.nextToken());
-          if (aToken != bToken) {
-            return aToken < bToken ? -1 : 1;
-          }
-        } else {
-          // a has some extra trailing tokens. if these are all zeroes, thats ok.
-          if (aToken != 0) {
-            return 1; 
-          }
-        }
-      }
-      
-      // b has some extra trailing tokens. if these are all zeroes, thats ok.
-      while (bTokens.hasMoreTokens()) {
-        if (Integer.parseInt(bTokens.nextToken()) != 0)
-          return -1;
-      }
-      
-      return 0;
-    }
-  };
 
   public static boolean equals(String s1, String s2) {
     if (s1 == null) {
@@ -95,6 +73,31 @@ public abstract class StringHelper {
     } else {
       return s1.equals(s2);
     }
+  }
+
+  /**
+   * Returns <code>true</code> iff the ref starts with the given prefix.
+   * Otherwise <code>false</code>.
+   * 
+   * @param ref
+   *         the {@code byte[]} to test
+   * @param prefix
+   *         the expected prefix
+   * @return Returns <code>true</code> iff the ref starts with the given prefix.
+   *         Otherwise <code>false</code>.
+   */
+  public static boolean startsWith(byte[] ref, BytesRef prefix) {
+    if (ref.length < prefix.length) {
+      return false;
+    }
+
+    for(int i=0;i<prefix.length;i++) {
+      if (ref[i] != prefix.bytes[prefix.offset+i]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   /**

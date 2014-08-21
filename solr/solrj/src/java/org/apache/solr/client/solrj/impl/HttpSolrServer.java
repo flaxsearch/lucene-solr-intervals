@@ -322,7 +322,6 @@ public class HttpSolrServer extends SolrServer {
             LinkedList<NameValuePair> postParams = new LinkedList<>();
             if (streams == null || isMultipart) {
               HttpPost post = new HttpPost(url + ClientUtils.toQueryString( queryParams, false ));
-              post.setHeader("Content-Charset", "UTF-8");
               if (!isMultipart) {
                 post.addHeader("Content-Type",
                     "application/x-www-form-urlencoded; charset=UTF-8");
@@ -439,9 +438,6 @@ public class HttpSolrServer extends SolrServer {
   }
   
   protected NamedList<Object> executeMethod(HttpRequestBase method, final ResponseParser processor) throws SolrServerException {
-    // XXX client already has this set, is this needed?
-    method.getParams().setParameter(ClientPNames.HANDLE_REDIRECTS,
-        followRedirects);
     method.addHeader("User-Agent", AGENT);
     
     InputStream respBody = null;

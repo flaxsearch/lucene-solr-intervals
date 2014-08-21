@@ -58,7 +58,7 @@
     <tests.codec>random</tests.codec>
     <tests.directory>random</tests.directory>
     <tests.locale>random</tests.locale>
-    <tests.luceneMatchVersion>5.0</tests.luceneMatchVersion>
+    <tests.luceneMatchVersion>5.0.0</tests.luceneMatchVersion>
     <tests.multiplier>1</tests.multiplier>
     <tests.nightly>false</tests.nightly>
     <tests.postingsformat>random</tests.postingsformat>
@@ -159,7 +159,7 @@
         <plugin>
           <groupId>de.thetaphi</groupId>
           <artifactId>forbiddenapis</artifactId>
-          <version>1.4</version>
+          <version>1.6.1</version>
           <configuration>
             <!--
               This is the default setting, we don't support too new Java versions.

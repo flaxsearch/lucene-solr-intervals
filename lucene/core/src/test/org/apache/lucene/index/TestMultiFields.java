@@ -36,7 +36,8 @@ public class TestMultiFields extends LuceneTestCase {
 
       Directory dir = newDirectory();
 
-      IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(NoMergePolicy.INSTANCE));
+      IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
+                                             .setMergePolicy(NoMergePolicy.INSTANCE));
       // we can do this because we use NoMergePolicy (and dont merge to "nothing")
       w.setKeepFullyDeletedSegments(true);
 
@@ -106,7 +107,7 @@ public class TestMultiFields extends LuceneTestCase {
       }
 
       IndexReader reader = w.getReader();
-      w.shutdown();
+      w.close();
       if (VERBOSE) {
         System.out.println("TEST: reader=" + reader);
       }
@@ -155,14 +156,14 @@ public class TestMultiFields extends LuceneTestCase {
 
   public void testSeparateEnums() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
     Document d = new Document();
     d.add(newStringField("f", "j", Field.Store.NO));
     w.addDocument(d);
     w.commit();
     w.addDocument(d);
     IndexReader r = w.getReader();
-    w.shutdown();
+    w.close();
     DocsEnum d1 = TestUtil.docs(random(), r, "f", new BytesRef("j"), null, null, DocsEnum.FLAG_NONE);
     DocsEnum d2 = TestUtil.docs(random(), r, "f", new BytesRef("j"), null, null, DocsEnum.FLAG_NONE);
     assertEquals(0, d1.nextDoc());
@@ -173,14 +174,14 @@ public class TestMultiFields extends LuceneTestCase {
   
   public void testTermDocsEnum() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
     Document d = new Document();
     d.add(newStringField("f", "j", Field.Store.NO));
     w.addDocument(d);
     w.commit();
     w.addDocument(d);
     IndexReader r = w.getReader();
-    w.shutdown();
+    w.close();
     DocsEnum de = MultiFields.getTermDocsEnum(r, null, "f", new BytesRef("j"));
     assertEquals(0, de.nextDoc());
     assertEquals(1, de.nextDoc());

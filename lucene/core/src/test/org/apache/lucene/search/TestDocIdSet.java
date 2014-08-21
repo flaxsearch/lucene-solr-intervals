@@ -38,6 +38,11 @@ public class TestDocIdSet extends LuceneTestCase {
     final int maxdoc=10;
     final DocIdSet innerSet = new DocIdSet() {
 
+      @Override
+      public long ramBytesUsed() {
+        return 0L;
+      }
+
         @Override
         public DocIdSetIterator iterator() {
           return new DocIdSetIterator() {
@@ -110,7 +115,7 @@ public class TestDocIdSet extends LuceneTestCase {
     doc.add(newStringField("c", "val", Field.Store.NO));
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // First verify the document is searchable.
     IndexSearcher searcher = newSearcher(reader);
@@ -136,7 +141,7 @@ public class TestDocIdSet extends LuceneTestCase {
     doc.add(newStringField("c", "val", Field.Store.NO));
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // First verify the document is searchable.
     IndexSearcher searcher = newSearcher(reader);
@@ -151,6 +156,11 @@ public class TestDocIdSet extends LuceneTestCase {
           public DocIdSetIterator iterator() {
             return null;
           } 
+
+          @Override
+          public long ramBytesUsed() {
+            return 0L;
+          }
         };
         return new FilteredDocIdSet(innerNullIteratorSet) {
           @Override

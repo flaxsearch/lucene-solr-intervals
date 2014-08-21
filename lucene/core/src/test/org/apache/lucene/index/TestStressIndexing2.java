@@ -25,8 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-import junit.framework.Assert;
-
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.document.Document;
@@ -66,7 +64,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
     dw.writer.commit();
     verifyEquals(random(), reader, dir, "id");
     reader.close();
-    dw.writer.shutdown();
+    dw.writer.close();
     dir.close();
   }
   
@@ -146,9 +144,11 @@ public class TestStressIndexing2 extends LuceneTestCase {
   
   public DocsAndWriter indexRandomIWReader(int nThreads, int iterations, int range, Directory dir) throws IOException, InterruptedException {
     Map<String,Document> docs = new HashMap<>();
-    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.CREATE).setRAMBufferSizeMB(
-            0.1).setMaxBufferedDocs(maxBufferedDocs).setMergePolicy(newLogMergePolicy()), new YieldTestPoint());
+    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
+            .setOpenMode(OpenMode.CREATE)
+            .setRAMBufferSizeMB(0.1)
+            .setMaxBufferedDocs(maxBufferedDocs)
+            .setMergePolicy(newLogMergePolicy()), new YieldTestPoint());
     w.commit();
     LogMergePolicy lmp = (LogMergePolicy) w.getConfig().getMergePolicy();
     lmp.setNoCFSRatio(0.0);
@@ -178,7 +178,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
     }
 
     // w.forceMerge(1);
-    //w.shutdown();    
+    //w.close();
 
     for (int i=0; i<threads.length; i++) {
       IndexingThread th = threads[i];
@@ -197,10 +197,13 @@ public class TestStressIndexing2 extends LuceneTestCase {
   public Map<String,Document> indexRandom(int nThreads, int iterations, int range, Directory dir, int maxThreadStates,
                                           boolean doReaderPooling) throws IOException, InterruptedException {
     Map<String,Document> docs = new HashMap<>();
-    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.CREATE)
-             .setRAMBufferSizeMB(0.1).setMaxBufferedDocs(maxBufferedDocs).setIndexerThreadPool(new DocumentsWriterPerThreadPool(maxThreadStates))
-             .setReaderPooling(doReaderPooling).setMergePolicy(newLogMergePolicy()), new YieldTestPoint());
+    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
+             .setOpenMode(OpenMode.CREATE)
+             .setRAMBufferSizeMB(0.1)
+             .setMaxBufferedDocs(maxBufferedDocs)
+             .setIndexerThreadPool(new DocumentsWriterPerThreadPool(maxThreadStates))
+             .setReaderPooling(doReaderPooling)
+             .setMergePolicy(newLogMergePolicy()), new YieldTestPoint());
     LogMergePolicy lmp = (LogMergePolicy) w.getConfig().getMergePolicy();
     lmp.setNoCFSRatio(0.0);
     lmp.setMergeFactor(mergeFactor);
@@ -223,7 +226,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
     }
 
     //w.forceMerge(1);
-    w.shutdown();    
+    w.close();
 
     for (int i=0; i<threads.length; i++) {
       IndexingThread th = threads[i];
@@ -240,7 +243,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
 
   
   public static void indexSerial(Random random, Map<String,Document> docs, Directory dir) throws IOException {
-    IndexWriter w = new IndexWriter(dir, LuceneTestCase.newIndexWriterConfig(random, TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
+    IndexWriter w = new IndexWriter(dir, LuceneTestCase.newIndexWriterConfig(random, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
 
     // index all docs in a single thread
     Iterator<Document> iter = docs.values().iterator();
@@ -259,7 +262,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
       // System.out.println("indexing "+d1);
     }
     
-    w.shutdown();
+    w.close();
   }
   
   public void verifyEquals(Random r, DirectoryReader r1, Directory dir2, String idField) throws Throwable {

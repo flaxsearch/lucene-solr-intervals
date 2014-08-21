@@ -16,7 +16,6 @@ package org.apache.lucene.search.payloads;
  * limitations under the License.
  */
 import java.io.IOException;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
@@ -107,7 +106,7 @@ public class TestPayloadNearQuery extends LuceneTestCase {
   public static void beforeClass() throws Exception {
     directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new PayloadAnalyzer())
+        newIndexWriterConfig(new PayloadAnalyzer())
         .setSimilarity(similarity));
     //writer.infoStream = System.out;
     for (int i = 0; i < 1000; i++) {
@@ -118,7 +117,7 @@ public class TestPayloadNearQuery extends LuceneTestCase {
       writer.addDocument(doc);
     }
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     searcher = newSearcher(reader);
     searcher.setSimilarity(similarity);

@@ -34,7 +34,6 @@ import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.TestUtil;
 
 @SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 public class TestLongPostings extends LuceneTestCase {
@@ -109,7 +108,7 @@ public class TestLongPostings extends LuceneTestCase {
     }
 
     final IndexReader r;
-    final IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+    final IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()))
       .setOpenMode(IndexWriterConfig.OpenMode.CREATE)
       .setMergePolicy(newLogMergePolicy());
     iwc.setRAMBufferSizeMB(16.0 + 16.0 * random().nextDouble());
@@ -128,7 +127,7 @@ public class TestLongPostings extends LuceneTestCase {
     }
 
     r = riw.getReader();
-    riw.shutdown();
+    riw.close();
 
     /*
     if (VERBOSE) {
@@ -307,7 +306,7 @@ public class TestLongPostings extends LuceneTestCase {
 
     final IndexReader r;
     if (true) { 
-      final IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+      final IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()))
         .setOpenMode(IndexWriterConfig.OpenMode.CREATE)
         .setMergePolicy(newLogMergePolicy());
       iwc.setRAMBufferSizeMB(16.0 + 16.0 * random().nextDouble());
@@ -328,7 +327,7 @@ public class TestLongPostings extends LuceneTestCase {
       }
 
       r = riw.getReader();
-      riw.shutdown();
+      riw.close();
     } else {
       r = DirectoryReader.open(dir);
     }

@@ -30,7 +30,6 @@ import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SegmentReader;
 import org.apache.lucene.index.SortedDocValues;
@@ -38,13 +37,15 @@ import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.PagedBytes;
+import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.packed.GrowableWriter;
-import org.apache.lucene.util.packed.MonotonicAppendingLongBuffer;
 import org.apache.lucene.util.packed.PackedInts;
+import org.apache.lucene.util.packed.PackedLongValues;
 
 /**
  * Expert: The default cache implementation, storing all values in memory.
@@ -87,11 +88,11 @@ class FieldCacheImpl implements FieldCache {
       final Cache cache = cacheEntry.getValue();
       final Class<?> cacheType = cacheEntry.getKey();
       synchronized(cache.readerCache) {
-        for (final Map.Entry<Object,Map<CacheKey, Object>> readerCacheEntry : cache.readerCache.entrySet()) {
+        for (final Map.Entry<Object,Map<CacheKey, Accountable>> readerCacheEntry : cache.readerCache.entrySet()) {
           final Object readerKey = readerCacheEntry.getKey();
           if (readerKey == null) continue;
-          final Map<CacheKey, Object> innerCache = readerCacheEntry.getValue();
-          for (final Map.Entry<CacheKey, Object> mapEntry : innerCache.entrySet()) {
+          final Map<CacheKey, Accountable> innerCache = readerCacheEntry.getValue();
+          for (final Map.Entry<CacheKey, Accountable> mapEntry : innerCache.entrySet()) {
             CacheKey entry = mapEntry.getKey();
             result.add(new CacheEntry(readerKey, entry.field,
                                       cacheType, entry.custom,
@@ -124,9 +125,9 @@ class FieldCacheImpl implements FieldCache {
 
     final FieldCacheImpl wrapper;
 
-    final Map<Object,Map<CacheKey,Object>> readerCache = new WeakHashMap<>();
+    final Map<Object,Map<CacheKey,Accountable>> readerCache = new WeakHashMap<>();
     
-    protected abstract Object createValue(AtomicReader reader, CacheKey key, boolean setDocsWithField)
+    protected abstract Accountable createValue(AtomicReader reader, CacheKey key, boolean setDocsWithField)
         throws IOException;
 
     /** Remove this reader from the cache, if present. */
@@ -138,10 +139,10 @@ class FieldCacheImpl implements FieldCache {
 
     /** Sets the key to the value for the provided reader;
      *  if the key is already set then this doesn't change it. */
-    public void put(AtomicReader reader, CacheKey key, Object value) {
+    public void put(AtomicReader reader, CacheKey key, Accountable value) {
       final Object readerKey = reader.getCoreCacheKey();
       synchronized (readerCache) {
-        Map<CacheKey,Object> innerCache = readerCache.get(readerKey);
+        Map<CacheKey,Accountable> innerCache = readerCache.get(readerKey);
         if (innerCache == null) {
           // First time this reader is using FieldCache
           innerCache = new HashMap<>();
@@ -158,8 +159,8 @@ class FieldCacheImpl implements FieldCache {
     }
 
     public Object get(AtomicReader reader, CacheKey key, boolean setDocsWithField) throws IOException {
-      Map<CacheKey,Object> innerCache;
-      Object value;
+      Map<CacheKey,Accountable> innerCache;
+      Accountable value;
       final Object readerKey = reader.getCoreCacheKey();
       synchronized (readerCache) {
         innerCache = readerCache.get(readerKey);
@@ -324,7 +325,7 @@ class FieldCacheImpl implements FieldCache {
     } else {
       bits = docsWithField;
     }
-    caches.get(DocsWithFieldCache.class).put(reader, new CacheKey(field, null), bits);
+    caches.get(DocsWithFieldCache.class).put(reader, new CacheKey(field, null), new BitsEntry(bits));
   }
 
   private static class HoldsOneThing<T> {
@@ -358,7 +359,26 @@ class FieldCacheImpl implements FieldCache {
     } else if (!fieldInfo.isIndexed()) {
       return new Bits.MatchNoBits(reader.maxDoc());
     }
-    return (Bits) caches.get(DocsWithFieldCache.class).get(reader, new CacheKey(field, null), false);
+    BitsEntry bitsEntry = (BitsEntry) caches.get(DocsWithFieldCache.class).get(reader, new CacheKey(field, null), false);
+    return bitsEntry.bits;
+  }
+  
+  static class BitsEntry implements Accountable {
+    final Bits bits;
+    
+    BitsEntry(Bits bits) {
+      this.bits = bits;
+    }
+    
+    @Override
+    public long ramBytesUsed() {
+      long base = RamUsageEstimator.NUM_BYTES_OBJECT_REF;
+      if (bits instanceof Bits.MatchAllBits || bits instanceof Bits.MatchNoBits) {
+        return base;
+      } else {
+        return base + (bits.length() >>> 3);
+      }
+    }
   }
 
   static final class DocsWithFieldCache extends Cache {
@@ -367,7 +387,7 @@ class FieldCacheImpl implements FieldCache {
     }
     
     @Override
-    protected Object createValue(AtomicReader reader, CacheKey key, boolean setDocsWithField /* ignored */)
+    protected BitsEntry createValue(AtomicReader reader, CacheKey key, boolean setDocsWithField /* ignored */)
     throws IOException {
       final String field = key.field;
       final int maxDoc = reader.maxDoc();
@@ -380,7 +400,7 @@ class FieldCacheImpl implements FieldCache {
         assert termsDocCount <= maxDoc;
         if (termsDocCount == maxDoc) {
           // Fast case: all docs have this field:
-          return new Bits.MatchAllBits(maxDoc);
+          return new BitsEntry(new Bits.MatchAllBits(maxDoc));
         }
         final TermsEnum termsEnum = terms.iterator(null);
         DocsEnum docs = null;
@@ -406,15 +426,15 @@ class FieldCacheImpl implements FieldCache {
         }
       }
       if (res == null) {
-        return new Bits.MatchNoBits(maxDoc);
+        return new BitsEntry(new Bits.MatchNoBits(maxDoc));
       }
       final int numSet = res.cardinality();
       if (numSet >= maxDoc) {
         // The cardinality of the BitSet is maxDoc if all documents have a value.
         assert numSet == maxDoc;
-        return new Bits.MatchAllBits(maxDoc);
+        return new BitsEntry(new Bits.MatchAllBits(maxDoc));
       }
-      return res;
+      return new BitsEntry(res);
     }
   }
   
@@ -431,17 +451,17 @@ class FieldCacheImpl implements FieldCache {
     } else {
       final FieldInfo info = reader.getFieldInfos().fieldInfo(field);
       if (info == null) {
-        return DocValues.EMPTY_NUMERIC;
+        return DocValues.emptyNumeric();
       } else if (info.hasDocValues()) {
         throw new IllegalStateException("Type mismatch: " + field + " was indexed as " + info.getDocValuesType());
       } else if (!info.isIndexed()) {
-        return DocValues.EMPTY_NUMERIC;
+        return DocValues.emptyNumeric();
       }
       return (NumericDocValues) caches.get(Long.TYPE).get(reader, new CacheKey(field, parser), setDocsWithField);
     }
   }
 
-  static class LongsFromArray extends NumericDocValues {
+  static class LongsFromArray extends NumericDocValues implements Accountable {
     private final PackedInts.Reader values;
     private final long minValue;
 
@@ -454,6 +474,11 @@ class FieldCacheImpl implements FieldCache {
     public long get(int docID) {
       return minValue + values.get(docID);
     }
+
+    @Override
+    public long ramBytesUsed() {
+      return values.ramBytesUsed() + RamUsageEstimator.NUM_BYTES_OBJECT_REF + RamUsageEstimator.NUM_BYTES_LONG;
+    }
   }
 
   static final class LongCache extends Cache {
@@ -462,7 +487,7 @@ class FieldCacheImpl implements FieldCache {
     }
 
     @Override
-    protected Object createValue(final AtomicReader reader, CacheKey key, boolean setDocsWithField)
+    protected Accountable createValue(final AtomicReader reader, CacheKey key, boolean setDocsWithField)
         throws IOException {
 
       final Parser parser = (Parser) key.custom;
@@ -523,38 +548,54 @@ class FieldCacheImpl implements FieldCache {
     }
   }
 
-  public static class SortedDocValuesImpl extends SortedDocValues {
+  public static class SortedDocValuesImpl implements Accountable {
     private final PagedBytes.Reader bytes;
-    private final MonotonicAppendingLongBuffer termOrdToBytesOffset;
+    private final PackedLongValues termOrdToBytesOffset;
     private final PackedInts.Reader docToTermOrd;
     private final int numOrd;
 
-    public SortedDocValuesImpl(PagedBytes.Reader bytes, MonotonicAppendingLongBuffer termOrdToBytesOffset, PackedInts.Reader docToTermOrd, int numOrd) {
+    public SortedDocValuesImpl(PagedBytes.Reader bytes, PackedLongValues termOrdToBytesOffset, PackedInts.Reader docToTermOrd, int numOrd) {
       this.bytes = bytes;
       this.docToTermOrd = docToTermOrd;
       this.termOrdToBytesOffset = termOrdToBytesOffset;
       this.numOrd = numOrd;
     }
+    
+    public SortedDocValues iterator() {
+      final BytesRef term = new BytesRef();
+      return new SortedDocValues() {
 
-    @Override
-    public int getValueCount() {
-      return numOrd;
+        @Override
+        public int getValueCount() {
+          return numOrd;
+        }
+
+        @Override
+        public int getOrd(int docID) {
+          // Subtract 1, matching the 1+ord we did when
+          // storing, so that missing values, which are 0 in the
+          // packed ints, are returned as -1 ord:
+          return (int) docToTermOrd.get(docID)-1;
+        }
+
+        @Override
+        public BytesRef lookupOrd(int ord) {
+          if (ord < 0) {
+            throw new IllegalArgumentException("ord must be >=0 (got ord=" + ord + ")");
+          }
+          bytes.fill(term, termOrdToBytesOffset.get(ord));
+          return term;
+        }
+      };
     }
 
     @Override
-    public int getOrd(int docID) {
-      // Subtract 1, matching the 1+ord we did when
-      // storing, so that missing values, which are 0 in the
-      // packed ints, are returned as -1 ord:
-      return (int) docToTermOrd.get(docID)-1;
-    }
-
-    @Override
-    public void lookupOrd(int ord, BytesRef ret) {
-      if (ord < 0) {
-        throw new IllegalArgumentException("ord must be >=0 (got ord=" + ord + ")");
-      }
-      bytes.fill(ret, termOrdToBytesOffset.get(ord));
+    public long ramBytesUsed() {
+      return bytes.ramBytesUsed() + 
+             termOrdToBytesOffset.ramBytesUsed() + 
+             docToTermOrd.ramBytesUsed() + 
+             3*RamUsageEstimator.NUM_BYTES_OBJECT_REF +
+             RamUsageEstimator.NUM_BYTES_INT;
     }
   }
 
@@ -571,15 +612,16 @@ class FieldCacheImpl implements FieldCache {
     } else {
       final FieldInfo info = reader.getFieldInfos().fieldInfo(field);
       if (info == null) {
-        return DocValues.EMPTY_SORTED;
+        return DocValues.emptySorted();
       } else if (info.hasDocValues()) {
         // we don't try to build a sorted instance from numeric/binary doc
         // values because dedup can be very costly
         throw new IllegalStateException("Type mismatch: " + field + " was indexed as " + info.getDocValuesType());
       } else if (!info.isIndexed()) {
-        return DocValues.EMPTY_SORTED;
+        return DocValues.emptySorted();
       }
-      return (SortedDocValues) caches.get(SortedDocValues.class).get(reader, new CacheKey(field, acceptableOverheadRatio), false);
+      SortedDocValuesImpl impl = (SortedDocValuesImpl) caches.get(SortedDocValues.class).get(reader, new CacheKey(field, acceptableOverheadRatio), false);
+      return impl.iterator();
     }
   }
 
@@ -589,7 +631,7 @@ class FieldCacheImpl implements FieldCache {
     }
 
     @Override
-    protected Object createValue(AtomicReader reader, CacheKey key, boolean setDocsWithField /* ignored */)
+    protected Accountable createValue(AtomicReader reader, CacheKey key, boolean setDocsWithField /* ignored */)
         throws IOException {
 
       final int maxDoc = reader.maxDoc();
@@ -602,13 +644,6 @@ class FieldCacheImpl implements FieldCache {
 
       int startTermsBPV;
 
-      final int termCountHardLimit;
-      if (maxDoc == Integer.MAX_VALUE) {
-        termCountHardLimit = Integer.MAX_VALUE;
-      } else {
-        termCountHardLimit = maxDoc+1;
-      }
-
       // TODO: use Uninvert?
       if (terms != null) {
         // Try for coarse estimate for number of bits; this
@@ -616,11 +651,8 @@ class FieldCacheImpl implements FieldCache {
         // is fine -- GrowableWriter will reallocate as needed
         long numUniqueTerms = terms.size();
         if (numUniqueTerms != -1L) {
-          if (numUniqueTerms > termCountHardLimit) {
-            // app is misusing the API (there is more than
-            // one term per doc); in this case we make best
-            // effort to load what we can (see LUCENE-2142)
-            numUniqueTerms = termCountHardLimit;
+          if (numUniqueTerms > maxDoc) {
+            throw new IllegalStateException("Type mismatch: " + key.field + " was indexed with multiple values per document, use SORTED_SET instead");
           }
 
           startTermsBPV = PackedInts.bitsRequired(numUniqueTerms);
@@ -631,7 +663,7 @@ class FieldCacheImpl implements FieldCache {
         startTermsBPV = 1;
       }
 
-      MonotonicAppendingLongBuffer termOrdToBytesOffset = new MonotonicAppendingLongBuffer();
+      PackedLongValues.Builder termOrdToBytesOffset = PackedLongValues.monotonicBuilder(PackedInts.COMPACT);
       final GrowableWriter docToTermOrd = new GrowableWriter(startTermsBPV, maxDoc, acceptableOverheadRatio);
 
       int termOrd = 0;
@@ -647,8 +679,8 @@ class FieldCacheImpl implements FieldCache {
           if (term == null) {
             break;
           }
-          if (termOrd >= termCountHardLimit) {
-            break;
+          if (termOrd >= maxDoc) {
+            throw new IllegalStateException("Type mismatch: " + key.field + " was indexed with multiple values per document, use SORTED_SET instead");
           }
 
           termOrdToBytesOffset.add(bytes.copyUsingLengthPrefix(term));
@@ -664,14 +696,13 @@ class FieldCacheImpl implements FieldCache {
           termOrd++;
         }
       }
-      termOrdToBytesOffset.freeze();
 
       // maybe an int-only impl?
-      return new SortedDocValuesImpl(bytes.freeze(true), termOrdToBytesOffset, docToTermOrd.getMutable(), termOrd);
+      return new SortedDocValuesImpl(bytes.freeze(true), termOrdToBytesOffset.build(), docToTermOrd.getMutable(), termOrd);
     }
   }
 
-  private static class BinaryDocValuesImpl extends BinaryDocValues {
+  private static class BinaryDocValuesImpl implements Accountable {
     private final PagedBytes.Reader bytes;
     private final PackedInts.Reader docToOffset;
 
@@ -679,17 +710,26 @@ class FieldCacheImpl implements FieldCache {
       this.bytes = bytes;
       this.docToOffset = docToOffset;
     }
+    
+    public BinaryDocValues iterator() {
+      final BytesRef term = new BytesRef();
+      return new BinaryDocValues() {
+        @Override
+        public BytesRef get(int docID) {
+          final int pointer = (int) docToOffset.get(docID);
+          if (pointer == 0) {
+            term.length = 0;
+          } else {
+            bytes.fill(term, pointer);
+          }
+          return term;
+        }   
+      };
+    }
 
     @Override
-    public void get(int docID, BytesRef ret) {
-      final int pointer = (int) docToOffset.get(docID);
-      if (pointer == 0) {
-        ret.bytes = BytesRef.EMPTY_BYTES;
-        ret.offset = 0;
-        ret.length = 0;
-      } else {
-        bytes.fill(ret, pointer);
-      }
+    public long ramBytesUsed() {
+      return bytes.ramBytesUsed() + docToOffset.ramBytesUsed() + 2*RamUsageEstimator.NUM_BYTES_OBJECT_REF;
     }
   }
 
@@ -713,14 +753,15 @@ class FieldCacheImpl implements FieldCache {
 
     final FieldInfo info = reader.getFieldInfos().fieldInfo(field);
     if (info == null) {
-      return DocValues.EMPTY_BINARY;
+      return DocValues.emptyBinary();
     } else if (info.hasDocValues()) {
       throw new IllegalStateException("Type mismatch: " + field + " was indexed as " + info.getDocValuesType());
     } else if (!info.isIndexed()) {
-      return DocValues.EMPTY_BINARY;
+      return DocValues.emptyBinary();
     }
 
-    return (BinaryDocValues) caches.get(BinaryDocValues.class).get(reader, new CacheKey(field, acceptableOverheadRatio), setDocsWithField);
+    BinaryDocValuesImpl impl = (BinaryDocValuesImpl) caches.get(BinaryDocValues.class).get(reader, new CacheKey(field, acceptableOverheadRatio), setDocsWithField);
+    return impl.iterator();
   }
 
   static final class BinaryDocValuesCache extends Cache {
@@ -729,7 +770,7 @@ class FieldCacheImpl implements FieldCache {
     }
 
     @Override
-    protected Object createValue(AtomicReader reader, CacheKey key, boolean setDocsWithField)
+    protected Accountable createValue(AtomicReader reader, CacheKey key, boolean setDocsWithField)
         throws IOException {
 
       // TODO: would be nice to first check if DocTermsIndex
@@ -835,18 +876,18 @@ class FieldCacheImpl implements FieldCache {
     
     final FieldInfo info = reader.getFieldInfos().fieldInfo(field);
     if (info == null) {
-      return DocValues.EMPTY_SORTED_SET;
+      return DocValues.emptySortedSet();
     } else if (info.hasDocValues()) {
       throw new IllegalStateException("Type mismatch: " + field + " was indexed as " + info.getDocValuesType());
     } else if (!info.isIndexed()) {
-      return DocValues.EMPTY_SORTED_SET;
+      return DocValues.emptySortedSet();
     }
     
     // ok we need to uninvert. check if we can optimize a bit.
     
     Terms terms = reader.terms(field);
     if (terms == null) {
-      return DocValues.EMPTY_SORTED_SET;
+      return DocValues.emptySortedSet();
     } else {
       // if #postings = #docswithfield we know that the field is "single valued enough".
       // its possible the same term might appear twice in the same document, but SORTED_SET discards frequency.
@@ -867,7 +908,7 @@ class FieldCacheImpl implements FieldCache {
     }
 
     @Override
-    protected Object createValue(AtomicReader reader, CacheKey key, boolean setDocsWithField /* ignored */)
+    protected Accountable createValue(AtomicReader reader, CacheKey key, boolean setDocsWithField /* ignored */)
         throws IOException {
       BytesRef prefix = (BytesRef) key.custom;
       return new DocTermOrds(reader, null, key.field, prefix);

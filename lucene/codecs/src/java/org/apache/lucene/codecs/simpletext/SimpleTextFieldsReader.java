@@ -17,6 +17,16 @@ package org.apache.lucene.codecs.simpletext;
  * limitations under the License.
  */
 
+import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.DOC;
+import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.END;
+import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.END_OFFSET;
+import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.FIELD;
+import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.FREQ;
+import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.PAYLOAD;
+import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.POS;
+import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.START_OFFSET;
+import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.TERM;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
@@ -37,13 +47,18 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.BufferedChecksumIndexInput;
 import org.apache.lucene.store.ChecksumIndexInput;
 import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.IntsRef;
+import org.apache.lucene.util.IntsRefBuilder;
+import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.fst.Builder;
@@ -53,17 +68,12 @@ import org.apache.lucene.util.fst.PairOutputs;
 import org.apache.lucene.util.fst.PositiveIntOutputs;
 import org.apache.lucene.util.fst.Util;
 
-import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.END;
-import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.FIELD;
-import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.TERM;
-import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.DOC;
-import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.FREQ;
-import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.POS;
-import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.START_OFFSET;
-import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.END_OFFSET;
-import static org.apache.lucene.codecs.simpletext.SimpleTextFieldsWriter.PAYLOAD;
-
 class SimpleTextFieldsReader extends FieldsProducer {
+
+  private static final long BASE_RAM_BYTES_USED =
+        RamUsageEstimator.shallowSizeOfInstance(SimpleTextFieldsReader.class)
+      + RamUsageEstimator.shallowSizeOfInstance(TreeMap.class);
+
   private final TreeMap<String,Long> fields;
   private final IndexInput in;
   private final FieldInfos fieldInfos;
@@ -86,16 +96,16 @@ class SimpleTextFieldsReader extends FieldsProducer {
   
   private TreeMap<String,Long> readFields(IndexInput in) throws IOException {
     ChecksumIndexInput input = new BufferedChecksumIndexInput(in);
-    BytesRef scratch = new BytesRef(10);
+    BytesRefBuilder scratch = new BytesRefBuilder();
     TreeMap<String,Long> fields = new TreeMap<>();
     
     while (true) {
       SimpleTextUtil.readLine(input, scratch);
-      if (scratch.equals(END)) {
+      if (scratch.get().equals(END)) {
         SimpleTextUtil.checkFooter(input);
         return fields;
-      } else if (StringHelper.startsWith(scratch, FIELD)) {
-        String fieldName = new String(scratch.bytes, scratch.offset + FIELD.length, scratch.length - FIELD.length, StandardCharsets.UTF_8);
+      } else if (StringHelper.startsWith(scratch.get(), FIELD)) {
+        String fieldName = new String(scratch.bytes(), FIELD.length, scratch.length() - FIELD.length, StandardCharsets.UTF_8);
         fields.put(fieldName, input.getFilePointer());
       }
     }
@@ -233,8 +243,8 @@ class SimpleTextFieldsReader extends FieldsProducer {
     private int docID = -1;
     private int tf;
     private Bits liveDocs;
-    private final BytesRef scratch = new BytesRef(10);
-    private final CharsRef scratchUTF16 = new CharsRef(10);
+    private final BytesRefBuilder scratch = new BytesRefBuilder();
+    private final CharsRefBuilder scratchUTF16 = new CharsRefBuilder();
     private int cost;
     
     public SimpleTextDocsEnum() {
@@ -276,7 +286,7 @@ class SimpleTextFieldsReader extends FieldsProducer {
       while(true) {
         final long lineStart = in.getFilePointer();
         SimpleTextUtil.readLine(in, scratch);
-        if (StringHelper.startsWith(scratch, DOC)) {
+        if (StringHelper.startsWith(scratch.get(), DOC)) {
           if (!first && (liveDocs == null || liveDocs.get(docID))) {
             in.seek(lineStart);
             if (!omitTF) {
@@ -284,23 +294,23 @@ class SimpleTextFieldsReader extends FieldsProducer {
             }
             return docID;
           }
-          UnicodeUtil.UTF8toUTF16(scratch.bytes, scratch.offset+DOC.length, scratch.length-DOC.length, scratchUTF16);
-          docID = ArrayUtil.parseInt(scratchUTF16.chars, 0, scratchUTF16.length);
+          scratchUTF16.copyUTF8Bytes(scratch.bytes(), DOC.length, scratch.length()-DOC.length);
+          docID = ArrayUtil.parseInt(scratchUTF16.chars(), 0, scratchUTF16.length());
           termFreq = 0;
           first = false;
-        } else if (StringHelper.startsWith(scratch, FREQ)) {
-          UnicodeUtil.UTF8toUTF16(scratch.bytes, scratch.offset+FREQ.length, scratch.length-FREQ.length, scratchUTF16);
-          termFreq = ArrayUtil.parseInt(scratchUTF16.chars, 0, scratchUTF16.length);
-        } else if (StringHelper.startsWith(scratch, POS)) {
+        } else if (StringHelper.startsWith(scratch.get(), FREQ)) {
+          scratchUTF16.copyUTF8Bytes(scratch.bytes(), FREQ.length, scratch.length()-FREQ.length);
+          termFreq = ArrayUtil.parseInt(scratchUTF16.chars(), 0, scratchUTF16.length());
+        } else if (StringHelper.startsWith(scratch.get(), POS)) {
           // skip termFreq++;
-        } else if (StringHelper.startsWith(scratch, START_OFFSET)) {
+        } else if (StringHelper.startsWith(scratch.get(), START_OFFSET)) {
           // skip
-        } else if (StringHelper.startsWith(scratch, END_OFFSET)) {
+        } else if (StringHelper.startsWith(scratch.get(), END_OFFSET)) {
           // skip
-        } else if (StringHelper.startsWith(scratch, PAYLOAD)) {
+        } else if (StringHelper.startsWith(scratch.get(), PAYLOAD)) {
           // skip
         } else {
-          assert StringHelper.startsWith(scratch, TERM) || StringHelper.startsWith(scratch, FIELD) || StringHelper.startsWith(scratch, END): "scratch=" + scratch.utf8ToString();
+          assert StringHelper.startsWith(scratch.get(), TERM) || StringHelper.startsWith(scratch.get(), FIELD) || StringHelper.startsWith(scratch.get(), END): "scratch=" + scratch.get().utf8ToString();
           if (!first && (liveDocs == null || liveDocs.get(docID))) {
             in.seek(lineStart);
             if (!omitTF) {
@@ -331,10 +341,10 @@ class SimpleTextFieldsReader extends FieldsProducer {
     private int docID = -1;
     private int tf;
     private Bits liveDocs;
-    private final BytesRef scratch = new BytesRef(10);
-    private final BytesRef scratch2 = new BytesRef(10);
-    private final CharsRef scratchUTF16 = new CharsRef(10);
-    private final CharsRef scratchUTF16_2 = new CharsRef(10);
+    private final BytesRefBuilder scratch = new BytesRefBuilder();
+    private final BytesRefBuilder scratch2 = new BytesRefBuilder();
+    private final CharsRefBuilder scratchUTF16 = new CharsRefBuilder();
+    private final CharsRefBuilder scratchUTF16_2 = new CharsRefBuilder();
     private BytesRef payload;
     private long nextDocStart;
     private boolean readOffsets;
@@ -385,30 +395,30 @@ class SimpleTextFieldsReader extends FieldsProducer {
         final long lineStart = in.getFilePointer();
         SimpleTextUtil.readLine(in, scratch);
         //System.out.println("NEXT DOC: " + scratch.utf8ToString());
-        if (StringHelper.startsWith(scratch, DOC)) {
+        if (StringHelper.startsWith(scratch.get(), DOC)) {
           if (!first && (liveDocs == null || liveDocs.get(docID))) {
             nextDocStart = lineStart;
             in.seek(posStart);
             return docID;
           }
-          UnicodeUtil.UTF8toUTF16(scratch.bytes, scratch.offset+DOC.length, scratch.length-DOC.length, scratchUTF16);
-          docID = ArrayUtil.parseInt(scratchUTF16.chars, 0, scratchUTF16.length);
+          scratchUTF16.copyUTF8Bytes(scratch.bytes(), DOC.length, scratch.length()-DOC.length);
+          docID = ArrayUtil.parseInt(scratchUTF16.chars(), 0, scratchUTF16.length());
           tf = 0;
           first = false;
-        } else if (StringHelper.startsWith(scratch, FREQ)) {
-          UnicodeUtil.UTF8toUTF16(scratch.bytes, scratch.offset+FREQ.length, scratch.length-FREQ.length, scratchUTF16);
-          tf = ArrayUtil.parseInt(scratchUTF16.chars, 0, scratchUTF16.length);
+        } else if (StringHelper.startsWith(scratch.get(), FREQ)) {
+          scratchUTF16.copyUTF8Bytes(scratch.bytes(), FREQ.length, scratch.length()-FREQ.length);
+          tf = ArrayUtil.parseInt(scratchUTF16.chars(), 0, scratchUTF16.length());
           posStart = in.getFilePointer();
-        } else if (StringHelper.startsWith(scratch, POS)) {
+        } else if (StringHelper.startsWith(scratch.get(), POS)) {
           // skip
-        } else if (StringHelper.startsWith(scratch, START_OFFSET)) {
+        } else if (StringHelper.startsWith(scratch.get(), START_OFFSET)) {
           // skip
-        } else if (StringHelper.startsWith(scratch, END_OFFSET)) {
+        } else if (StringHelper.startsWith(scratch.get(), END_OFFSET)) {
           // skip
-        } else if (StringHelper.startsWith(scratch, PAYLOAD)) {
+        } else if (StringHelper.startsWith(scratch.get(), PAYLOAD)) {
           // skip
         } else {
-          assert StringHelper.startsWith(scratch, TERM) || StringHelper.startsWith(scratch, FIELD) || StringHelper.startsWith(scratch, END);
+          assert StringHelper.startsWith(scratch.get(), TERM) || StringHelper.startsWith(scratch.get(), FIELD) || StringHelper.startsWith(scratch.get(), END);
           if (!first && (liveDocs == null || liveDocs.get(docID))) {
             nextDocStart = lineStart;
             in.seek(posStart);
@@ -430,34 +440,33 @@ class SimpleTextFieldsReader extends FieldsProducer {
       final int pos;
       if (readPositions) {
         SimpleTextUtil.readLine(in, scratch);
-        assert StringHelper.startsWith(scratch, POS): "got line=" + scratch.utf8ToString();
-        UnicodeUtil.UTF8toUTF16(scratch.bytes, scratch.offset+POS.length, scratch.length-POS.length, scratchUTF16_2);
-        pos = ArrayUtil.parseInt(scratchUTF16_2.chars, 0, scratchUTF16_2.length);
+        assert StringHelper.startsWith(scratch.get(), POS): "got line=" + scratch.get().utf8ToString();
+        scratchUTF16_2.copyUTF8Bytes(scratch.bytes(), POS.length, scratch.length()-POS.length);
+        pos = ArrayUtil.parseInt(scratchUTF16_2.chars(), 0, scratchUTF16_2.length());
       } else {
         pos = -1;
       }
 
       if (readOffsets) {
         SimpleTextUtil.readLine(in, scratch);
-        assert StringHelper.startsWith(scratch, START_OFFSET): "got line=" + scratch.utf8ToString();
-        UnicodeUtil.UTF8toUTF16(scratch.bytes, scratch.offset+START_OFFSET.length, scratch.length-START_OFFSET.length, scratchUTF16_2);
-        startOffset = ArrayUtil.parseInt(scratchUTF16_2.chars, 0, scratchUTF16_2.length);
+        assert StringHelper.startsWith(scratch.get(), START_OFFSET): "got line=" + scratch.get().utf8ToString();
+        scratchUTF16_2.copyUTF8Bytes(scratch.bytes(), START_OFFSET.length, scratch.length()-START_OFFSET.length);
+        startOffset = ArrayUtil.parseInt(scratchUTF16_2.chars(), 0, scratchUTF16_2.length());
         SimpleTextUtil.readLine(in, scratch);
-        assert StringHelper.startsWith(scratch, END_OFFSET): "got line=" + scratch.utf8ToString();
-        UnicodeUtil.UTF8toUTF16(scratch.bytes, scratch.offset+END_OFFSET.length, scratch.length-END_OFFSET.length, scratchUTF16_2);
-        endOffset = ArrayUtil.parseInt(scratchUTF16_2.chars, 0, scratchUTF16_2.length);
+        assert StringHelper.startsWith(scratch.get(), END_OFFSET): "got line=" + scratch.get().utf8ToString();
+        scratchUTF16_2.grow(scratch.length()-END_OFFSET.length);
+        scratchUTF16_2.copyUTF8Bytes(scratch.bytes(), END_OFFSET.length, scratch.length()-END_OFFSET.length);
+        endOffset = ArrayUtil.parseInt(scratchUTF16_2.chars(), 0, scratchUTF16_2.length());
       }
 
       final long fp = in.getFilePointer();
       SimpleTextUtil.readLine(in, scratch);
-      if (StringHelper.startsWith(scratch, PAYLOAD)) {
-        final int len = scratch.length - PAYLOAD.length;
-        if (scratch2.bytes.length < len) {
-          scratch2.grow(len);
-        }
-        System.arraycopy(scratch.bytes, PAYLOAD.length, scratch2.bytes, 0, len);
-        scratch2.length = len;
-        payload = scratch2;
+      if (StringHelper.startsWith(scratch.get(), PAYLOAD)) {
+        final int len = scratch.length() - PAYLOAD.length;
+        scratch2.grow(len);
+        System.arraycopy(scratch.bytes(), PAYLOAD.length, scratch2.bytes(), 0, len);
+        scratch2.setLength(len);
+        payload = scratch2.get();
       } else {
         payload = null;
         in.seek(fp);
@@ -496,7 +505,11 @@ class SimpleTextFieldsReader extends FieldsProducer {
     }
   }
 
-  private class SimpleTextTerms extends Terms {
+  private static final long TERMS_BASE_RAM_BYTES_USED =
+        RamUsageEstimator.shallowSizeOfInstance(SimpleTextTerms.class)
+      + RamUsageEstimator.shallowSizeOfInstance(BytesRef.class)
+      + RamUsageEstimator.shallowSizeOfInstance(CharsRef.class);
+  private class SimpleTextTerms extends Terms implements Accountable {
     private final long termsStart;
     private final FieldInfo fieldInfo;
     private final int maxDoc;
@@ -505,8 +518,8 @@ class SimpleTextFieldsReader extends FieldsProducer {
     private int docCount;
     private FST<PairOutputs.Pair<Long,PairOutputs.Pair<Long,Long>>> fst;
     private int termCount;
-    private final BytesRef scratch = new BytesRef(10);
-    private final CharsRef scratchUTF16 = new CharsRef(10);
+    private final BytesRefBuilder scratch = new BytesRefBuilder();
+    private final CharsRefBuilder scratchUTF16 = new CharsRefBuilder();
 
     public SimpleTextTerms(String field, long termsStart, int maxDoc) throws IOException {
       this.maxDoc = maxDoc;
@@ -524,43 +537,41 @@ class SimpleTextFieldsReader extends FieldsProducer {
       b = new Builder<>(FST.INPUT_TYPE.BYTE1, outputs);
       IndexInput in = SimpleTextFieldsReader.this.in.clone();
       in.seek(termsStart);
-      final BytesRef lastTerm = new BytesRef(10);
+      final BytesRefBuilder lastTerm = new BytesRefBuilder();
       long lastDocsStart = -1;
       int docFreq = 0;
       long totalTermFreq = 0;
       FixedBitSet visitedDocs = new FixedBitSet(maxDoc);
-      final IntsRef scratchIntsRef = new IntsRef();
+      final IntsRefBuilder scratchIntsRef = new IntsRefBuilder();
       while(true) {
         SimpleTextUtil.readLine(in, scratch);
-        if (scratch.equals(END) || StringHelper.startsWith(scratch, FIELD)) {
+        if (scratch.get().equals(END) || StringHelper.startsWith(scratch.get(), FIELD)) {
           if (lastDocsStart != -1) {
-            b.add(Util.toIntsRef(lastTerm, scratchIntsRef),
+            b.add(Util.toIntsRef(lastTerm.get(), scratchIntsRef),
                   outputs.newPair(lastDocsStart,
                                   outputsInner.newPair((long) docFreq, totalTermFreq)));
             sumTotalTermFreq += totalTermFreq;
           }
           break;
-        } else if (StringHelper.startsWith(scratch, DOC)) {
+        } else if (StringHelper.startsWith(scratch.get(), DOC)) {
           docFreq++;
           sumDocFreq++;
-          UnicodeUtil.UTF8toUTF16(scratch.bytes, scratch.offset+DOC.length, scratch.length-DOC.length, scratchUTF16);
-          int docID = ArrayUtil.parseInt(scratchUTF16.chars, 0, scratchUTF16.length);
+          scratchUTF16.copyUTF8Bytes(scratch.bytes(), DOC.length, scratch.length()-DOC.length);
+          int docID = ArrayUtil.parseInt(scratchUTF16.chars(), 0, scratchUTF16.length());
           visitedDocs.set(docID);
-        } else if (StringHelper.startsWith(scratch, FREQ)) {
-          UnicodeUtil.UTF8toUTF16(scratch.bytes, scratch.offset+FREQ.length, scratch.length-FREQ.length, scratchUTF16);
-          totalTermFreq += ArrayUtil.parseInt(scratchUTF16.chars, 0, scratchUTF16.length);
-        } else if (StringHelper.startsWith(scratch, TERM)) {
+        } else if (StringHelper.startsWith(scratch.get(), FREQ)) {
+          scratchUTF16.copyUTF8Bytes(scratch.bytes(), FREQ.length, scratch.length()-FREQ.length);
+          totalTermFreq += ArrayUtil.parseInt(scratchUTF16.chars(), 0, scratchUTF16.length());
+        } else if (StringHelper.startsWith(scratch.get(), TERM)) {
           if (lastDocsStart != -1) {
-            b.add(Util.toIntsRef(lastTerm, scratchIntsRef), outputs.newPair(lastDocsStart,
+            b.add(Util.toIntsRef(lastTerm.get(), scratchIntsRef), outputs.newPair(lastDocsStart,
                                                                             outputsInner.newPair((long) docFreq, totalTermFreq)));
           }
           lastDocsStart = in.getFilePointer();
-          final int len = scratch.length - TERM.length;
-          if (len > lastTerm.length) {
-            lastTerm.grow(len);
-          }
-          System.arraycopy(scratch.bytes, TERM.length, lastTerm.bytes, 0, len);
-          lastTerm.length = len;
+          final int len = scratch.length() - TERM.length;
+          lastTerm.grow(len);
+          System.arraycopy(scratch.bytes(), TERM.length, lastTerm.bytes(), 0, len);
+          lastTerm.setLength(len);
           docFreq = 0;
           sumTotalTermFreq += totalTermFreq;
           totalTermFreq = 0;
@@ -577,10 +588,11 @@ class SimpleTextFieldsReader extends FieldsProducer {
       */
       //System.out.println("FST " + fst.sizeInBytes());
     }
-    
-    /** Returns approximate RAM bytes used */
+
+    @Override
     public long ramBytesUsed() {
-      return (fst!=null) ? fst.sizeInBytes() : 0;
+      return TERMS_BASE_RAM_BYTES_USED + (fst!=null ? fst.ramBytesUsed() : 0)
+          + RamUsageEstimator.sizeOf(scratch.bytes()) + RamUsageEstimator.sizeOf(scratchUTF16.chars());
     }
 
     @Override
@@ -642,14 +654,14 @@ class SimpleTextFieldsReader extends FieldsProducer {
 
   @Override
   synchronized public Terms terms(String field) throws IOException {
-    Terms terms = termsCache.get(field);
+    SimpleTextTerms terms = termsCache.get(field);
     if (terms == null) {
       Long fp = fields.get(field);
       if (fp == null) {
         return null;
       } else {
         terms = new SimpleTextTerms(field, fp, maxDoc);
-        termsCache.put(field, (SimpleTextTerms) terms);
+        termsCache.put(field, terms);
       }
     }
     return terms;
@@ -666,8 +678,8 @@ class SimpleTextFieldsReader extends FieldsProducer {
   }
 
   @Override
-  public long ramBytesUsed() {
-    long sizeInBytes = 0;
+  public synchronized long ramBytesUsed() {
+    long sizeInBytes = BASE_RAM_BYTES_USED + fields.size() * 2 * RamUsageEstimator.NUM_BYTES_OBJECT_REF;
     for(SimpleTextTerms simpleTextTerms : termsCache.values()) {
       sizeInBytes += (simpleTextTerms!=null) ? simpleTextTerms.ramBytesUsed() : 0;
     }

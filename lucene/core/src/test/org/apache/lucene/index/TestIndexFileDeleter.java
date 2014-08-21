@@ -52,9 +52,9 @@ public class TestIndexFileDeleter extends LuceneTestCase {
 
     IndexWriter writer = new IndexWriter(
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
-            setMaxBufferedDocs(10).
-            setMergePolicy(mergePolicy).setUseCompoundFile(true)
+        newIndexWriterConfig(new MockAnalyzer(random()))
+            .setMaxBufferedDocs(10)
+            .setMergePolicy(mergePolicy).setUseCompoundFile(true)
     );
 
     int i;
@@ -66,17 +66,18 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     for(;i<45;i++) {
       addDoc(writer, i);
     }
-    writer.shutdown();
+    writer.close();
 
     // Delete one doc so we get a .del file:
     writer = new IndexWriter(
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
-            setMergePolicy(NoMergePolicy.INSTANCE).setUseCompoundFile(true)
+        newIndexWriterConfig(new MockAnalyzer(random()))
+            .setMergePolicy(NoMergePolicy.INSTANCE)
+            .setUseCompoundFile(true)
     );
     Term searchTerm = new Term("id", "7");
     writer.deleteDocuments(searchTerm);
-    writer.shutdown();
+    writer.close();
 
     // Now, artificially create an extra .del file & extra
     // .s0 file:
@@ -124,8 +125,9 @@ public class TestIndexFileDeleter extends LuceneTestCase {
 
     // Open & close a writer: it should delete the above 4
     // files and nothing more:
-    writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.APPEND));
-    writer.shutdown();
+    writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
+                                    .setOpenMode(OpenMode.APPEND));
+    writer.close();
 
     String[] files2 = dir.listAll();
     dir.close();

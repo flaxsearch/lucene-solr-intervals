@@ -17,14 +17,7 @@ package org.apache.solr.core;
  * limitations under the License.
  */
 
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.CoreMatchers.nullValue;
-import static org.hamcrest.core.Is.is;
-import static org.junit.internal.matchers.StringContains.containsString;
-
-import java.io.File;
-import java.io.IOException;
-
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.Rule;
@@ -32,7 +25,13 @@ import org.junit.Test;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
 
-import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
+import java.io.File;
+import java.io.IOException;
+
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.core.Is.is;
+import static org.junit.internal.matchers.StringContains.containsString;
 
 public class TestConfigSets extends SolrTestCaseJ4 {
 
@@ -54,21 +53,31 @@ public class TestConfigSets extends SolrTestCaseJ4 {
   }
 
   @Test
+  public void testDefaultConfigSetBasePathResolution() throws IOException {
+    try (SolrResourceLoader loader = new SolrResourceLoader(new File("/path/to/solr/home").getAbsolutePath())) {
+
+      ConfigSetService.Default relativeCSS = new ConfigSetService.Default(loader, "configsets");
+      assertThat(relativeCSS.getConfigSetBase().getAbsoluteFile(),
+                is(new File("/path/to/solr/home/configsets").getAbsoluteFile()));
+
+      ConfigSetService.Default absoluteCSS = new ConfigSetService.Default(loader, new File("/path/to/configsets").getAbsolutePath());
+      assertThat(absoluteCSS.getConfigSetBase().getAbsoluteFile(),
+                is(new File("/path/to/configsets").getAbsoluteFile()));
+    }
+  }
+
+  @Test
   public void testConfigSetServiceFindsConfigSets() {
     CoreContainer container = null;
-    SolrCore core1 = null;
     try {
       container = setupContainer(getFile("solr/configsets").getAbsolutePath());
       String testDirectory = new File(container.getResourceLoader().getInstanceDir()).getAbsolutePath();
 
-      core1 = container.create("core1", testDirectory + "core1", "configSet", "configset-2");
+      SolrCore core1 = container.create(new CoreDescriptor(container, "core1", testDirectory + "core1", "configSet", "configset-2"));
       assertThat(core1.getCoreDescriptor().getName(), is("core1"));
       assertThat(core1.getDataDir(), is(testDirectory + "core1" + File.separator + "data" + File.separator));
     }
     finally {
-      if (core1 != null) {
-        core1.close();
-      }
       if (container != null)
         container.shutdown();
     }
@@ -81,7 +90,7 @@ public class TestConfigSets extends SolrTestCaseJ4 {
       container = setupContainer(getFile("solr/configsets").getAbsolutePath());
       String testDirectory = container.getResourceLoader().getInstanceDir();
 
-      container.create("core1", testDirectory + "/core1", "configSet", "nonexistent");
+      container.create(new CoreDescriptor(container, "core1", testDirectory + "/core1", "configSet", "nonexistent"));
       fail("Expected core creation to fail");
     }
     catch (Exception e) {
@@ -110,8 +119,7 @@ public class TestConfigSets extends SolrTestCaseJ4 {
     container.load();
 
     // We initially don't have a /get handler defined
-    SolrCore core = container.create("core1", testDirectory + "/core", "configSet", "configset-2");
-    container.register(core, false);
+    SolrCore core = container.create(new CoreDescriptor(container, "core1", testDirectory + "/core", "configSet", "configset-2"));
     assertThat("No /get handler should be defined in the initial configuration",
         core.getRequestHandler("/get"), is(nullValue()));
 

@@ -159,9 +159,11 @@ import org.apache.lucene.util.packed.PackedInts;
  *   <p>SortedSet entries store the list of ordinals in their BinaryData as a
  *      sequences of increasing {@link DataOutput#writeVLong vLong}s, delta-encoded.</p>
  * </ol>
+ * @deprecated Only for reading old 4.3-4.5 segments
  * @lucene.experimental
  */
-public final class Lucene45DocValuesFormat extends DocValuesFormat {
+@Deprecated
+public class Lucene45DocValuesFormat extends DocValuesFormat {
 
   /** Sole Constructor */
   public Lucene45DocValuesFormat() {
@@ -170,6 +172,7 @@ public final class Lucene45DocValuesFormat extends DocValuesFormat {
 
   @Override
   public DocValuesConsumer fieldsConsumer(SegmentWriteState state) throws IOException {
+    // really we should be read-only, but to allow posting of dv updates against old segments...
     return new Lucene45DocValuesConsumer(state, DATA_CODEC, DATA_EXTENSION, META_CODEC, META_EXTENSION);
   }
 

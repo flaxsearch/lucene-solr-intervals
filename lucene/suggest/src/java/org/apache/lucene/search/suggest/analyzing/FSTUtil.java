@@ -17,13 +17,13 @@ package org.apache.lucene.search.suggest.analyzing;
  * limitations under the License.
  */
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.io.IOException;
 
 import org.apache.lucene.util.IntsRef;
+import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.automaton.Automaton;
-import org.apache.lucene.util.automaton.State;
 import org.apache.lucene.util.automaton.Transition;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.Util;
@@ -43,7 +43,7 @@ public class FSTUtil {
   public static final class Path<T> {
 
     /** Node in the automaton where path ends: */
-    public final State state;
+    public final int state;
 
     /** Node in the FST where path ends: */
     public final FST.Arc<T> fstNode;
@@ -52,10 +52,10 @@ public class FSTUtil {
     T output;
 
     /** Input of the path so far: */
-    public final IntsRef input;
+    public final IntsRefBuilder input;
 
     /** Sole constructor. */
-    public Path(State state, FST.Arc<T> fstNode, T output, IntsRef input) {
+    public Path(int state, FST.Arc<T> fstNode, T output, IntsRefBuilder input) {
       this.state = state;
       this.fstNode = fstNode;
       this.output = output;
@@ -72,35 +72,42 @@ public class FSTUtil {
     assert a.isDeterministic();
     final List<Path<T>> queue = new ArrayList<>();
     final List<Path<T>> endNodes = new ArrayList<>();
-    queue.add(new Path<>(a.getInitialState(), fst
+    if (a.getNumStates() == 0) {
+      return endNodes;
+    }
+
+    queue.add(new Path<>(0, fst
         .getFirstArc(new FST.Arc<T>()), fst.outputs.getNoOutput(),
-        new IntsRef()));
+        new IntsRefBuilder()));
     
     final FST.Arc<T> scratchArc = new FST.Arc<>();
     final FST.BytesReader fstReader = fst.getBytesReader();
-    
+
+    Transition t = new Transition();
+
     while (queue.size() != 0) {
       final Path<T> path = queue.remove(queue.size() - 1);
-      if (path.state.isAccept()) {
+      if (a.isAccept(path.state)) {
         endNodes.add(path);
         // we can stop here if we accept this path,
         // we accept all further paths too
         continue;
       }
       
-      IntsRef currentInput = path.input;
-      for (Transition t : path.state.getTransitions()) {
-        final int min = t.getMin();
-        final int max = t.getMax();
+      IntsRefBuilder currentInput = path.input;
+      int count = a.initTransition(path.state, t);
+      for (int i=0;i<count;i++) {
+        a.getNextTransition(t);
+        final int min = t.min;
+        final int max = t.max;
         if (min == max) {
-          final FST.Arc<T> nextArc = fst.findTargetArc(t.getMin(),
+          final FST.Arc<T> nextArc = fst.findTargetArc(t.min,
               path.fstNode, scratchArc, fstReader);
           if (nextArc != null) {
-            final IntsRef newInput = new IntsRef(currentInput.length + 1);
-            newInput.copyInts(currentInput);
-            newInput.ints[currentInput.length] = t.getMin();
-            newInput.length = currentInput.length + 1;
-            queue.add(new Path<>(t.getDest(), new FST.Arc<T>()
+            final IntsRefBuilder newInput = new IntsRefBuilder();
+            newInput.copyInts(currentInput.get());
+            newInput.append(t.min);
+            queue.add(new Path<>(t.dest, new FST.Arc<T>()
                 .copyFrom(nextArc), fst.outputs
                 .add(path.output, nextArc.output), newInput));
           }
@@ -118,11 +125,10 @@ public class FSTUtil {
             assert nextArc.label <=  max;
             assert nextArc.label >= min : nextArc.label + " "
                 + min;
-            final IntsRef newInput = new IntsRef(currentInput.length + 1);
-            newInput.copyInts(currentInput);
-            newInput.ints[currentInput.length] = nextArc.label;
-            newInput.length = currentInput.length + 1;
-            queue.add(new Path<>(t.getDest(), new FST.Arc<T>()
+            final IntsRefBuilder newInput = new IntsRefBuilder();
+            newInput.copyInts(currentInput.get());
+            newInput.append(nextArc.label);
+            queue.add(new Path<>(t.dest, new FST.Arc<T>()
                 .copyFrom(nextArc), fst.outputs
                 .add(path.output, nextArc.output), newInput));
             final int label = nextArc.label; // used in assert

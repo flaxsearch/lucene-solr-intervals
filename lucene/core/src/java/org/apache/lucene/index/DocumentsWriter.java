@@ -30,13 +30,11 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.index.DocumentsWriterFlushQueue.SegmentFlushTicket;
 import org.apache.lucene.index.DocumentsWriterPerThread.FlushedSegment;
 import org.apache.lucene.index.DocumentsWriterPerThreadPool.ThreadState;
-import org.apache.lucene.index.DocValuesUpdate.NumericDocValuesUpdate;
-import org.apache.lucene.index.DocValuesUpdate.BinaryDocValuesUpdate;
 import org.apache.lucene.index.IndexWriter.Event;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.InfoStream;
 
 /**
@@ -97,7 +95,7 @@ import org.apache.lucene.util.InfoStream;
  * or none") added to the index.
  */
 
-final class DocumentsWriter implements Closeable {
+final class DocumentsWriter implements Closeable, Accountable {
   private final Directory directory;
 
   private volatile boolean closed;
@@ -156,20 +154,13 @@ final class DocumentsWriter implements Closeable {
     return applyAllDeletes( deleteQueue);
   }
 
-  synchronized boolean updateNumericDocValue(Term term, String field, Long value) throws IOException {
+  synchronized boolean updateDocValues(DocValuesUpdate... updates) throws IOException {
     final DocumentsWriterDeleteQueue deleteQueue = this.deleteQueue;
-    deleteQueue.addNumericUpdate(new NumericDocValuesUpdate(term, field, value));
+    deleteQueue.addDocValuesUpdates(updates);
     flushControl.doOnDelete();
     return applyAllDeletes(deleteQueue);
   }
   
-  synchronized boolean updateBinaryDocValue(Term term, String field, BytesRef value) throws IOException {
-    final DocumentsWriterDeleteQueue deleteQueue = this.deleteQueue;
-    deleteQueue.addBinaryUpdate(new BinaryDocValuesUpdate(term, field, value));
-    flushControl.doOnDelete();
-    return applyAllDeletes(deleteQueue);
-  }
-
   DocumentsWriterDeleteQueue currentDeleteSession() {
     return deleteQueue;
   }
@@ -397,7 +388,8 @@ final class DocumentsWriter implements Closeable {
       final FieldInfos.Builder infos = new FieldInfos.Builder(
           writer.globalFieldNumberMap);
       state.dwpt = new DocumentsWriterPerThread(writer.newSegmentName(),
-          directory, config, infoStream, deleteQueue, infos);
+                                                directory, config, infoStream, deleteQueue, infos,
+                                                writer.pendingNumDocs);
     }
   }
 
@@ -672,7 +664,12 @@ final class DocumentsWriter implements Closeable {
   private void putEvent(Event event) {
     events.add(event);
   }
-  
+
+  @Override
+  public long ramBytesUsed() {
+    return flushControl.ramBytesUsed();
+  }
+
   static final class ApplyDeletesEvent implements Event {
     static final Event INSTANCE = new ApplyDeletesEvent();
     private int instCount = 0;

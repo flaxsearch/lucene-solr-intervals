@@ -178,18 +178,20 @@ class ReadersAndUpdates {
 
   /**
    * Returns a ref to a clone. NOTE: you should decRef() the reader when you're
-   * dont (ie do not call close()).
+   * done (ie do not call close()).
    */
   public synchronized SegmentReader getReadOnlyClone(IOContext context) throws IOException {
     if (reader == null) {
       getReader(context).decRef();
       assert reader != null;
     }
+    // force new liveDocs in initWritableLiveDocs even if it's null
     liveDocsShared = true;
     if (liveDocs != null) {
       return new SegmentReader(reader.getSegmentInfo(), reader, liveDocs, info.info.getDocCount() - info.getDelCount() - pendingDeleteCount);
     } else {
-      assert reader.getLiveDocs() == liveDocs;
+      // liveDocs == null and reader != null. That can only be if there are no deletes
+      assert reader.getLiveDocs() == null;
       reader.incRef();
       return reader;
     }
@@ -400,7 +402,6 @@ class ReadersAndUpdates {
               
               int curDoc = -1;
               int updateDoc = updatesIter.nextDoc();
-              BytesRef scratch = new BytesRef();
               
               @Override
               public boolean hasNext() {
@@ -421,8 +422,7 @@ class ReadersAndUpdates {
                   assert curDoc < updateDoc;
                   if (currentValues != null && docsWithField.get(curDoc)) {
                     // only read the current value if the document had a value before
-                    currentValues.get(curDoc, scratch);
-                    return scratch;
+                    return currentValues.get(curDoc);
                   } else {
                     return null;
                   }

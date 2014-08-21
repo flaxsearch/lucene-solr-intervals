@@ -28,7 +28,6 @@ import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.English;
@@ -44,7 +43,7 @@ public class TestTermVectors extends LuceneTestCase {
   @BeforeClass
   public static void beforeClass() throws Exception {                  
     directory = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random(), directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.SIMPLE, true)).setMergePolicy(newLogMergePolicy()));
+    RandomIndexWriter writer = new RandomIndexWriter(random(), directory, newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.SIMPLE, true)).setMergePolicy(newLogMergePolicy()));
     //writer.setNoCFSRatio(1.0);
     //writer.infoStream = System.out;
     for (int i = 0; i < 1000; i++) {
@@ -71,7 +70,7 @@ public class TestTermVectors extends LuceneTestCase {
       writer.addDocument(doc);
     }
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
   }
   
   @AfterClass
@@ -83,14 +82,14 @@ public class TestTermVectors extends LuceneTestCase {
   }
 
   private IndexWriter createWriter(Directory dir) throws IOException {
-    return new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT,
+    return new IndexWriter(dir, newIndexWriterConfig(
         new MockAnalyzer(random())).setMaxBufferedDocs(2));
   }
 
   private void createDir(Directory dir) throws IOException {
     IndexWriter writer = createWriter(dir);
     writer.addDocument(createDoc());
-    writer.shutdown();
+    writer.close();
   }
 
   private Document createDoc() {
@@ -121,7 +120,7 @@ public class TestTermVectors extends LuceneTestCase {
       writer.addDocument(createDoc());
     }
     writer.forceMerge(1);
-    writer.shutdown();
+    writer.close();
     
     verifyIndex(target);
     target.close();
@@ -138,7 +137,7 @@ public class TestTermVectors extends LuceneTestCase {
     IndexWriter writer = createWriter(target);
     writer.addIndexes(input);
     writer.forceMerge(1);
-    writer.shutdown();
+    writer.close();
 
     verifyIndex(target);
 
@@ -160,7 +159,7 @@ public class TestTermVectors extends LuceneTestCase {
       r.close();
     }
     writer.forceMerge(1);
-    writer.shutdown();
+    writer.close();
     
     verifyIndex(target);
     IOUtils.close(target, input[0], input[1]);

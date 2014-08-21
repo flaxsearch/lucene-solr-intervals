@@ -22,11 +22,11 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
@@ -35,29 +35,31 @@ import org.apache.lucene.util.TestUtil;
 /** 
  * Tests special cases of BlockPostingsFormat 
  */
+
 public class TestBlockPostingsFormat2 extends LuceneTestCase {
   Directory dir;
   RandomIndexWriter iw;
-  IndexWriterConfig iwc;
   
   @Override
   public void setUp() throws Exception {
     super.setUp();
     dir = newFSDirectory(createTempDir("testDFBlockSize"));
-    iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
     iwc.setCodec(TestUtil.alwaysPostingsFormat(new Lucene41PostingsFormat()));
-    iw = new RandomIndexWriter(random(), dir, iwc.clone());
+    iw = new RandomIndexWriter(random(), dir, iwc);
     iw.setDoRandomForceMerge(false); // we will ourselves
   }
   
   @Override
   public void tearDown() throws Exception {
-    iw.shutdown();
+    iw.close();
     TestUtil.checkIndex(dir); // for some extra coverage, checkIndex before we forceMerge
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
+    iwc.setCodec(TestUtil.alwaysPostingsFormat(new Lucene41PostingsFormat()));
     iwc.setOpenMode(OpenMode.APPEND);
-    IndexWriter iw = new IndexWriter(dir, iwc.clone());
+    IndexWriter iw = new IndexWriter(dir, iwc);
     iw.forceMerge(1);
-    iw.shutdown();
+    iw.close();
     dir.close(); // just force a checkindex for now
     super.tearDown();
   }

@@ -75,6 +75,9 @@ Test system: AMD Opteron, 64 bit linux, Sun Java 1.5_06 -server -Xbatch -Xmx64M
  */
 
 public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
+
+  private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(OpenBitSet.class);
+
   protected long[] bits;
   protected int wlen;   // number of words (elements) used in the array
 
@@ -131,6 +134,11 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
     return true;
   }
 
+  @Override
+  public long ramBytesUsed() {
+    return BASE_RAM_BYTES_USED + RamUsageEstimator.sizeOf(bits);
+  }
+
   /** Returns the current capacity in bits (1 greater than the index of the last bit) */
   public long capacity() { return bits.length << 6; }
 
@@ -164,8 +172,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
     // array-index-out-of-bounds-exception, removing the need for an explicit check.
     if (i>=bits.length) return false;
 
-    int bit = index & 0x3f;           // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     return (bits[i] & bitmask) != 0;
   }
 
@@ -178,8 +185,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
     int i = index >> 6;               // div 64
     // signed shift will keep a negative index and force an
     // array-index-out-of-bounds-exception, removing the need for an explicit check.
-    int bit = index & 0x3f;           // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     return (bits[i] & bitmask) != 0;
   }
 
@@ -190,8 +196,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public boolean get(long index) {
     int i = (int)(index >> 6);             // div 64
     if (i>=bits.length) return false;
-    int bit = (int)index & 0x3f;           // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     return (bits[i] & bitmask) != 0;
   }
 
@@ -201,8 +206,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public boolean fastGet(long index) {
     assert index >= 0 && index < numBits;
     int i = (int)(index >> 6);               // div 64
-    int bit = (int)index & 0x3f;           // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     return (bits[i] & bitmask) != 0;
   }
 
@@ -225,8 +229,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public int getBit(int index) {
     assert index >= 0 && index < numBits;
     int i = index >> 6;                // div 64
-    int bit = index & 0x3f;            // mod 64
-    return ((int)(bits[i]>>>bit)) & 0x01;
+    return ((int)(bits[i]>>>index)) & 0x01;
   }
 
 
@@ -242,8 +245,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   /** sets a bit, expanding the set size if necessary */
   public void set(long index) {
     int wordNum = expandingWordNum(index);
-    int bit = (int)index & 0x3f;
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] |= bitmask;
   }
 
@@ -254,8 +256,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public void fastSet(int index) {
     assert index >= 0 && index < numBits;
     int wordNum = index >> 6;      // div 64
-    int bit = index & 0x3f;     // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] |= bitmask;
   }
 
@@ -265,8 +266,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public void fastSet(long index) {
     assert index >= 0 && index < numBits;
     int wordNum = (int)(index >> 6);
-    int bit = (int)index & 0x3f;
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] |= bitmask;
   }
 
@@ -311,8 +311,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public void fastClear(int index) {
     assert index >= 0 && index < numBits;
     int wordNum = index >> 6;
-    int bit = index & 0x03f;
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] &= ~bitmask;
     // hmmm, it takes one more instruction to clear than it does to set... any
     // way to work around this?  If there were only 63 bits per word, we could
@@ -329,8 +328,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public void fastClear(long index) {
     assert index >= 0 && index < numBits;
     int wordNum = (int)(index >> 6); // div 64
-    int bit = (int)index & 0x3f;     // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] &= ~bitmask;
   }
 
@@ -338,8 +336,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public void clear(long index) {
     int wordNum = (int)(index >> 6); // div 64
     if (wordNum>=wlen) return;
-    int bit = (int)index & 0x3f;     // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] &= ~bitmask;
   }
 
@@ -424,8 +421,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public boolean getAndSet(int index) {
     assert index >= 0 && index < numBits;
     int wordNum = index >> 6;      // div 64
-    int bit = index & 0x3f;     // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     boolean val = (bits[wordNum] & bitmask) != 0;
     bits[wordNum] |= bitmask;
     return val;
@@ -437,8 +433,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public boolean getAndSet(long index) {
     assert index >= 0 && index < numBits;
     int wordNum = (int)(index >> 6);      // div 64
-    int bit = (int)index & 0x3f;     // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     boolean val = (bits[wordNum] & bitmask) != 0;
     bits[wordNum] |= bitmask;
     return val;
@@ -450,8 +445,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public void fastFlip(int index) {
     assert index >= 0 && index < numBits;
     int wordNum = index >> 6;      // div 64
-    int bit = index & 0x3f;     // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] ^= bitmask;
   }
 
@@ -461,16 +455,14 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public void fastFlip(long index) {
     assert index >= 0 && index < numBits;
     int wordNum = (int)(index >> 6);   // div 64
-    int bit = (int)index & 0x3f;       // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] ^= bitmask;
   }
 
   /** flips a bit, expanding the set size if necessary */
   public void flip(long index) {
     int wordNum = expandingWordNum(index);
-    int bit = (int)index & 0x3f;       // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] ^= bitmask;
   }
 
@@ -480,8 +472,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public boolean flipAndGet(int index) {
     assert index >= 0 && index < numBits;
     int wordNum = index >> 6;      // div 64
-    int bit = index & 0x3f;     // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] ^= bitmask;
     return (bits[wordNum] & bitmask) != 0;
   }
@@ -492,8 +483,7 @@ public class OpenBitSet extends DocIdSet implements Bits, Cloneable {
   public boolean flipAndGet(long index) {
     assert index >= 0 && index < numBits;
     int wordNum = (int)(index >> 6);   // div 64
-    int bit = (int)index & 0x3f;       // mod 64
-    long bitmask = 1L << bit;
+    long bitmask = 1L << index;
     bits[wordNum] ^= bitmask;
     return (bits[wordNum] & bitmask) != 0;
   }

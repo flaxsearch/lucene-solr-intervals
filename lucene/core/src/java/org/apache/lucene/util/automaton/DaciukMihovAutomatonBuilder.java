@@ -19,8 +19,10 @@ package org.apache.lucene.util.automaton;
 
 import java.util.*;
 
+import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.UnicodeUtil;
 
 /**
@@ -29,7 +31,7 @@ import org.apache.lucene.util.UnicodeUtil;
  * (nearly linear with the input size).
  * 
  * @see #build(Collection)
- * @see BasicAutomata#makeStringUnion(Collection)
+ * @see Automata#makeStringUnion(Collection)
  */
 final class DaciukMihovAutomatonBuilder {
   /**
@@ -249,20 +251,22 @@ final class DaciukMihovAutomatonBuilder {
   /**
    * Internal recursive traversal for conversion.
    */
-  private static org.apache.lucene.util.automaton.State convert(State s,
-      IdentityHashMap<State,org.apache.lucene.util.automaton.State> visited) {
-    org.apache.lucene.util.automaton.State converted = visited.get(s);
-    if (converted != null) return converted;
+  private static int convert(Automaton.Builder a, State s,
+      IdentityHashMap<State,Integer> visited) {
+
+    Integer converted = visited.get(s);
+    if (converted != null) {
+      return converted;
+    }
     
-    converted = new org.apache.lucene.util.automaton.State();
-    converted.setAccept(s.is_final);
+    converted = a.createState();
+    a.setAccept(converted, s.is_final);
     
     visited.put(s, converted);
     int i = 0;
     int[] labels = s.labels;
     for (DaciukMihovAutomatonBuilder.State target : s.states) {
-      converted.addTransition(
-          new Transition(labels[i++], convert(target, visited)));
+      a.addTransition(converted, convert(a, target, visited), labels[i++]);
     }
     
     return converted;
@@ -275,18 +279,22 @@ final class DaciukMihovAutomatonBuilder {
   public static Automaton build(Collection<BytesRef> input) {
     final DaciukMihovAutomatonBuilder builder = new DaciukMihovAutomatonBuilder();
     
-    CharsRef scratch = new CharsRef();
+    char[] chars = new char[0];
+    CharsRef ref = new CharsRef();
     for (BytesRef b : input) {
-      UnicodeUtil.UTF8toUTF16(b, scratch);
-      builder.add(scratch);
+      chars = ArrayUtil.grow(chars, b.length);
+      final int len = UnicodeUtil.UTF8toUTF16(b, chars);
+      ref.chars = chars;
+      ref.length = len;
+      builder.add(ref);
     }
     
-    Automaton a = new Automaton();
-    a.initial = convert(
+    Automaton.Builder a = new Automaton.Builder();
+    convert(a,
         builder.complete(), 
-        new IdentityHashMap<State,org.apache.lucene.util.automaton.State>());
-    a.deterministic = true;
-    return a;
+        new IdentityHashMap<State,Integer>());
+
+    return a.finish();
   }
 
   /**

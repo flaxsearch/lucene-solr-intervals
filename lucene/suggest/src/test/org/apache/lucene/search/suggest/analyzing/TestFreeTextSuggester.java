@@ -184,7 +184,7 @@ public class TestFreeTextSuggester extends LuceneTestCase {
         }
       });
     if (VERBOSE) {
-      System.out.println(sug.sizeInBytes() + " bytes");
+      System.out.println(sug.ramBytesUsed() + " bytes");
 
       List<LookupResult> results = sug.lookup("general r", 10);
       System.out.println("results:");
@@ -244,8 +244,8 @@ public class TestFreeTextSuggester extends LuceneTestCase {
         @Override
         public TokenStreamComponents createComponents(String field) {
           Tokenizer tokenizer = new MockTokenizer();
-          CharArraySet stopSet = StopFilter.makeStopSet(TEST_VERSION_CURRENT, "of");
-          return new TokenStreamComponents(tokenizer, new StopFilter(TEST_VERSION_CURRENT, tokenizer, stopSet));
+          CharArraySet stopSet = StopFilter.makeStopSet("of");
+          return new TokenStreamComponents(tokenizer, new StopFilter(tokenizer, stopSet));
         }
       };
 
@@ -272,8 +272,8 @@ public class TestFreeTextSuggester extends LuceneTestCase {
         @Override
         public TokenStreamComponents createComponents(String field) {
           Tokenizer tokenizer = new MockTokenizer();
-          CharArraySet stopSet = StopFilter.makeStopSet(TEST_VERSION_CURRENT, "of");
-          return new TokenStreamComponents(tokenizer, new StopFilter(TEST_VERSION_CURRENT, tokenizer, stopSet));
+          CharArraySet stopSet = StopFilter.makeStopSet("of");
+          return new TokenStreamComponents(tokenizer, new StopFilter(tokenizer, stopSet));
         }
       };
 

@@ -35,6 +35,7 @@ import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SortedDocValues;
+import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.ByteArrayDataInput;
@@ -42,8 +43,10 @@ import org.apache.lucene.store.ChecksumIndexInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.IntsRef;
+import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.PagedBytes;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.fst.BytesRefFSTEnum;
@@ -135,6 +138,14 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
                                                  VERSION_CURRENT);
       if (version != version2) {
         throw new CorruptIndexException("Format versions mismatch");
+      }
+      
+      if (version >= VERSION_CHECKSUM) {
+        // NOTE: data file is too costly to verify checksum against all the bytes on open,
+        // but for now we at least verify proper structure of the checksum footer: which looks
+        // for FOOTER_MAGIC + algorithmID. This is cheap and can detect some forms of corruption
+        // such as file truncation.
+        CodecUtil.retrieveChecksum(data);
       }
 
       success = true;
@@ -289,22 +300,27 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
     final PagedBytes.Reader bytesReader = bytes.freeze(true);
     if (entry.minLength == entry.maxLength) {
       final int fixedLength = entry.minLength;
-      ramBytesUsed.addAndGet(bytes.ramBytesUsed());
+      ramBytesUsed.addAndGet(bytesReader.ramBytesUsed());
       return new BinaryDocValues() {
         @Override
-        public void get(int docID, BytesRef result) {
-          bytesReader.fillSlice(result, fixedLength * (long)docID, fixedLength);
+        public BytesRef get(int docID) {
+          final BytesRef term = new BytesRef();
+          bytesReader.fillSlice(term, fixedLength * (long)docID, fixedLength);
+          return term;
         }
       };
     } else {
-      final MonotonicBlockPackedReader addresses = new MonotonicBlockPackedReader(data, entry.packedIntsVersion, entry.blockSize, maxDoc, false);
-      ramBytesUsed.addAndGet(bytes.ramBytesUsed() + addresses.ramBytesUsed());
+      final MonotonicBlockPackedReader addresses = MonotonicBlockPackedReader.of(data, entry.packedIntsVersion, entry.blockSize, maxDoc, false);
+      ramBytesUsed.addAndGet(bytesReader.ramBytesUsed() + addresses.ramBytesUsed());
       return new BinaryDocValues() {
+
         @Override
-        public void get(int docID, BytesRef result) {
+        public BytesRef get(int docID) {
           long startAddress = docID == 0 ? 0 : addresses.get(docID-1);
           long endAddress = addresses.get(docID); 
-          bytesReader.fillSlice(result, startAddress, (int) (endAddress - startAddress));
+          final BytesRef term = new BytesRef();
+          bytesReader.fillSlice(term, startAddress, (int) (endAddress - startAddress));
+          return term;
         }
       };
     }
@@ -319,7 +335,7 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
       if (instance == null) {
         data.seek(entry.offset);
         instance = new FST<>(data, PositiveIntOutputs.getSingleton());
-        ramBytesUsed.addAndGet(instance.sizeInBytes());
+        ramBytesUsed.addAndGet(instance.ramBytesUsed());
         fstInstances.put(field.number, instance);
       }
     }
@@ -330,25 +346,27 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
     final BytesReader in = fst.getBytesReader();
     final Arc<Long> firstArc = new Arc<>();
     final Arc<Long> scratchArc = new Arc<>();
-    final IntsRef scratchInts = new IntsRef();
+    final IntsRefBuilder scratchInts = new IntsRefBuilder();
     final BytesRefFSTEnum<Long> fstEnum = new BytesRefFSTEnum<>(fst);
     
     return new SortedDocValues() {
+
+      final BytesRefBuilder term = new BytesRefBuilder();
+
       @Override
       public int getOrd(int docID) {
         return (int) docToOrd.get(docID);
       }
 
       @Override
-      public void lookupOrd(int ord, BytesRef result) {
+      public BytesRef lookupOrd(int ord) {
         try {
           in.setPosition(0);
           fst.getFirstArc(firstArc);
           IntsRef output = Util.getByOutput(fst, ord, in, firstArc, scratchArc, scratchInts);
-          result.bytes = new byte[output.length];
-          result.offset = 0;
-          result.length = 0;
-          Util.toBytesRef(output, result);
+          term.grow(output.length);
+          term.clear();
+          return Util.toBytesRef(output, term);
         } catch (IOException bogus) {
           throw new RuntimeException(bogus);
         }
@@ -386,7 +404,7 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
   public SortedSetDocValues getSortedSet(FieldInfo field) throws IOException {
     final FSTEntry entry = fsts.get(field.number);
     if (entry.numOrds == 0) {
-      return DocValues.EMPTY_SORTED_SET; // empty FST!
+      return DocValues.emptySortedSet(); // empty FST!
     }
     FST<Long> instance;
     synchronized(this) {
@@ -394,7 +412,7 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
       if (instance == null) {
         data.seek(entry.offset);
         instance = new FST<>(data, PositiveIntOutputs.getSingleton());
-        ramBytesUsed.addAndGet(instance.sizeInBytes());
+        ramBytesUsed.addAndGet(instance.ramBytesUsed());
         fstInstances.put(field.number, instance);
       }
     }
@@ -405,11 +423,12 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
     final BytesReader in = fst.getBytesReader();
     final Arc<Long> firstArc = new Arc<>();
     final Arc<Long> scratchArc = new Arc<>();
-    final IntsRef scratchInts = new IntsRef();
+    final IntsRefBuilder scratchInts = new IntsRefBuilder();
     final BytesRefFSTEnum<Long> fstEnum = new BytesRefFSTEnum<>(fst);
-    final BytesRef ref = new BytesRef();
     final ByteArrayDataInput input = new ByteArrayDataInput();
     return new SortedSetDocValues() {
+      final BytesRefBuilder term = new BytesRefBuilder();
+      BytesRef ordsRef;
       long currentOrd;
 
       @Override
@@ -424,21 +443,20 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
       
       @Override
       public void setDocument(int docID) {
-        docToOrds.get(docID, ref);
-        input.reset(ref.bytes, ref.offset, ref.length);
+        ordsRef = docToOrds.get(docID);
+        input.reset(ordsRef.bytes, ordsRef.offset, ordsRef.length);
         currentOrd = 0;
       }
 
       @Override
-      public void lookupOrd(long ord, BytesRef result) {
+      public BytesRef lookupOrd(long ord) {
         try {
           in.setPosition(0);
           fst.getFirstArc(firstArc);
           IntsRef output = Util.getByOutput(fst, ord, in, firstArc, scratchArc, scratchInts);
-          result.bytes = new byte[output.length];
-          result.offset = 0;
-          result.length = 0;
-          Util.toBytesRef(output, result);
+          term.grow(output.length);
+          term.clear();
+          return Util.toBytesRef(output, term);
         } catch (IOException bogus) {
           throw new RuntimeException(bogus);
         }
@@ -480,6 +498,11 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
       return new Bits.MatchAllBits(maxDoc);
     }
   }
+  
+  @Override
+  public SortedNumericDocValues getSortedNumeric(FieldInfo field) throws IOException {
+    throw new IllegalStateException("Lucene 4.2 does not support SortedNumeric: how did you pull this off?");
+  }
 
   @Override
   public void close() throws IOException {
@@ -516,8 +539,8 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
     final FST.BytesReader bytesReader;
     final Arc<Long> firstArc = new Arc<>();
     final Arc<Long> scratchArc = new Arc<>();
-    final IntsRef scratchInts = new IntsRef();
-    final BytesRef scratchBytes = new BytesRef();
+    final IntsRefBuilder scratchInts = new IntsRefBuilder();
+    final BytesRefBuilder scratchBytes = new BytesRefBuilder();
     
     FSTTermsEnum(FST<Long> fst) {
       this.fst = fst;
@@ -564,12 +587,11 @@ class Lucene42DocValuesProducer extends DocValuesProducer {
       bytesReader.setPosition(0);
       fst.getFirstArc(firstArc);
       IntsRef output = Util.getByOutput(fst, ord, bytesReader, firstArc, scratchArc, scratchInts);
-      scratchBytes.bytes = new byte[output.length];
-      scratchBytes.offset = 0;
-      scratchBytes.length = 0;
+      BytesRefBuilder scratchBytes = new BytesRefBuilder();
+      scratchBytes.clear();
       Util.toBytesRef(output, scratchBytes);
       // TODO: we could do this lazily, better to try to push into FSTEnum though?
-      in.seekExact(scratchBytes);
+      in.seekExact(scratchBytes.get());
     }
 
     @Override

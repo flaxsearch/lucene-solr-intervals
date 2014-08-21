@@ -57,7 +57,7 @@ public class BooleanFilterTest extends LuceneTestCase {
     addDoc(writer, "admin", "020", "20050101", "Maybe");
     addDoc(writer, "admin guest", "030", "20050101", "N");
     reader = SlowCompositeReaderWrapper.wrap(writer.getReader());
-    writer.shutdown();
+    writer.close();
   }
 
   @Override
@@ -111,17 +111,7 @@ public class BooleanFilterTest extends LuceneTestCase {
     return new Filter() {
       @Override
       public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) {
-        return new DocIdSet() {
-          @Override
-          public DocIdSetIterator iterator() {
-            return null;
-          }
-          
-          @Override
-          public boolean isCacheable() {
-            return true;
-          }
-        };
+        return DocIdSet.EMPTY;
       }
     };
   }

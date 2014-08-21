@@ -168,7 +168,7 @@ final class SegmentMerger {
               NumericDocValues values = reader.getNumericDocValues(field.name);
               Bits bits = reader.getDocsWithField(field.name);
               if (values == null) {
-                values = DocValues.EMPTY_NUMERIC;
+                values = DocValues.emptyNumeric();
                 bits = new Bits.MatchNoBits(reader.maxDoc());
               }
               toMerge.add(values);
@@ -182,7 +182,7 @@ final class SegmentMerger {
               BinaryDocValues values = reader.getBinaryDocValues(field.name);
               Bits bits = reader.getDocsWithField(field.name);
               if (values == null) {
-                values = DocValues.EMPTY_BINARY;
+                values = DocValues.emptyBinary();
                 bits = new Bits.MatchNoBits(reader.maxDoc());
               }
               toMerge.add(values);
@@ -194,7 +194,7 @@ final class SegmentMerger {
             for (AtomicReader reader : mergeState.readers) {
               SortedDocValues values = reader.getSortedDocValues(field.name);
               if (values == null) {
-                values = DocValues.EMPTY_SORTED;
+                values = DocValues.emptySorted();
               }
               toMerge.add(values);
             }
@@ -204,11 +204,21 @@ final class SegmentMerger {
             for (AtomicReader reader : mergeState.readers) {
               SortedSetDocValues values = reader.getSortedSetDocValues(field.name);
               if (values == null) {
-                values = DocValues.EMPTY_SORTED_SET;
+                values = DocValues.emptySortedSet();
               }
               toMerge.add(values);
             }
             consumer.mergeSortedSetField(field, mergeState, toMerge);
+          } else if (type == DocValuesType.SORTED_NUMERIC) {
+            List<SortedNumericDocValues> toMerge = new ArrayList<>();
+            for (AtomicReader reader : mergeState.readers) {
+              SortedNumericDocValues values = reader.getSortedNumericDocValues(field.name);
+              if (values == null) {
+                values = DocValues.emptySortedNumeric(reader.maxDoc());
+              }
+              toMerge.add(values);
+            }
+            consumer.mergeSortedNumericField(field, mergeState, toMerge);
           } else {
             throw new AssertionError("type=" + type);
           }
@@ -235,7 +245,7 @@ final class SegmentMerger {
           for (AtomicReader reader : mergeState.readers) {
             NumericDocValues norms = reader.getNormValues(field.name);
             if (norms == null) {
-              norms = DocValues.EMPTY_NUMERIC;
+              norms = DocValues.emptyNumeric();
             }
             toMerge.add(norms);
             docsWithField.add(new Bits.MatchAllBits(reader.maxDoc()));

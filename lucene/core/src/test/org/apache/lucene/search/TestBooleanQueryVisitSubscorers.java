@@ -17,12 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -33,9 +27,18 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.Scorer.ChildScorer;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 // TODO: refactor to a base class, that collects freqs from the scorer tree
 // and test all queries with it
@@ -53,14 +56,14 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
     super.setUp();
     analyzer = new MockAnalyzer(random());
     dir = newDirectory();
-    IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig config = newIndexWriterConfig(analyzer);
     config.setMergePolicy(newLogMergePolicy()); // we will use docids to validate
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir, config);
     writer.addDocument(doc("lucene", "lucene is a very popular search engine library"));
     writer.addDocument(doc("solr", "solr is a very popular search server and is using lucene"));
     writer.addDocument(doc("nutch", "nutch is an internet search engine with web crawler and is using lucene and hadoop"));
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
     searcher = newSearcher(reader);
   }
   
@@ -180,5 +183,102 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
       return docCounts.get(doc);
     }
     
+  }
+
+  public void testGetChildrenMinShouldMatchSumScorer() throws IOException {
+    final BooleanQuery query = new BooleanQuery();
+    query.add(new TermQuery(new Term(F2, "nutch")), Occur.SHOULD);
+    query.add(new TermQuery(new Term(F2, "web")), Occur.SHOULD);
+    query.add(new TermQuery(new Term(F2, "crawler")), Occur.SHOULD);
+    query.setMinimumNumberShouldMatch(2);
+    ScorerSummarizingCollector collector = new ScorerSummarizingCollector();
+    searcher.search(query, collector);
+    assertEquals(1, collector.getNumHits());
+    assertFalse(collector.getSummaries().isEmpty());
+    for (String summary : collector.getSummaries()) {
+      assertEquals(
+          "MinShouldMatchSumScorer\n" +
+          "    SHOULD TermScorer body:nutch\n" +
+          "    SHOULD TermScorer body:web\n" +
+          "    SHOULD TermScorer body:crawler", summary);
+    }
+  }
+
+  public void testGetChildrenBoosterScorer() throws IOException {
+    final BooleanQuery query = new BooleanQuery();
+    query.add(new TermQuery(new Term(F2, "nutch")), Occur.SHOULD);
+    query.add(new TermQuery(new Term(F2, "miss")), Occur.SHOULD);
+    ScorerSummarizingCollector collector = new ScorerSummarizingCollector();
+    searcher.search(query, collector);
+    assertEquals(1, collector.getNumHits());
+    assertFalse(collector.getSummaries().isEmpty());
+    for (String summary : collector.getSummaries()) {
+      assertEquals(
+          "BoostedScorer\n" +
+          "    BOOSTED TermScorer body:nutch", summary);
+    }
+  }
+
+  private static class ScorerSummarizingCollector implements Collector {
+    private final List<String> summaries = new ArrayList<>();
+    private int numHits[] = new int[1];
+
+    public int getNumHits() {
+      return numHits[0];
+    }
+
+    public List<String> getSummaries() {
+      return summaries;
+    }
+
+    @Override
+    public LeafCollector getLeafCollector(AtomicReaderContext context) throws IOException {
+      return new LeafCollector() {
+
+        @Override
+        public void setScorer(Scorer scorer) throws IOException {
+          final StringBuilder builder = new StringBuilder();
+          summarizeScorer(builder, scorer, 0);
+          summaries.add(builder.toString());
+        }
+
+        @Override
+        public void collect(int doc) throws IOException {
+          numHits[0]++;
+        }
+
+        @Override
+        public boolean acceptsDocsOutOfOrder() {
+          return false;
+        }
+
+        @Override
+        public Weight.PostingFeatures postingFeatures() {
+          return Weight.PostingFeatures.DOCS_AND_FREQS;
+        }
+      };
+    }
+
+    private static void summarizeScorer(final StringBuilder builder, final Scorer scorer, final int indent) {
+      builder.append(scorer.getClass().getSimpleName());
+      if (scorer instanceof TermScorer) {
+        TermQuery termQuery = (TermQuery) scorer.getWeight().getQuery();
+        builder.append(" ").append(termQuery.getTerm().field()).append(":").append(termQuery.getTerm().text());
+      }
+      for (final ChildScorer childScorer : scorer.getChildren()) {
+        indent(builder, indent + 1).append(childScorer.relationship).append(" ");
+        summarizeScorer(builder, childScorer.child, indent + 2);
+      }
+    }
+
+    private static StringBuilder indent(final StringBuilder builder, final int indent) {
+      if (builder.length() != 0) {
+        builder.append("\n");
+      }
+      for (int i = 0; i < indent; i++) {
+        builder.append("    ");
+      }
+      return builder;
+    }
   }
 }

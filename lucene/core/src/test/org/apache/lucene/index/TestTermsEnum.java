@@ -27,15 +27,14 @@ import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.automaton.Automaton;
-import org.apache.lucene.util.automaton.BasicAutomata;
+import org.apache.lucene.util.automaton.Automata;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
+import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.RegExp;
 
 @SuppressCodecs({ "SimpleText", "Memory", "Direct" })
@@ -53,7 +52,7 @@ public class TestTermsEnum extends LuceneTestCase {
       w.addDocument(docs.nextDoc());
     }
     final IndexReader r = w.getReader();
-    w.shutdown();
+    w.close();
 
     final List<BytesRef> terms = new ArrayList<>();
     final TermsEnum termsEnum = MultiFields.getTerms(r, "body").iterator(null);
@@ -226,7 +225,7 @@ public class TestTermsEnum extends LuceneTestCase {
     }
 
     final IndexReader r = w.getReader();
-    w.shutdown();
+    w.close();
 
     final NumericDocValues docIDToID = MultiDocValues.getNumericValues(r, "id");
 
@@ -244,7 +243,7 @@ public class TestTermsEnum extends LuceneTestCase {
         if (VERBOSE) {
           System.out.println("\nTEST: empty automaton");
         }
-        a = BasicAutomata.makeEmpty();
+        a = Automata.makeEmpty();
       } else {
         if (VERBOSE) {
           System.out.println("\nTEST: keepPct=" + keepPct);
@@ -259,16 +258,9 @@ public class TestTermsEnum extends LuceneTestCase {
           acceptTerms.add(s2);
           sortedAcceptTerms.add(new BytesRef(s2));
         }
-        a = BasicAutomata.makeStringUnion(sortedAcceptTerms);
+        a = Automata.makeStringUnion(sortedAcceptTerms);
       }
       
-      if (random().nextBoolean()) {
-        if (VERBOSE) {
-          System.out.println("TEST: reduce the automaton");
-        }
-        a.reduce();
-      }
-
       final CompiledAutomaton c = new CompiledAutomaton(a, true, false);
 
       final BytesRef[] acceptTermsArray = new BytesRef[acceptTerms.size()];
@@ -358,7 +350,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
   private IndexReader makeIndex(String... terms) throws Exception {
     d = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
 
     /*
     iwc.setCodec(new StandardCodec(minTermsInBlock, maxTermsInBlock));
@@ -375,7 +367,7 @@ public class TestTermsEnum extends LuceneTestCase {
       close();
     }
     r = w.getReader();
-    w.shutdown();
+    w.close();
     return r;
   }
 
@@ -514,7 +506,7 @@ public class TestTermsEnum extends LuceneTestCase {
     w.deleteDocuments(new Term("field", "one"));
     w.forceMerge(1);
     IndexReader r = w.getReader();
-    w.shutdown();
+    w.close();
     assertEquals(1, r.numDocs());
     assertEquals(1, r.maxDoc());
     Terms terms = MultiFields.getTerms(r, "field");
@@ -725,7 +717,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
   public void testIntersectBasic() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
     iwc.setMergePolicy(new LogDocMergePolicy());
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
     Document doc = new Document();
@@ -742,10 +734,10 @@ public class TestTermsEnum extends LuceneTestCase {
 
     w.forceMerge(1);
     DirectoryReader r = w.getReader();
-    w.shutdown();
+    w.close();
     AtomicReader sub = getOnlySegmentReader(r);
     Terms terms = sub.fields().terms("field");
-    Automaton automaton = new RegExp(".*", RegExp.NONE).toAutomaton();    
+    Automaton automaton = new RegExp(".*", RegExp.NONE).toAutomaton();
     CompiledAutomaton ca = new CompiledAutomaton(automaton, false, false);    
     TermsEnum te = terms.intersect(ca, null);
     assertEquals("aaa", te.next().utf8ToString());
@@ -775,7 +767,7 @@ public class TestTermsEnum extends LuceneTestCase {
   }
   public void testIntersectStartTerm() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
     iwc.setMergePolicy(new LogDocMergePolicy());
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
     Document doc = new Document();
@@ -796,7 +788,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
     w.forceMerge(1);
     DirectoryReader r = w.getReader();
-    w.shutdown();
+    w.close();
     AtomicReader sub = getOnlySegmentReader(r);
     Terms terms = sub.fields().terms("field");
 
@@ -832,7 +824,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
   public void testIntersectEmptyString() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
     iwc.setMergePolicy(new LogDocMergePolicy());
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
     Document doc = new Document();
@@ -850,7 +842,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
     w.forceMerge(1);
     DirectoryReader r = w.getReader();
-    w.shutdown();
+    w.close();
     AtomicReader sub = getOnlySegmentReader(r);
     Terms terms = sub.fields().terms("field");
 
@@ -984,7 +976,7 @@ public class TestTermsEnum extends LuceneTestCase {
       }
       sb.append(' ');
       sb.append(termsList.get(termCount).utf8ToString());
-      IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+      IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
       iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
       RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
       Document doc = new Document();
@@ -1000,7 +992,7 @@ public class TestTermsEnum extends LuceneTestCase {
         assertFalse("term '" + termsList.get(i) + "' shouldn't exist but does", te.seekExact(termsList.get(i)));
       }
       r.close();
-      w.shutdown();
+      w.close();
     }
     dir.close();
   }

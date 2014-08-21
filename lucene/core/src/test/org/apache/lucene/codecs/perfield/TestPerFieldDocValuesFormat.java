@@ -25,7 +25,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesFormat;
-import org.apache.lucene.codecs.lucene46.Lucene46Codec;
+import org.apache.lucene.codecs.lucene410.Lucene410Codec;
 import org.apache.lucene.document.BinaryDocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -46,7 +46,6 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TestUtil;
 
 /**
@@ -79,10 +78,10 @@ public class TestPerFieldDocValuesFormat extends BaseDocValuesFormatTestCase {
 
     Directory directory = newDirectory();
     // we don't use RandomIndexWriter because it might add more docvalues than we expect !!!!1
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
-    final DocValuesFormat fast = DocValuesFormat.forName("Lucene45");
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
+    final DocValuesFormat fast = DocValuesFormat.forName("Lucene410");
     final DocValuesFormat slow = DocValuesFormat.forName("SimpleText");
-    iwc.setCodec(new Lucene46Codec() {
+    iwc.setCodec(new Lucene410Codec() {
       @Override
       public DocValuesFormat getDocValuesFormatForField(String field) {
         if ("dv1".equals(field)) {
@@ -100,7 +99,7 @@ public class TestPerFieldDocValuesFormat extends BaseDocValuesFormatTestCase {
     doc.add(new NumericDocValuesField("dv1", 5));
     doc.add(new BinaryDocValuesField("dv2", new BytesRef("hello world")));
     iwriter.addDocument(doc);
-    iwriter.shutdown();
+    iwriter.close();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -110,7 +109,6 @@ public class TestPerFieldDocValuesFormat extends BaseDocValuesFormatTestCase {
     Query query = new TermQuery(new Term("fieldname", "text"));
     TopDocs hits = isearcher.search(query, null, 1);
     assertEquals(1, hits.totalHits);
-    BytesRef scratch = new BytesRef();
     // Iterate through the results:
     for (int i = 0; i < hits.scoreDocs.length; i++) {
       StoredDocument hitDoc = isearcher.doc(hits.scoreDocs[i].doc);
@@ -119,8 +117,8 @@ public class TestPerFieldDocValuesFormat extends BaseDocValuesFormatTestCase {
       NumericDocValues dv = ireader.leaves().get(0).reader().getNumericDocValues("dv1");
       assertEquals(5, dv.get(hits.scoreDocs[i].doc));
       BinaryDocValues dv2 = ireader.leaves().get(0).reader().getBinaryDocValues("dv2");
-      dv2.get(hits.scoreDocs[i].doc, scratch);
-      assertEquals(new BytesRef("hello world"), scratch);
+      final BytesRef term = dv2.get(hits.scoreDocs[i].doc);
+      assertEquals(new BytesRef("hello world"), term);
     }
 
     ireader.close();

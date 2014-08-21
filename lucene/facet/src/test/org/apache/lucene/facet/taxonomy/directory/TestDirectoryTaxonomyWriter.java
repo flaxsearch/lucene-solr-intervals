@@ -30,7 +30,6 @@ import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.TestUtil;
 import org.junit.Test;
 
 /*
@@ -225,7 +224,7 @@ public class TestDirectoryTaxonomyWriter extends FacetTestCase {
     Directory dir = newDirectory();
     
     // create an empty index first, so that DirTaxoWriter initializes indexEpoch to 1.
-    new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null)).shutdown();
+    new IndexWriter(dir, new IndexWriterConfig(null)).close();
     
     DirectoryTaxonomyWriter taxoWriter = new DirectoryTaxonomyWriter(dir, OpenMode.CREATE_OR_APPEND, NO_OP_CACHE);
     taxoWriter.close();
@@ -437,7 +436,7 @@ public class TestDirectoryTaxonomyWriter extends FacetTestCase {
   @Test
   public void testHugeLabel() throws Exception {
     Directory indexDir = newDirectory(), taxoDir = newDirectory();
-    IndexWriter indexWriter = new IndexWriter(indexDir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter indexWriter = new IndexWriter(indexDir, newIndexWriterConfig(new MockAnalyzer(random())));
     DirectoryTaxonomyWriter taxoWriter = new DirectoryTaxonomyWriter(taxoDir, OpenMode.CREATE, new Cl2oTaxonomyWriterCache(2, 1f, 1));
     FacetsConfig config = new FacetsConfig();
     
@@ -466,7 +465,7 @@ public class TestDirectoryTaxonomyWriter extends FacetTestCase {
     // when too large components were allowed to be added, this resulted in a new added category
     assertEquals(ordinal, taxoWriter.addCategory(cp));
 
-    indexWriter.shutdown();
+    indexWriter.close();
     IOUtils.close(taxoWriter);
     
     DirectoryReader indexReader = DirectoryReader.open(indexDir);

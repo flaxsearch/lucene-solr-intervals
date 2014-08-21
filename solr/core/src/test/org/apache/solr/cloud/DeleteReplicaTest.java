@@ -18,11 +18,11 @@ package org.apache.solr.cloud;
  */
 
 import static org.apache.solr.cloud.OverseerCollectionProcessor.DELETEREPLICA;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.MAX_SHARDS_PER_NODE;
+import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.REPLICATION_FACTOR;
 import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
@@ -31,12 +31,17 @@ import java.util.Map;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.CloudSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
+import org.apache.solr.client.solrj.response.CoreAdminResponse;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
+import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.util.NamedList;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -104,8 +109,20 @@ public class DeleteReplicaTest extends AbstractFullDistribZkTestBase {
       }
 
       if (replica1 == null) fail("no active replicas found");
+
+      HttpSolrServer replica1Server = new HttpSolrServer(replica1.getStr("base_url"));
+      String dataDir = null;
+      try {
+        CoreAdminResponse status = CoreAdminRequest.getStatus(replica1.getStr("core"), replica1Server);
+        NamedList<Object> coreStatus = status.getCoreStatus(replica1.getStr("core"));
+        dataDir = (String) coreStatus.get("dataDir");
+      } finally {
+        replica1Server.shutdown();
+      }
+
       removeAndWaitForReplicaGone(collectionName, client, replica1,
           shard1.getName());
+      assertFalse("dataDir for " + replica1.getName() + " should have been deleted by deleteReplica API", new File(dataDir).exists());
     } finally {
       client.shutdown();
     }
@@ -145,7 +162,7 @@ public class DeleteReplicaTest extends AbstractFullDistribZkTestBase {
         .getZkStateReader().getClusterState().getLiveNodes().size())) + 1;
 
     Map<String, Object> props = makeMap(
-        REPLICATION_FACTOR, replicationFactor,
+        ZkStateReader.REPLICATION_FACTOR, replicationFactor,
         MAX_SHARDS_PER_NODE, maxShardsPerNode,
         NUM_SLICES, numShards);
     Map<String,List<Integer>> collectionInfos = new HashMap<>();

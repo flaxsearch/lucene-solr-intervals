@@ -52,14 +52,14 @@ public class TestNearSpansOrdered extends LuceneTestCase {
   public void setUp() throws Exception {
     super.setUp();
     directory = newDirectory();
-    RandomIndexWriter writer= new RandomIndexWriter(random(), directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+    RandomIndexWriter writer= new RandomIndexWriter(random(), directory, newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     for (int i = 0; i < docFields.length; i++) {
       Document doc = new Document();
       doc.add(newTextField(FIELD, docFields[i], Field.Store.NO));
       writer.addDocument(doc);
     }
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
     searcher = newSearcher(reader);
   }
 

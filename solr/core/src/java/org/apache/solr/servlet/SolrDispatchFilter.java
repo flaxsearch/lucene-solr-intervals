@@ -434,8 +434,16 @@ public class SolrDispatchFilter extends BaseSolrFilter {
       } 
       catch (Throwable ex) {
         sendError( core, solrReq, request, (HttpServletResponse)response, ex );
-        if (ex instanceof Error) {
-          throw (Error) ex;
+        // walk the the entire cause chain to search for an Error
+        Throwable t = ex;
+        while (t != null) {
+          if (t instanceof Error)  {
+            if (t != ex)  {
+              log.error("An Error was wrapped in another exception - please report complete stacktrace on SOLR-6161", ex);
+            }
+            throw (Error) t;
+          }
+          t = t.getCause();
         }
         return;
       } finally {

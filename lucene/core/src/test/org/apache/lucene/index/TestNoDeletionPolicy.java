@@ -26,7 +26,6 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.Test;
 
@@ -70,9 +69,8 @@ public class TestNoDeletionPolicy extends LuceneTestCase {
   @Test
   public void testAllCommitsRemain() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random()))
-        .setIndexDeletionPolicy(NoDeletionPolicy.INSTANCE));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
+                                                .setIndexDeletionPolicy(NoDeletionPolicy.INSTANCE));
     for (int i = 0; i < 10; i++) {
       Document doc = new Document();
       doc.add(newTextField("c", "a" + i, Field.Store.YES));
@@ -80,7 +78,7 @@ public class TestNoDeletionPolicy extends LuceneTestCase {
       writer.commit();
       assertEquals("wrong number of commits !", i + 1, DirectoryReader.listCommits(dir).size());
     }
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
   

@@ -16,10 +16,6 @@ package org.apache.solr.search;
  * limitations under the License.
  */
 
-import java.util.HashSet;
-import java.util.Set;
-import java.util.Map;
-
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryUtils;
 import org.apache.solr.SolrTestCaseJ4;
@@ -28,6 +24,10 @@ import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 
 
@@ -122,6 +122,48 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
                         "{!boost b=$myBoost}asdf", 
                         "{!boost b=$myBoost v=asdf}", 
                         "{!boost b=sum(3,foo_i)}foo_s:asdf");
+    } finally {
+      req.close();
+    }
+  }
+
+  public void testReRankQuery() throws Exception {
+    SolrQueryRequest req = req("q", "*:*",
+                               "rqq", "{!edismax}hello",
+                               "rdocs", "20",
+                               "rweight", "2",
+                               "rows", "10",
+                               "start", "0");
+    try {
+      assertQueryEquals("rerank", req,
+          "{!rerank reRankQuery=$rqq reRankDocs=$rdocs reRankWeight=$rweight}",
+          "{!rerank reRankQuery=$rqq reRankDocs=20 reRankWeight=2}");
+
+    } finally {
+      req.close();
+    }
+
+
+    req = req("qq", "*:*",
+        "rqq", "{!edismax}hello",
+        "rdocs", "20",
+        "rweight", "2",
+        "rows", "100",
+        "start", "50");
+    try {
+      assertQueryEquals("rerank", req,
+          "{!rerank mainQuery=$qq reRankQuery=$rqq reRankDocs=$rdocs reRankWeight=$rweight}",
+          "{!rerank mainQuery=$qq reRankQuery=$rqq reRankDocs=20 reRankWeight=2}");
+
+    } finally {
+      req.close();
+    }
+  }
+
+  public void testExportQuery() throws Exception {
+    SolrQueryRequest req = req("q", "*:*");
+    try {
+      assertQueryEquals("xport", req, "{!xport}");
     } finally {
       req.close();
     }
@@ -330,6 +372,10 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
     } finally {
       req.close();
     }
+  }
+
+  public void testTerms() throws Exception {
+    assertQueryEquals("terms", "{!terms f=foo_i}10,20,30,-10,-20,-30", "{!terms f=foo_i}10,20,30,-10,-20,-30");
   }
 
   public void testBlockJoin() throws Exception {

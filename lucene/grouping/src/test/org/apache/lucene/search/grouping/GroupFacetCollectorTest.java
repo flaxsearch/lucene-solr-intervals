@@ -65,8 +65,7 @@ public class GroupFacetCollectorTest extends AbstractGroupingTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random(),
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-            new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     boolean useDv = true;
 
     // 0
@@ -276,7 +275,7 @@ public class GroupFacetCollectorTest extends AbstractGroupingTestCase {
     assertEquals("15", entries.get(1).getValue().utf8ToString());
     assertEquals(2, entries.get(1).getCount());
 
-    w.shutdown();
+    w.close();
     indexSearcher.getIndexReader().close();
     dir.close();
   }
@@ -290,8 +289,7 @@ public class GroupFacetCollectorTest extends AbstractGroupingTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random(),
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-            new MockAnalyzer(random())).setMergePolicy(NoMergePolicy.INSTANCE));
+        newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(NoMergePolicy.INSTANCE));
     boolean useDv = true;
 
     // Cannot assert this since we use NoMergePolicy:
@@ -348,7 +346,7 @@ public class GroupFacetCollectorTest extends AbstractGroupingTestCase {
     w.addDocument(doc);
     w.commit();
 
-    w.shutdown();
+    w.close();
     IndexSearcher indexSearcher = newSearcher(DirectoryReader.open(dir));
     AbstractGroupFacetCollector groupedAirportFacetCollector = createRandomCollector(groupField + "_dv", "airport", null, true);
     indexSearcher.search(new MatchAllDocsQuery(), groupedAirportFacetCollector);
@@ -509,10 +507,7 @@ public class GroupFacetCollectorTest extends AbstractGroupingTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(
         random,
         dir,
-        newIndexWriterConfig(
-            TEST_VERSION_CURRENT,
-            new MockAnalyzer(random)
-        )
+        newIndexWriterConfig(new MockAnalyzer(random))
     );
     Document doc = new Document();
     Document docNoGroup = new Document();
@@ -638,7 +633,7 @@ public class GroupFacetCollectorTest extends AbstractGroupingTestCase {
     }
 
     DirectoryReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     return new IndexContext(searchTermToFacetToGroups, reader, numDocs, dir, facetWithMostGroups, numGroups, contentBrs, uniqueFacetValues);
   }

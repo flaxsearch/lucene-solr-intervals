@@ -35,8 +35,6 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.LeafCollector;
-import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
@@ -55,7 +53,7 @@ public class HighlighterPhraseTest extends LuceneTestCase {
     final String TEXT = "the fox jumped";
     final Directory directory = newDirectory();
     final IndexWriter indexWriter = new IndexWriter(directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+        newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
     try {
       final Document document = new Document();
       FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
@@ -65,7 +63,7 @@ public class HighlighterPhraseTest extends LuceneTestCase {
       document.add(new Field(FIELD, new TokenStreamConcurrent(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.shutdown();
+      indexWriter.close();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -96,7 +94,7 @@ public class HighlighterPhraseTest extends LuceneTestCase {
     final String TEXT = "the fox jumped";
     final Directory directory = newDirectory();
     final IndexWriter indexWriter = new IndexWriter(directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+        newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
     try {
       final Document document = new Document();
 
@@ -107,7 +105,7 @@ public class HighlighterPhraseTest extends LuceneTestCase {
       document.add(new Field(FIELD, new TokenStreamConcurrent(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.shutdown();
+      indexWriter.close();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -164,7 +162,7 @@ public class HighlighterPhraseTest extends LuceneTestCase {
     final String TEXT = "the fox did not jump";
     final Directory directory = newDirectory();
     final IndexWriter indexWriter = new IndexWriter(directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+        newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
     try {
       final Document document = new Document();
 
@@ -175,7 +173,7 @@ public class HighlighterPhraseTest extends LuceneTestCase {
       document.add(new Field(FIELD, new TokenStreamSparse(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.shutdown();
+      indexWriter.close();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -206,7 +204,7 @@ public class HighlighterPhraseTest extends LuceneTestCase {
     final String TEXT = "the fox did not jump";
     final Directory directory = newDirectory();
     final IndexWriter indexWriter = new IndexWriter(directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+        newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
     try {
       final Document document = new Document();
 
@@ -216,7 +214,7 @@ public class HighlighterPhraseTest extends LuceneTestCase {
       document.add(new Field(FIELD, TEXT, customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.shutdown();
+      indexWriter.close();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {
@@ -245,7 +243,7 @@ public class HighlighterPhraseTest extends LuceneTestCase {
     final String TEXT = "the fox did not jump";
     final Directory directory = newDirectory();
     final IndexWriter indexWriter = new IndexWriter(directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+        newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
     try {
       final Document document = new Document();
       FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
@@ -255,7 +253,7 @@ public class HighlighterPhraseTest extends LuceneTestCase {
       document.add(new Field(FIELD, new TokenStreamSparse(), customType));
       indexWriter.addDocument(document);
     } finally {
-      indexWriter.shutdown();
+      indexWriter.close();
     }
     final IndexReader indexReader = DirectoryReader.open(directory);
     try {

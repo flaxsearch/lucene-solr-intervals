@@ -47,7 +47,7 @@ public class TestFieldCacheWithThreads extends LuceneTestCase {
 
   public void test() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
 
     final List<Long> numbers = new ArrayList<>();
     final List<BytesRef> binary = new ArrayList<>();
@@ -69,7 +69,7 @@ public class TestFieldCacheWithThreads extends LuceneTestCase {
 
     w.forceMerge(1);
     final IndexReader r = DirectoryReader.open(w, true);
-    w.shutdown();
+    w.close();
 
     assertEquals(1, r.leaves().size());
     final AtomicReader ar = r.leaves().get(0).reader();
@@ -90,8 +90,6 @@ public class TestFieldCacheWithThreads extends LuceneTestCase {
               SortedDocValues sdv = FieldCache.DEFAULT.getTermsIndex(ar, "sorted");
               startingGun.await();
               int iters = atLeast(1000);
-              BytesRef scratch = new BytesRef();
-              BytesRef scratch2 = new BytesRef();
               for(int iter=0;iter<iters;iter++) {
                 int docID = threadRandom.nextInt(numDocs);
                 switch(threadRandom.nextInt(4)) {
@@ -108,11 +106,10 @@ public class TestFieldCacheWithThreads extends LuceneTestCase {
                   assertEquals(numbers.get(docID).longValue(), FieldCache.DEFAULT.getNumerics(ar, "number", FieldCache.NUMERIC_UTILS_DOUBLE_PARSER, false).get(docID));
                   break;
                 }
-                bdv.get(docID, scratch);
-                assertEquals(binary.get(docID), scratch);
-                // Cannot share a single scratch against two "sources":
-                sdv.get(docID, scratch2);
-                assertEquals(sorted.get(docID), scratch2);
+                BytesRef term = bdv.get(docID);
+                assertEquals(binary.get(docID), term);
+                term = sdv.get(docID);
+                assertEquals(sorted.get(docID), term);
               }
             } catch (Exception e) {
               throw new RuntimeException(e);
@@ -182,7 +179,7 @@ public class TestFieldCacheWithThreads extends LuceneTestCase {
 
     writer.forceMerge(1);
     final DirectoryReader r = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     final AtomicReader sr = getOnlySegmentReader(r);
 
@@ -207,12 +204,11 @@ public class TestFieldCacheWithThreads extends LuceneTestCase {
             while(System.currentTimeMillis() < END_TIME) {
               final SortedDocValues source;
               source = stringDVDirect;
-              final BytesRef scratch = new BytesRef();
 
               for(int iter=0;iter<100;iter++) {
                 final int docID = random.nextInt(sr.maxDoc());
-                source.get(docID, scratch);
-                assertEquals(docValues.get((int) docIDToID.get(docID)), scratch);
+                BytesRef term = source.get(docID);
+                assertEquals(docValues.get((int) docIDToID.get(docID)), term);
               }
             }
           }

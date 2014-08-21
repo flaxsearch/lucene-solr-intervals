@@ -182,6 +182,11 @@ public class HighlightComponent extends SearchComponent implements PluginInfoIni
       for (ShardRequest sreq : rb.finished) {
         if ((sreq.purpose & ShardRequest.PURPOSE_GET_HIGHLIGHTS) == 0) continue;
         for (ShardResponse srsp : sreq.responses) {
+          if (srsp.getException() != null) {
+            // can't expect the highlight content if there was an exception for this request
+            // this should only happen when using shards.tolerant=true
+            continue;
+          }
           NamedList hl = (NamedList)srsp.getSolrResponse().getResponse().get("highlighting");
           for (int i=0; i<hl.size(); i++) {
             String id = hl.getName(i);
@@ -193,7 +198,7 @@ public class HighlightComponent extends SearchComponent implements PluginInfoIni
       }
 
       // remove nulls in case not all docs were able to be retrieved
-      rb.rsp.add("highlighting", SolrPluginUtils.removeNulls(new SimpleOrderedMap(arr)));      
+      rb.rsp.add("highlighting", SolrPluginUtils.removeNulls(arr, new SimpleOrderedMap<Object>()));      
     }
   }
 
@@ -208,11 +213,6 @@ public class HighlightComponent extends SearchComponent implements PluginInfoIni
   @Override
   public String getDescription() {
     return "Highlighting";
-  }
-  
-  @Override
-  public String getSource() {
-    return "$URL$";
   }
   
   @Override

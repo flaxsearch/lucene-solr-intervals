@@ -120,7 +120,7 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
   public void testNRT() throws Exception {
     Directory dir = newDirectory();
     Directory taxoDir = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
     // Don't allow tiny maxBufferedDocs; it can make this
     // test too slow:
     iwc.setMaxBufferedDocs(Math.max(500, iwc.getMaxBufferedDocs()));
@@ -203,14 +203,14 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       System.out.println("TEST: now stop");
     }
 
-    w.shutdown();
+    w.close();
     IOUtils.close(mgr, tw, taxoDir, dir);
   }
   
   public void testDirectory() throws Exception {
     Directory indexDir = newDirectory();
     Directory taxoDir = newDirectory();
-    final IndexWriter w = new IndexWriter(indexDir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    final IndexWriter w = new IndexWriter(indexDir, newIndexWriterConfig(new MockAnalyzer(random())));
     final DirectoryTaxonomyWriter tw = new DirectoryTaxonomyWriter(taxoDir);
     // first empty commit
     w.commit();
@@ -256,14 +256,14 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       System.out.println("TEST: now stop");
     }
 
-    w.shutdown();
+    w.close();
     IOUtils.close(mgr, tw, taxoDir, indexDir);
   }
   
   public void testReplaceTaxonomyNRT() throws Exception {
     Directory dir = newDirectory();
     Directory taxoDir = newDirectory();
-    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
     DirectoryTaxonomyWriter tw = new DirectoryTaxonomyWriter(taxoDir);
 
     Directory taxoDir2 = newDirectory();
@@ -282,14 +282,14 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       // expected
     }
 
-    w.shutdown();
+    w.close();
     IOUtils.close(mgr, tw, taxoDir, dir);
   }
   
   public void testReplaceTaxonomyDirectory() throws Exception {
     Directory indexDir = newDirectory();
     Directory taxoDir = newDirectory();
-    IndexWriter w = new IndexWriter(indexDir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter w = new IndexWriter(indexDir, newIndexWriterConfig(new MockAnalyzer(random())));
     DirectoryTaxonomyWriter tw = new DirectoryTaxonomyWriter(taxoDir);
     w.commit();
     tw.commit();
@@ -321,7 +321,7 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       mgr.release(pair);
     }
 
-    w.shutdown();
+    w.close();
     IOUtils.close(mgr, tw, taxoDir, indexDir);
   }
 

@@ -21,6 +21,7 @@ import java.io.IOException;
 
 import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.DataOutput;
+import org.apache.lucene.util.RamUsageEstimator;
 
 /**
  * An FST {@link Outputs} implementation, holding two other outputs.
@@ -174,5 +175,19 @@ public class PairOutputs<A,B> extends Outputs<PairOutputs.Pair<A,B>> {
   @Override
   public String toString() {
     return "PairOutputs<" + outputs1 + "," + outputs2 + ">";
+  }
+
+  private static final long BASE_NUM_BYTES = RamUsageEstimator.shallowSizeOf(new Pair<Object,Object>(null, null));
+
+  @Override
+  public long ramBytesUsed(Pair<A,B> output) {
+    long ramBytesUsed = BASE_NUM_BYTES;
+    if (output.output1 != null) {
+      ramBytesUsed += outputs1.ramBytesUsed(output.output1);
+    }
+    if (output.output2 != null) {
+      ramBytesUsed += outputs2.ramBytesUsed(output.output2);
+    }
+    return ramBytesUsed;
   }
 }

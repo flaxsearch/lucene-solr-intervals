@@ -64,6 +64,9 @@ final class Lucene46FieldInfosReader extends FieldInfosReader {
       for (int i = 0; i < size; i++) {
         String name = input.readString();
         final int fieldNumber = input.readVInt();
+        if (fieldNumber < 0) {
+          throw new CorruptIndexException("invalid field number for field: " + name + ", fieldNumber=" + fieldNumber + " (resource=" + input + ")");
+        }
         byte bits = input.readByte();
         boolean isIndexed = (bits & Lucene46FieldInfosFormat.IS_INDEXED) != 0;
         boolean storeTermVector = (bits & Lucene46FieldInfosFormat.STORE_TERMVECTOR) != 0;
@@ -120,6 +123,8 @@ final class Lucene46FieldInfosReader extends FieldInfosReader {
       return DocValuesType.SORTED;
     } else if (b == 4) {
       return DocValuesType.SORTED_SET;
+    } else if (b == 5) {
+      return DocValuesType.SORTED_NUMERIC;
     } else {
       throw new CorruptIndexException("invalid docvalues byte: " + b + " (resource=" + input + ")");
     }

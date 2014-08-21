@@ -91,9 +91,10 @@ public class TestTermVectorsReader extends LuceneTestCase {
     dir = newDirectory();
     IndexWriter writer = new IndexWriter(
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MyAnalyzer()).
+        newIndexWriterConfig(new MyAnalyzer()).
             setMaxBufferedDocs(-1).
-            setMergePolicy(newLogMergePolicy(false, 10)).setUseCompoundFile(false)
+            setMergePolicy(newLogMergePolicy(false, 10))
+            .setUseCompoundFile(false)
     );
 
     Document doc = new Document();
@@ -126,7 +127,7 @@ public class TestTermVectorsReader extends LuceneTestCase {
     }
     writer.commit();
     seg = writer.newestSegment();
-    writer.shutdown();
+    writer.close();
 
     fieldInfos = SegmentReader.readFieldInfos(seg);
   }
@@ -451,7 +452,7 @@ public class TestTermVectorsReader extends LuceneTestCase {
       assertEquals("cannot store term vector payloads for a field that is not indexed (field=\"field\")", iae.getMessage());
     }
 
-    w.shutdown();
+    w.close();
     
     dir.close();
   }

@@ -41,25 +41,23 @@ public class TestParallelTermEnum extends LuceneTestCase {
     super.setUp();
     Document doc;
     rd1 = newDirectory();
-    IndexWriter iw1 = new IndexWriter(rd1, newIndexWriterConfig( 
-        TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter iw1 = new IndexWriter(rd1, newIndexWriterConfig(new MockAnalyzer(random())));
 
     doc = new Document();
     doc.add(newTextField("field1", "the quick brown fox jumps", Field.Store.YES));
     doc.add(newTextField("field2", "the quick brown fox jumps", Field.Store.YES));
     iw1.addDocument(doc);
 
-    iw1.shutdown();
+    iw1.close();
     rd2 = newDirectory();
-    IndexWriter iw2 = new IndexWriter(rd2, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter iw2 = new IndexWriter(rd2, newIndexWriterConfig(new MockAnalyzer(random())));
 
     doc = new Document();
     doc.add(newTextField("field1", "the fox jumps over the lazy dog", Field.Store.YES));
     doc.add(newTextField("field3", "the fox jumps over the lazy dog", Field.Store.YES));
     iw2.addDocument(doc);
 
-    iw2.shutdown();
+    iw2.close();
 
     this.ir1 = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(rd1));
     this.ir2 = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(rd2));

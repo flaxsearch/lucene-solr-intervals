@@ -53,7 +53,7 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
       try {
         MockAnalyzer analyzer = new MockAnalyzer(random());
         analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
-        IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+        IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
 
         if (VERBOSE) {
           // Do this ourselves instead of relying on LTC so
@@ -84,7 +84,7 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
           w.addDocument(docs.nextDoc());
         }
         dir.setRandomIOExceptionRateOnOpen(0.0);
-        w.shutdown();
+        w.close();
         w = null;
 
         // NOTE: This is O(N^2)!  Only enable for temporary debugging:
@@ -143,7 +143,7 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
         // files ... we can easily have leftover files at
         // the time we take a copy because we are holding
         // open a reader:
-        new IndexWriter(dirCopy, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))).shutdown();
+        new IndexWriter(dirCopy, newIndexWriterConfig(new MockAnalyzer(random()))).close();
         dirCopy.setRandomIOExceptionRate(rate);
         dir.setRandomIOExceptionRateOnOpen(rate);
       }

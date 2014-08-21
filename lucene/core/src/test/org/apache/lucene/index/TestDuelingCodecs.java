@@ -24,6 +24,7 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.NumericDocValuesField;
+import org.apache.lucene.document.SortedNumericDocValuesField;
 import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
@@ -49,7 +50,7 @@ public class TestDuelingCodecs extends LuceneTestCase {
   public void setUp() throws Exception {
     super.setUp();
 
-    // for now its SimpleText vs Lucene46(random postings format)
+    // for now its SimpleText vs Lucene410(random postings format)
     // as this gives the best overall coverage. when we have more
     // codecs we should probably pick 2 from Codec.availableCodecs()
     
@@ -70,12 +71,12 @@ public class TestDuelingCodecs extends LuceneTestCase {
 
     // but these can be different
     // TODO: this turns this into a really big test of Multi*, is that what we want?
-    IndexWriterConfig leftConfig = newIndexWriterConfig(TEST_VERSION_CURRENT, leftAnalyzer);
+    IndexWriterConfig leftConfig = newIndexWriterConfig(leftAnalyzer);
     leftConfig.setCodec(leftCodec);
     // preserve docids
     leftConfig.setMergePolicy(newLogMergePolicy());
 
-    IndexWriterConfig rightConfig = newIndexWriterConfig(TEST_VERSION_CURRENT, rightAnalyzer);
+    IndexWriterConfig rightConfig = newIndexWriterConfig(rightAnalyzer);
     rightConfig.setCodec(rightCodec);
     // preserve docids
     rightConfig.setMergePolicy(newLogMergePolicy());
@@ -89,9 +90,9 @@ public class TestDuelingCodecs extends LuceneTestCase {
     createRandomIndex(numdocs, rightWriter, seed);
 
     leftReader = maybeWrapReader(leftWriter.getReader());
-    leftWriter.shutdown();
+    leftWriter.close();
     rightReader = maybeWrapReader(rightWriter.getReader());
-    rightWriter.shutdown();
+    rightWriter.close();
     
     // check that our readers are valid
     TestUtil.checkReader(leftReader);
@@ -141,6 +142,14 @@ public class TestDuelingCodecs extends LuceneTestCase {
       document.removeFields("sparsenumeric");
       if (random.nextInt(4) == 2) {
         document.add(new NumericDocValuesField("sparsenumeric", random.nextInt()));
+      }
+      // add sortednumeric sometimes
+      document.removeFields("sparsesortednum");
+      if (random.nextInt(5) == 1) {
+        document.add(new SortedNumericDocValuesField("sparsesortednum", random.nextLong()));
+        if (random.nextBoolean()) {
+          document.add(new SortedNumericDocValuesField("sparsesortednum", random.nextLong()));
+        }
       }
       writer.addDocument(document);
     }

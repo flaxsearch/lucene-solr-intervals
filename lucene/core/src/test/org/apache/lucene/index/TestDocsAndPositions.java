@@ -47,7 +47,7 @@ public class TestDocsAndPositions extends LuceneTestCase {
   public void testPositionsSimple() throws IOException {
     Directory directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+        newIndexWriterConfig(new MockAnalyzer(random())));
     for (int i = 0; i < 39; i++) {
       Document doc = new Document();
       FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
@@ -58,7 +58,7 @@ public class TestDocsAndPositions extends LuceneTestCase {
       writer.addDocument(doc);
     }
     IndexReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     int num = atLeast(13);
     for (int i = 0; i < num; i++) {
@@ -111,7 +111,8 @@ public class TestDocsAndPositions extends LuceneTestCase {
   public void testRandomPositions() throws IOException {
     Directory dir = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new MockAnalyzer(random()))
+          .setMergePolicy(newLogMergePolicy()));
     int numDocs = atLeast(47);
     int max = 1051;
     int term = random().nextInt(max);
@@ -140,7 +141,7 @@ public class TestDocsAndPositions extends LuceneTestCase {
     }
 
     IndexReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     int num = atLeast(13);
     for (int i = 0; i < num; i++) {
@@ -194,7 +195,8 @@ public class TestDocsAndPositions extends LuceneTestCase {
   public void testRandomDocs() throws IOException {
     Directory dir = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir,
-                                                     newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+                                                     newIndexWriterConfig(new MockAnalyzer(random()))
+                                                       .setMergePolicy(newLogMergePolicy()));
     int numDocs = atLeast(49);
     int max = 15678;
     int term = random().nextInt(max);
@@ -216,7 +218,7 @@ public class TestDocsAndPositions extends LuceneTestCase {
     }
 
     IndexReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     int num = atLeast(13);
     for (int i = 0; i < num; i++) {
@@ -273,7 +275,7 @@ public class TestDocsAndPositions extends LuceneTestCase {
   public void testLargeNumberOfPositions() throws IOException {
     Directory dir = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+        newIndexWriterConfig(new MockAnalyzer(random())));
     int howMany = 1000;
     FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
     customType.setOmitNorms(true);
@@ -293,7 +295,7 @@ public class TestDocsAndPositions extends LuceneTestCase {
 
     // now do searches
     IndexReader reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
 
     int num = atLeast(13);
     for (int i = 0; i < num; i++) {
@@ -346,7 +348,7 @@ public class TestDocsAndPositions extends LuceneTestCase {
     docid = disi.docID();
     assertEquals(-1, docid);
     assertTrue(disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
-    writer.shutdown();
+    writer.close();
     r.close();
     dir.close();
   }
@@ -371,7 +373,7 @@ public class TestDocsAndPositions extends LuceneTestCase {
     docid = disi.docID();
     assertEquals(-1, docid);
     assertTrue(disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
-    writer.shutdown();
+    writer.close();
     r.close();
     dir.close();
   }

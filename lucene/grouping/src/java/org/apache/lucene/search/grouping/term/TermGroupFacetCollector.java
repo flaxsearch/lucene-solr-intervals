@@ -22,9 +22,9 @@ import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.grouping.AbstractGroupFacetCollector;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.SentinelIntSet;
 import org.apache.lucene.util.UnicodeUtil;
 
@@ -107,16 +107,14 @@ public abstract class TermGroupFacetCollector extends AbstractGroupFacetCollecto
       if (groupOrd == -1) {
         groupKey = null;
       } else {
-        groupKey = new BytesRef();
-        groupFieldTermsIndex.lookupOrd(groupOrd, groupKey);
+        groupKey = BytesRef.deepCopyOf(groupFieldTermsIndex.lookupOrd(groupOrd));
       }
 
       BytesRef facetKey;
       if (facetOrd == -1) {
         facetKey = null;
       } else {
-        facetKey = new BytesRef();
-        facetFieldTermsIndex.lookupOrd(facetOrd, facetKey);
+        facetKey = BytesRef.deepCopyOf(facetFieldTermsIndex.lookupOrd(facetOrd));
       }
 
       groupedFacetHits.add(new GroupedFacetHit(groupKey, facetKey));
@@ -157,9 +155,10 @@ public abstract class TermGroupFacetCollector extends AbstractGroupFacetCollecto
           // Points to the ord one higher than facetPrefix
           startFacetOrd = -startFacetOrd - 1;
         }
-        BytesRef facetEndPrefix = BytesRef.deepCopyOf(facetPrefix);
+        BytesRefBuilder facetEndPrefix = new BytesRefBuilder();
+        facetEndPrefix.append(facetPrefix);
         facetEndPrefix.append(UnicodeUtil.BIG_TERM);
-        endFacetOrd = facetFieldTermsIndex.lookupTerm(facetEndPrefix);
+        endFacetOrd = facetFieldTermsIndex.lookupTerm(facetEndPrefix.get());
         assert endFacetOrd < 0;
         endFacetOrd = -endFacetOrd - 1; // Points to the ord one higher than facetEndPrefix
       } else {
@@ -201,7 +200,6 @@ public abstract class TermGroupFacetCollector extends AbstractGroupFacetCollecto
     private SortedSetDocValues facetFieldDocTermOrds;
     private TermsEnum facetOrdTermsEnum;
     private int facetFieldNumTerms;
-    private final BytesRef scratch = new BytesRef();
 
     MV(String groupField, String facetField, BytesRef facetPrefix, int initialSize) {
       super(groupField, facetField, facetPrefix, initialSize);
@@ -224,8 +222,7 @@ public abstract class TermGroupFacetCollector extends AbstractGroupFacetCollecto
         if (groupOrd == -1) {
           groupKey = null;
         } else {
-          groupKey = new BytesRef();
-          groupFieldTermsIndex.lookupOrd(groupOrd, groupKey);
+          groupKey = BytesRef.deepCopyOf(groupFieldTermsIndex.lookupOrd(groupOrd));
         }
         groupedFacetHits.add(new GroupedFacetHit(groupKey, null));
         return;
@@ -263,16 +260,14 @@ public abstract class TermGroupFacetCollector extends AbstractGroupFacetCollecto
       if (groupOrd == -1) {
         groupKey = null;
       } else {
-        groupKey = new BytesRef();
-        groupFieldTermsIndex.lookupOrd(groupOrd, groupKey);
+        groupKey = BytesRef.deepCopyOf(groupFieldTermsIndex.lookupOrd(groupOrd));
       }
 
       final BytesRef facetValue;
       if (facetOrd == facetFieldNumTerms) {
         facetValue = null;
       } else {
-        facetFieldDocTermOrds.lookupOrd(facetOrd, scratch);
-        facetValue = BytesRef.deepCopyOf(scratch); // must we?
+        facetValue = BytesRef.deepCopyOf(facetFieldDocTermOrds.lookupOrd(facetOrd));
       }
       groupedFacetHits.add(new GroupedFacetHit(groupKey, facetValue));
     }
@@ -333,9 +328,10 @@ public abstract class TermGroupFacetCollector extends AbstractGroupFacetCollecto
           return;
         }
 
-        BytesRef facetEndPrefix = BytesRef.deepCopyOf(facetPrefix);
+        BytesRefBuilder facetEndPrefix = new BytesRefBuilder();
+        facetEndPrefix.append(facetPrefix);
         facetEndPrefix.append(UnicodeUtil.BIG_TERM);
-        seekStatus = facetOrdTermsEnum.seekCeil(facetEndPrefix);
+        seekStatus = facetOrdTermsEnum.seekCeil(facetEndPrefix.get());
         if (seekStatus != TermsEnum.SeekStatus.END) {
           endFacetOrd = (int) facetOrdTermsEnum.ord();
         } else {

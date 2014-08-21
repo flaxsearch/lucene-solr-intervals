@@ -17,14 +17,12 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_MASK;
-import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_SIZE;
-
 import java.io.IOException;
 import java.text.NumberFormat;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.codecs.Codec;
@@ -36,12 +34,15 @@ import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.TrackingDirectoryWrapper;
 import org.apache.lucene.util.ByteBlockPool.Allocator;
 import org.apache.lucene.util.ByteBlockPool.DirectTrackingAllocator;
-import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.IntBlockPool;
 import org.apache.lucene.util.MutableBits;
 import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.Version;
+
+import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_MASK;
+import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_SIZE;
 
 class DocumentsWriterPerThread {
 
@@ -154,11 +155,11 @@ class DocumentsWriterPerThread {
   private final NumberFormat nf = NumberFormat.getInstance(Locale.ROOT);
   final Allocator byteBlockAllocator;
   final IntBlockPool.Allocator intBlockAllocator;
+  private final AtomicLong pendingNumDocs;
   private final LiveIndexWriterConfig indexWriterConfig;
-
   
   public DocumentsWriterPerThread(String segmentName, Directory directory, LiveIndexWriterConfig indexWriterConfig, InfoStream infoStream, DocumentsWriterDeleteQueue deleteQueue,
-      FieldInfos.Builder fieldInfos) throws IOException {
+                                  FieldInfos.Builder fieldInfos, AtomicLong pendingNumDocs) throws IOException {
     this.directoryOrig = directory;
     this.directory = new TrackingDirectoryWrapper(directory);
     this.fieldInfos = fieldInfos;
@@ -167,6 +168,7 @@ class DocumentsWriterPerThread {
     this.codec = indexWriterConfig.getCodec();
     this.docState = new DocState(this, infoStream);
     this.docState.similarity = indexWriterConfig.getSimilarity();
+    this.pendingNumDocs = pendingNumDocs;
     bytesUsed = Counter.newCounter();
     byteBlockAllocator = new DirectTrackingAllocator(bytesUsed);
     pendingUpdates = new BufferedUpdates();
@@ -176,7 +178,7 @@ class DocumentsWriterPerThread {
     pendingUpdates.clear();
     deleteSlice = deleteQueue.newSlice();
    
-    segmentInfo = new SegmentInfo(directoryOrig, Constants.LUCENE_MAIN_VERSION, segmentName, -1, false, codec, null);
+    segmentInfo = new SegmentInfo(directoryOrig, Version.LATEST, segmentName, -1, false, codec, null);
     assert numDocsInRAM == 0;
     if (INFO_VERBOSE && infoStream.isEnabled("DWPT")) {
       infoStream.message("DWPT", Thread.currentThread().getName() + " init seg=" + segmentName + " delQueue=" + deleteQueue);  
@@ -207,6 +209,16 @@ class DocumentsWriterPerThread {
     return true;
   }
 
+  /** Anything that will add N docs to the index should reserve first to
+   *  make sure it's allowed. */
+  private void reserveDoc() {
+    if (pendingNumDocs.incrementAndGet() > IndexWriter.getActualMaxDocs()) {
+      // Reserve failed
+      pendingNumDocs.decrementAndGet();
+      throw new IllegalStateException("number of documents in the index cannot exceed " + IndexWriter.getActualMaxDocs());
+    }
+  }
+
   public void updateDocument(IndexDocument doc, Analyzer analyzer, Term delTerm) throws IOException {
     assert testPoint("DocumentsWriterPerThread addDocument start");
     assert deleteQueue != null;
@@ -216,6 +228,13 @@ class DocumentsWriterPerThread {
     if (INFO_VERBOSE && infoStream.isEnabled("DWPT")) {
       infoStream.message("DWPT", Thread.currentThread().getName() + " update delTerm=" + delTerm + " docID=" + docState.docID + " seg=" + segmentInfo.name);
     }
+    // Even on exception, the document is still added (but marked
+    // deleted), so we don't need to un-reserve at that point.
+    // Aborting exceptions will actually "lose" more than one
+    // document, so the counter will be "wrong" in that case, but
+    // it's very hard to fix (we can't easily distinguish aborting
+    // vs non-aborting exceptions):
+    reserveDoc();
     boolean success = false;
     try {
       try {
@@ -250,6 +269,13 @@ class DocumentsWriterPerThread {
     try {
       
       for(IndexDocument doc : docs) {
+        // Even on exception, the document is still added (but marked
+        // deleted), so we don't need to un-reserve at that point.
+        // Aborting exceptions will actually "lose" more than one
+        // document, so the counter will be "wrong" in that case, but
+        // it's very hard to fix (we can't easily distinguish aborting
+        // vs non-aborting exceptions):
+        reserveDoc();
         docState.doc = doc;
         docState.docID = numDocsInRAM;
         docCount++;

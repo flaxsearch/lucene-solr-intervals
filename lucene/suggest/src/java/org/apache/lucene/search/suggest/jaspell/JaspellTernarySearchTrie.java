@@ -39,6 +39,7 @@ import java.util.Locale;
 import java.util.Vector;
 import java.util.zip.GZIPInputStream;
 
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.RamUsageEstimator;
 
@@ -61,13 +62,16 @@ import org.apache.lucene.util.RamUsageEstimator;
  * Algorithms, January 1997). Algorithms in C, Third Edition, by Robert
  * Sedgewick (Addison-Wesley, 1998) provides yet another view of ternary search
  * trees.
+ *
+ * @deprecated Migrate to one of the newer suggesters which are much more RAM efficient.
  */
-public class JaspellTernarySearchTrie {
+@Deprecated
+public class JaspellTernarySearchTrie implements Accountable {
 
   /**
    * An inner class of Ternary Search Trie that represents a node in the trie.
    */
-  protected final class TSTNode {
+  protected final class TSTNode implements Accountable {
 
     /** Index values for accessing relatives array. */
     protected final static int PARENT = 0, LOKID = 1, EQKID = 2, HIKID = 3;
@@ -94,12 +98,14 @@ public class JaspellTernarySearchTrie {
       relatives[PARENT] = parent;
     }
 
-    /** Return an approximate memory usage for this node and its sub-nodes. */
-    public long sizeInBytes() {
+    @Override
+    public long ramBytesUsed() {
       long mem = RamUsageEstimator.shallowSizeOf(this) + RamUsageEstimator.shallowSizeOf(relatives);
-      for (TSTNode node : relatives) {
+      // We don't need to add parent since our parent added itself:
+      for (int i=1;i<4;i++) {
+        TSTNode node = relatives[i];
         if (node != null) {
-          mem += node.sizeInBytes();
+          mem += node.ramBytesUsed();
         }
       }
       return mem;
@@ -884,12 +890,12 @@ public class JaspellTernarySearchTrie {
             sortKeysNumReturnValues, sortKeysResult);
   }
 
-  /** Return an approximate memory usage for this trie. */
-  public long sizeInBytes() {
+  @Override
+  public long ramBytesUsed() {
     long mem = RamUsageEstimator.shallowSizeOf(this);
     final TSTNode root = getRoot();
     if (root != null) {
-      mem += root.sizeInBytes();
+      mem += root.ramBytesUsed();
     }
     return mem;
   }

@@ -57,7 +57,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
 
     small = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), small, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, 
+        newIndexWriterConfig(
             new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)).setMergePolicy(newLogMergePolicy()));
 
     FieldType customType = new FieldType(TextField.TYPE_STORED);
@@ -73,7 +73,7 @@ public class TestMultiTermConstantScore extends BaseTestRangeFilter {
     }
 
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
   }
 
   @AfterClass

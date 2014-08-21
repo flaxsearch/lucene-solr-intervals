@@ -79,7 +79,7 @@ public class IntervalHighlighterTest extends LuceneTestCase {
 
   public void setUp() throws Exception {
     super.setUp();
-    iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)).setOpenMode(OpenMode.CREATE);
+    iwc = newIndexWriterConfig(random(), new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)).setOpenMode(OpenMode.CREATE);
     analyzer = iwc.getAnalyzer();
     dir = newDirectory();
   }
@@ -95,7 +95,7 @@ public class IntervalHighlighterTest extends LuceneTestCase {
   // make several docs
   protected void insertDocs(Analyzer analyzer, String... values)
       throws Exception {
-    IndexWriter writer = new IndexWriter(dir, iwc.clone());
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(analyzer));
     FieldType type = new FieldType();
     type.setIndexed(true);
     type.setTokenized(true);
@@ -107,7 +107,7 @@ public class IntervalHighlighterTest extends LuceneTestCase {
       doc.add(f);
       writer.addDocument(doc);
     }
-    writer.shutdown();
+    writer.close();
     searcher = new IndexSearcher(DirectoryReader.open(dir));
   }
 

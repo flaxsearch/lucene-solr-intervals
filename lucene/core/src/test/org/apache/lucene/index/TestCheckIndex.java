@@ -20,7 +20,6 @@ package org.apache.lucene.index;
 import java.io.IOException;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.ArrayList;
 
@@ -39,7 +38,8 @@ public class TestCheckIndex extends LuceneTestCase {
 
   public void testDeletedDocs() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMaxBufferedDocs(2));
+    IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
+                                                 .setMaxBufferedDocs(2));
     for(int i=0;i<19;i++) {
       Document doc = new Document();
       FieldType customType = new FieldType(TextField.TYPE_STORED);
@@ -52,7 +52,7 @@ public class TestCheckIndex extends LuceneTestCase {
     writer.forceMerge(1);
     writer.commit();
     writer.deleteDocuments(new Term("field","aaa5"));
-    writer.shutdown();
+    writer.close();
 
     ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
     CheckIndex checker = new CheckIndex(dir);
@@ -101,7 +101,7 @@ public class TestCheckIndex extends LuceneTestCase {
   // LUCENE-4221: we have to let these thru, for now
   public void testBogusTermVectors() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
     Document doc = new Document();
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
     ft.setStoreTermVectors(true);
@@ -112,7 +112,7 @@ public class TestCheckIndex extends LuceneTestCase {
     ));
     doc.add(field);
     iw.addDocument(doc);
-    iw.shutdown();
+    iw.close();
     dir.close(); // checkindex
   }
 }

@@ -17,12 +17,15 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
+import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
+import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.response.CollectionAdminResponse;
 import org.apache.solr.common.params.CollectionParams;
+import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.update.DirectUpdateHandler2;
 import org.junit.Before;
@@ -31,16 +34,18 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Tests the Multi threaded Collections API.
  */
 public class MultiThreadedOCPTest extends AbstractFullDistribZkTestBase {
 
+  private static final int REQUEST_STATUS_TIMEOUT = 5 * 60;
   private static Logger log = LoggerFactory
       .getLogger(MultiThreadedOCPTest.class);
 
-  private static int NUM_COLLECTIONS = 4;
+  private static final int NUM_COLLECTIONS = 4;
 
   @Before
   @Override
@@ -64,6 +69,7 @@ public class MultiThreadedOCPTest extends AbstractFullDistribZkTestBase {
 
     testParallelCollectionAPICalls();
     testTaskExclusivity();
+    testDeduplicationOfSubmittedTasks();
     testLongAndShortRunningParallelApiCalls();
   }
 
@@ -94,7 +100,7 @@ public class MultiThreadedOCPTest extends AbstractFullDistribZkTestBase {
     }
     assertTrue("More than one tasks were supposed to be running in parallel but they weren't.", pass);
     for(int i=1;i<=NUM_COLLECTIONS;i++) {
-      String state = getRequestStateAfterCompletion(i + "", 30, server);
+      String state = getRequestStateAfterCompletion(i + "", REQUEST_STATUS_TIMEOUT, server);
       assertTrue("Task " + i + " did not complete, final state: " + state,state.equals("completed"));
     }
   }
@@ -123,7 +129,7 @@ public class MultiThreadedOCPTest extends AbstractFullDistribZkTestBase {
       
       assertTrue("Mutual exclusion failed. Found more than one task running for the same collection", runningTasks < 2);
 
-      if(completedTasks == 2 || iterations++ > 90)
+      if(completedTasks == 2 || iterations++ > REQUEST_STATUS_TIMEOUT)
         break;
 
       try {
@@ -134,7 +140,26 @@ public class MultiThreadedOCPTest extends AbstractFullDistribZkTestBase {
       }
     }
     for (int i=1001;i<=1002;i++) {
-      String state = getRequestStateAfterCompletion(i + "", 30, server);
+      String state = getRequestStateAfterCompletion(i + "", REQUEST_STATUS_TIMEOUT, server);
+      assertTrue("Task " + i + " did not complete, final state: " + state,state.equals("completed"));
+    }
+  }
+
+  private void testDeduplicationOfSubmittedTasks() throws IOException, SolrServerException {
+    SolrServer server = createNewSolrServer("", getBaseUrl((HttpSolrServer) clients.get(0)));
+    CollectionAdminRequest.createCollection("ocptest_shardsplit2", 4, "conf1", server, "3000");
+
+    CollectionAdminRequest.splitShard("ocptest_shardsplit2", SHARD1, server, "3001");
+    CollectionAdminRequest.splitShard("ocptest_shardsplit2", SHARD2, server, "3002");
+
+    // Now submit another task with the same id. At this time, hopefully the previous 3002 should still be in the queue.
+    CollectionAdminResponse response = CollectionAdminRequest.splitShard("ocptest_shardsplit2", SHARD1, server, "3002");
+    NamedList r = response.getResponse();
+    assertEquals("Duplicate request was supposed to exist but wasn't found. De-duplication of submitted task failed.",
+        "Task with the same requestid already exists.", r.get("error"));
+
+    for (int i=3001;i<=3002;i++) {
+      String state = getRequestStateAfterCompletion(i + "", REQUEST_STATUS_TIMEOUT, server);
       assertTrue("Task " + i + " did not complete, final state: " + state,state.equals("completed"));
     }
   }
@@ -158,21 +183,26 @@ public class MultiThreadedOCPTest extends AbstractFullDistribZkTestBase {
     indexThread.start();
 
     try {
-      Thread.sleep(5000);
 
       SolrServer server = createNewSolrServer("", getBaseUrl((HttpSolrServer) clients.get(0)));
       CollectionAdminRequest.splitShard("collection1", SHARD1, server, "2000");
 
       String state = getRequestState("2000", server);
-      while (!state.equals("running")) {
+      while (state.equals("submitted")) {
         state = getRequestState("2000", server);
-        if (state.equals("completed") || state.equals("failed"))
-          break;
-        Thread.sleep(100);
+        Thread.sleep(10);
       }
       assertTrue("SplitShard task [2000] was supposed to be in [running] but isn't. It is [" + state + "]", state.equals("running"));
 
-      invokeCollectionApi("action", CollectionParams.CollectionAction.OVERSEERSTATUS.toLower());
+      // CLUSTERSTATE is always mutually exclusive, it should return with a response before the split completes
+
+      ModifiableSolrParams params = new ModifiableSolrParams();
+      params.set("action", CollectionParams.CollectionAction.CLUSTERSTATUS.toString());
+      params.set("collection", "collection1");
+      SolrRequest request = new QueryRequest(params);
+      request.setPath("/admin/collections");
+
+      server.request(request);
 
       state = getRequestState("2000", server);
 
@@ -196,7 +226,9 @@ public class MultiThreadedOCPTest extends AbstractFullDistribZkTestBase {
   private String getRequestStateAfterCompletion(String requestId, int waitForSeconds, SolrServer server)
       throws IOException, SolrServerException {
     String state = null;
-    while(waitForSeconds-- > 0) {
+    long maxWait = System.nanoTime() + TimeUnit.NANOSECONDS.convert(waitForSeconds, TimeUnit.SECONDS);
+
+    while (System.nanoTime() < maxWait)  {
       state = getRequestState(requestId, server);
       if(state.equals("completed") || state.equals("failed"))
         return state;
@@ -205,6 +237,7 @@ public class MultiThreadedOCPTest extends AbstractFullDistribZkTestBase {
       } catch (InterruptedException e) {
       }
     }
+
     return state;
   }
 

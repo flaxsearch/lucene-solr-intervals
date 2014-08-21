@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -28,6 +29,7 @@ import java.util.Map;
 import org.apache.commons.io.IOUtils;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.params.UpdateParams;
+import org.apache.solr.common.util.JsonRecordReader;
 import org.noggit.JSONParser;
 import org.noggit.ObjectBuilder;
 import org.apache.solr.common.SolrException;
@@ -63,7 +65,7 @@ public class JsonLoader extends ContentStreamLoader {
   @Override
   public void load(SolrQueryRequest req, SolrQueryResponse rsp,
       ContentStream stream, UpdateRequestProcessor processor) throws Exception {
-    new SingleThreadedJsonLoader(req,processor).load(req, rsp, stream, processor);
+    new SingleThreadedJsonLoader(req,rsp,processor).load(req, rsp, stream, processor);
   }
 
   
@@ -71,14 +73,16 @@ public class JsonLoader extends ContentStreamLoader {
     
     protected final UpdateRequestProcessor processor;
     protected final SolrQueryRequest req;
+    protected SolrQueryResponse rsp;
     protected JSONParser parser;
     protected final int commitWithin;
     protected final boolean overwrite;
   
-    public SingleThreadedJsonLoader(SolrQueryRequest req, UpdateRequestProcessor processor) {
+    public SingleThreadedJsonLoader(SolrQueryRequest req, SolrQueryResponse rsp, UpdateRequestProcessor processor) {
       this.processor = processor;
       this.req = req;
-  
+      this.rsp = rsp;
+
       commitWithin = req.getParams().getInt(UpdateParams.COMMIT_WITHIN, -1);
       overwrite = req.getParams().getBool(UpdateParams.OVERWRITE, true);  
     }
@@ -109,6 +113,16 @@ public class JsonLoader extends ContentStreamLoader {
     @SuppressWarnings("fallthrough")
     void processUpdate() throws IOException
     {
+      if("false".equals( req.getParams().get("json.command"))){
+
+        String split = req.getParams().get("split");
+        if(split != null){
+          handleSplitMode(split);
+        } else {
+          handleStreamingSingleDocs();
+        }
+        return;
+      }
       int ev = parser.nextEvent();
       while( ev != JSONParser.EOF ) {
         
@@ -175,6 +189,59 @@ public class JsonLoader extends ContentStreamLoader {
         }
         // read the next event
         ev = parser.nextEvent();
+      }
+    }
+
+    private void handleSplitMode(String split) throws IOException {
+      String[] fields = req.getParams().getParams("f");
+      req.getCore().getLatestSchema().getDefaultSearchFieldName();
+      final boolean echo = "true".equals( req.getParams().get("echo"));
+      JsonRecordReader jsonRecordReader = JsonRecordReader.getInst(split, Arrays.asList(fields));
+      jsonRecordReader.streamRecords(parser,new JsonRecordReader.Handler() {
+        ArrayList docs =null;
+        @Override
+        public void handle(Map<String, Object> record, String path) {
+          if(echo){
+            if(docs ==null) {
+              docs = new ArrayList();
+              rsp.add("docs",docs);
+            }
+            docs.add(record);
+          } else {
+            AddUpdateCommand cmd = new AddUpdateCommand(req);
+            cmd.commitWithin = commitWithin;
+            cmd.overwrite = overwrite;
+            cmd.solrDoc =  new SolrInputDocument();
+            for (Map.Entry<String, Object> entry : record.entrySet()) {
+              cmd.solrDoc.setField(entry.getKey(),entry.getValue());
+            }
+            try {
+              processor.processAdd(cmd);
+            } catch (IOException e) {
+              throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "error inserting doc",e);
+            }
+          }
+        }
+      });
+    }
+
+    private void handleStreamingSingleDocs() throws IOException
+    {
+      while( true ) {
+        int ev = parser.nextEvent();
+        if(ev == JSONParser.EOF) return;
+        if(ev == JSONParser.OBJECT_START) {
+          assertEvent(ev, JSONParser.OBJECT_START);
+          AddUpdateCommand cmd = new AddUpdateCommand(req);
+          cmd.commitWithin = commitWithin;
+          cmd.overwrite = overwrite;
+          cmd.solrDoc = parseDoc(ev);
+          processor.processAdd(cmd);
+        } else if(ev == JSONParser.ARRAY_START){
+          handleAdds();
+        } else{
+          throw  new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Unexpected event :"+ev);
+        }
       }
     }
 
@@ -384,10 +451,10 @@ public class JsonLoader extends ContentStreamLoader {
         AddUpdateCommand cmd = new AddUpdateCommand(req);
         cmd.commitWithin = commitWithin;
         cmd.overwrite = overwrite;
-  
+
         int ev = parser.nextEvent();
         if (ev == JSONParser.ARRAY_END) break;
-  
+
         assertEvent(ev, JSONParser.OBJECT_START);
         cmd.solrDoc = parseDoc(ev);
         processor.processAdd(cmd);

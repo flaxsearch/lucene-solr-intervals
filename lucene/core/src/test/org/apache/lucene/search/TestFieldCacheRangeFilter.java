@@ -29,7 +29,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.NumericUtils;
 import org.junit.Test;
 
@@ -436,7 +436,7 @@ public class TestFieldCacheRangeFilter extends BaseTestRangeFilter {
   @Test
   public void testSparseIndex() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
 
     for (int d = -20; d <= 20; d++) {
       Document doc = new Document();
@@ -447,10 +447,10 @@ public class TestFieldCacheRangeFilter extends BaseTestRangeFilter {
     }
     
     writer.forceMerge(1);
-    BytesRef term0 = new BytesRef();
+    BytesRefBuilder term0 = new BytesRefBuilder();
     NumericUtils.intToPrefixCoded(0, 0, term0);
-    writer.deleteDocuments(new Term("id_int", term0));
-    writer.shutdown();
+    writer.deleteDocuments(new Term("id_int", term0.get()));
+    writer.close();
 
     IndexReader reader = DirectoryReader.open(dir);
     IndexSearcher search = newSearcher(reader);

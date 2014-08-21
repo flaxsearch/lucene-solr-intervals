@@ -22,6 +22,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 
 import org.apache.hadoop.conf.Configuration;
+import static org.apache.hadoop.fs.CommonConfigurationKeys.HADOOP_SECURITY_AUTHENTICATION;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -85,6 +86,8 @@ public class HdfsDirectoryFactory extends CachingDirectoryFactory {
     this.hdfsDataDir = params.get(HDFS_HOME);
     if (this.hdfsDataDir != null && this.hdfsDataDir.length() == 0) {
       this.hdfsDataDir = null;
+    } else {
+      LOG.info(HDFS_HOME + "=" + this.hdfsDataDir);
     }
     boolean kerberosEnabled = params.getBool(KERBEROS_ENABLED, false);
     LOG.info("Solr Kerberos Authentication "
@@ -253,6 +256,11 @@ public class HdfsDirectoryFactory extends CachingDirectoryFactory {
   }
   
   @Override
+  public boolean isSharedStorage() {
+    return true;
+  }
+  
+  @Override
   public boolean searchersReserveCommitPoints() {
     return true;
   }
@@ -303,9 +311,18 @@ public class HdfsDirectoryFactory extends CachingDirectoryFactory {
     synchronized (HdfsDirectoryFactory.class) {
       if (kerberosInit == null) {
         kerberosInit = new Boolean(true);
-        Configuration conf = new Configuration();
-        conf.set("hadoop.security.authentication", "kerberos");
-        UserGroupInformation.setConfiguration(conf);
+        final Configuration conf = getConf();
+        final String authVal = conf.get(HADOOP_SECURITY_AUTHENTICATION);
+        final String kerberos = "kerberos";
+        if (authVal != null && !authVal.equals(kerberos)) {
+          throw new IllegalArgumentException(HADOOP_SECURITY_AUTHENTICATION
+              + " set to: " + authVal + ", not kerberos, but attempting to "
+              + " connect to HDFS via kerberos");
+        }
+        // let's avoid modifying the supplied configuration, just to be conservative
+        final Configuration ugiConf = new Configuration(getConf());
+        ugiConf.set(HADOOP_SECURITY_AUTHENTICATION, kerberos);
+        UserGroupInformation.setConfiguration(ugiConf);
         LOG.info(
             "Attempting to acquire kerberos ticket with keytab: {}, principal: {} ",
             keytabFile, principal);

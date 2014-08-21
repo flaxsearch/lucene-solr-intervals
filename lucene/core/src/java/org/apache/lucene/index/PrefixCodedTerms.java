@@ -24,22 +24,24 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.RAMFile;
 import org.apache.lucene.store.RAMInputStream;
 import org.apache.lucene.store.RAMOutputStream;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 
 /**
  * Prefix codes term instances (prefixes are shared)
  * @lucene.experimental
  */
-class PrefixCodedTerms implements Iterable<Term> {
+class PrefixCodedTerms implements Iterable<Term>, Accountable {
   final RAMFile buffer;
   
   private PrefixCodedTerms(RAMFile buffer) {
     this.buffer = buffer;
   }
-  
-  /** @return size in bytes */
-  public long getSizeInBytes() {
-    return buffer.getSizeInBytes();
+
+  @Override
+  public long ramBytesUsed() {
+    return buffer.ramBytesUsed();
   }
   
   /** @return iterator over the bytes */
@@ -51,8 +53,8 @@ class PrefixCodedTerms implements Iterable<Term> {
   class PrefixCodedTermsIterator implements Iterator<Term> {
     final IndexInput input;
     String field = "";
-    BytesRef bytes = new BytesRef();
-    Term term = new Term(field, bytes);
+    BytesRefBuilder bytes = new BytesRefBuilder();
+    Term term = new Term(field, bytes.get());
 
     PrefixCodedTermsIterator() {
       try {
@@ -79,9 +81,9 @@ class PrefixCodedTerms implements Iterable<Term> {
         int prefix = code >>> 1;
         int suffix = input.readVInt();
         bytes.grow(prefix + suffix);
-        input.readBytes(bytes.bytes, prefix, suffix);
-        bytes.length = prefix + suffix;
-        term.set(field, bytes);
+        input.readBytes(bytes.bytes(), prefix, suffix);
+        bytes.setLength(prefix + suffix);
+        term.set(field, bytes.get());
         return term;
       } catch (IOException e) {
         throw new RuntimeException(e);
@@ -99,6 +101,7 @@ class PrefixCodedTerms implements Iterable<Term> {
     private RAMFile buffer = new RAMFile();
     private RAMOutputStream output = new RAMOutputStream(buffer, false);
     private Term lastTerm = new Term("");
+    private BytesRefBuilder lastTermBytes = new BytesRefBuilder();
 
     /** add a term */
     public void add(Term term) {
@@ -115,7 +118,8 @@ class PrefixCodedTerms implements Iterable<Term> {
         }
         output.writeVInt(suffix);
         output.writeBytes(term.bytes.bytes, term.bytes.offset + prefix, suffix);
-        lastTerm.bytes.copyBytes(term.bytes);
+        lastTermBytes.copyBytes(term.bytes);
+        lastTerm.bytes = lastTermBytes.get();
         lastTerm.field = term.field;
       } catch (IOException e) {
         throw new RuntimeException(e);

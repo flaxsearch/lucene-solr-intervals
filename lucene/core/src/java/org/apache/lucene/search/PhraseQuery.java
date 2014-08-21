@@ -291,15 +291,9 @@ public class PhraseQuery extends Query {
       }
 
       if (slop == 0) {  // optimize exact case
-        ExactPhraseScorer s = new ExactPhraseScorer(this, postingsFreqs, similarity.simScorer(stats, context), field);
-        if (s.noDocs) {
-          return null;
-        } else {
-          return s;
-        }
+        return new ExactPhraseScorer(this, postingsFreqs, similarity.simScorer(stats, context), field);
       } else {
-        return
-          new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.simScorer(stats, context), field);
+        return new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.simScorer(stats, context), field);
       }
     }
     

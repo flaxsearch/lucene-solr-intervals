@@ -57,7 +57,7 @@ public class TestFieldMaskingSpanQuery extends LuceneTestCase {
   @BeforeClass
   public static void beforeClass() throws Exception {
     directory = newDirectory();
-    RandomIndexWriter writer= new RandomIndexWriter(random(), directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+    RandomIndexWriter writer= new RandomIndexWriter(random(), directory, newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     
     writer.addDocument(doc(new Field[] { field("id", "0")
                                          ,
@@ -113,7 +113,7 @@ public class TestFieldMaskingSpanQuery extends LuceneTestCase {
                                          field("first",  "bubba"),
                                          field("last",   "jones")     }));
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
     searcher = newSearcher(reader);
   }
 

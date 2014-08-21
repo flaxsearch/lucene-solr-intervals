@@ -68,7 +68,7 @@ public class TestMultipleIndexFields extends FacetTestCase {
     
     // create and open an index writer
     RandomIndexWriter iw = new RandomIndexWriter(random(), indexDir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+        new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
     // create and open a taxonomy writer
     TaxonomyWriter tw = new DirectoryTaxonomyWriter(taxoDir, OpenMode.CREATE);
     FacetsConfig config = getConfig();
@@ -91,7 +91,7 @@ public class TestMultipleIndexFields extends FacetTestCase {
 
     assertOrdinalsExist("$facets", ir);
 
-    iw.shutdown();
+    iw.close();
     IOUtils.close(tr, ir, tw, indexDir, taxoDir);
   }
 
@@ -102,7 +102,7 @@ public class TestMultipleIndexFields extends FacetTestCase {
     
     // create and open an index writer
     RandomIndexWriter iw = new RandomIndexWriter(random(), indexDir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+        new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
     // create and open a taxonomy writer
     TaxonomyWriter tw = new DirectoryTaxonomyWriter(taxoDir, OpenMode.CREATE);
 
@@ -131,7 +131,7 @@ public class TestMultipleIndexFields extends FacetTestCase {
     assertOrdinalsExist("$facets", ir);
     assertOrdinalsExist("$author", ir);
 
-    iw.shutdown();
+    iw.close();
     IOUtils.close(tr, ir, tw, indexDir, taxoDir);
   }
 
@@ -142,7 +142,7 @@ public class TestMultipleIndexFields extends FacetTestCase {
     
     // create and open an index writer
     RandomIndexWriter iw = new RandomIndexWriter(random(), indexDir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+        new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
     // create and open a taxonomy writer
     TaxonomyWriter tw = new DirectoryTaxonomyWriter(taxoDir, OpenMode.CREATE);
 
@@ -175,7 +175,7 @@ public class TestMultipleIndexFields extends FacetTestCase {
     assertOrdinalsExist("$music", ir);
     assertOrdinalsExist("$music", ir);
 
-    iw.shutdown();
+    iw.close();
     IOUtils.close(tr, ir, tw, indexDir, taxoDir);
   }
 
@@ -196,7 +196,7 @@ public class TestMultipleIndexFields extends FacetTestCase {
 
     // create and open an index writer
     RandomIndexWriter iw = new RandomIndexWriter(random(), indexDir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+        new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
     // create and open a taxonomy writer
     TaxonomyWriter tw = new DirectoryTaxonomyWriter(taxoDir, OpenMode.CREATE);
 
@@ -227,7 +227,7 @@ public class TestMultipleIndexFields extends FacetTestCase {
     assertOrdinalsExist("$bands", ir);
     assertOrdinalsExist("$composers", ir);
 
-    iw.shutdown();
+    iw.close();
     IOUtils.close(tr, ir, tw, indexDir, taxoDir);
   }
 
@@ -238,7 +238,7 @@ public class TestMultipleIndexFields extends FacetTestCase {
     
     // create and open an index writer
     RandomIndexWriter iw = new RandomIndexWriter(random(), indexDir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+        new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
     // create and open a taxonomy writer
     TaxonomyWriter tw = new DirectoryTaxonomyWriter(taxoDir, OpenMode.CREATE);
 
@@ -271,7 +271,7 @@ public class TestMultipleIndexFields extends FacetTestCase {
     assertOrdinalsExist("$music", ir);
     assertOrdinalsExist("$literature", ir);
 
-    iw.shutdown();
+    iw.close();
     IOUtils.close(tr, ir, iw, tw, indexDir, taxoDir);
   }
 

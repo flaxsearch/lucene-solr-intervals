@@ -46,7 +46,7 @@ public class TestUniqueTermCount extends LuceneTestCase {
     super.setUp();
     dir = newDirectory();
     MockAnalyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig config = newIndexWriterConfig(analyzer);
     config.setMergePolicy(newLogMergePolicy());
     config.setSimilarity(new TestSimilarity());
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir, config);
@@ -58,7 +58,7 @@ public class TestUniqueTermCount extends LuceneTestCase {
       writer.addDocument(doc);
     }
     reader = writer.getReader();
-    writer.shutdown();
+    writer.close();
   }
   
   @Override

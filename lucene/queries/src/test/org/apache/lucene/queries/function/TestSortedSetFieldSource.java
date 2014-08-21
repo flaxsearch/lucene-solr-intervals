@@ -35,7 +35,7 @@ import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 public class TestSortedSetFieldSource extends LuceneTestCase {
   public void testSimple() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(null));
     Document doc = new Document();
     doc.add(new SortedSetDocValuesField("value", new BytesRef("baz")));
     doc.add(newStringField("id", "2", Field.Store.YES));
@@ -46,7 +46,7 @@ public class TestSortedSetFieldSource extends LuceneTestCase {
     doc.add(newStringField("id", "1", Field.Store.YES));
     writer.addDocument(doc);
     writer.forceMerge(1);
-    writer.shutdown();
+    writer.close();
 
     DirectoryReader ir = DirectoryReader.open(dir);
     AtomicReader ar = getOnlySegmentReader(ir);

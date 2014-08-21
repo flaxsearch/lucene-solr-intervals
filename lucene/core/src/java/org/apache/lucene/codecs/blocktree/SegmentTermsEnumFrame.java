@@ -153,7 +153,8 @@ final class SegmentTermsEnumFrame {
     entCount = code >>> 1;
     assert entCount > 0;
     isLastInFloor = (code & 1) != 0;
-    assert arc == null || (isLastInFloor || isFloor);
+
+    assert arc == null || (isLastInFloor || isFloor): "fp=" + fp + " arc=" + arc + " isFloor=" + isFloor + " isLastInFloor=" + isLastInFloor;
 
     // TODO: if suffixes were stored in random-access
     // array structure, then we could do binary search
@@ -222,6 +223,7 @@ final class SegmentTermsEnumFrame {
     if (isFloor) {
       floorDataReader.rewind();
       numFollowFloorBlocks = floorDataReader.readVInt();
+      assert numFollowFloorBlocks > 0;
       nextFloorLabel = floorDataReader.readByte() & 0xff;
     }
 
@@ -271,11 +273,9 @@ final class SegmentTermsEnumFrame {
     nextEnt++;
     suffix = suffixesReader.readVInt();
     startBytePos = suffixesReader.getPosition();
-    ste.term.length = prefix + suffix;
-    if (ste.term.bytes.length < ste.term.length) {
-      ste.term.grow(ste.term.length);
-    }
-    suffixesReader.readBytes(ste.term.bytes, prefix, suffix);
+    ste.term.setLength(prefix + suffix);
+    ste.term.grow(ste.term.length());
+    suffixesReader.readBytes(ste.term.bytes(), prefix, suffix);
     // A normal term
     ste.termExists = true;
     return false;
@@ -288,11 +288,9 @@ final class SegmentTermsEnumFrame {
     final int code = suffixesReader.readVInt();
     suffix = code >>> 1;
     startBytePos = suffixesReader.getPosition();
-    ste.term.length = prefix + suffix;
-    if (ste.term.bytes.length < ste.term.length) {
-      ste.term.grow(ste.term.length);
-    }
-    suffixesReader.readBytes(ste.term.bytes, prefix, suffix);
+    ste.term.setLength(prefix + suffix);
+    ste.term.grow(ste.term.length());
+    suffixesReader.readBytes(ste.term.bytes(), prefix, suffix);
     if ((code & 1) == 0) {
       // A normal term
       ste.termExists = true;
@@ -424,7 +422,7 @@ final class SegmentTermsEnumFrame {
   // Used only by assert
   private boolean prefixMatches(BytesRef target) {
     for(int bytePos=0;bytePos<prefix;bytePos++) {
-      if (target.bytes[target.offset + bytePos] != ste.term.bytes[bytePos]) {
+      if (target.bytes[target.offset + bytePos] != ste.term.byteAt(bytePos)) {
         return false;
       }
     }
@@ -551,19 +549,6 @@ final class SegmentTermsEnumFrame {
           // return NOT_FOUND:
           fillTerm();
 
-          if (!exactOnly && !ste.termExists) {
-            // We are on a sub-block, and caller wants
-            // us to position to the next term after
-            // the target, so we must recurse into the
-            // sub-frame(s):
-            ste.currentFrame = ste.pushFrame(null, ste.currentFrame.lastSubFP, termLen);
-            ste.currentFrame.loadBlock();
-            while (ste.currentFrame.next()) {
-              ste.currentFrame = ste.pushFrame(null, ste.currentFrame.lastSubFP, ste.term.length);
-              ste.currentFrame.loadBlock();
-            }
-          }
-                
           //if (DEBUG) System.out.println("        not found");
           return SeekStatus.NOT_FOUND;
         } else if (stop) {
@@ -692,7 +677,7 @@ final class SegmentTermsEnumFrame {
             ste.currentFrame = ste.pushFrame(null, ste.currentFrame.lastSubFP, termLen);
             ste.currentFrame.loadBlock();
             while (ste.currentFrame.next()) {
-              ste.currentFrame = ste.pushFrame(null, ste.currentFrame.lastSubFP, ste.term.length);
+              ste.currentFrame = ste.pushFrame(null, ste.currentFrame.lastSubFP, ste.term.length());
               ste.currentFrame.loadBlock();
             }
           }
@@ -736,10 +721,8 @@ final class SegmentTermsEnumFrame {
 
   private void fillTerm() {
     final int termLength = prefix + suffix;
-    ste.term.length = prefix + suffix;
-    if (ste.term.bytes.length < termLength) {
-      ste.term.grow(termLength);
-    }
-    System.arraycopy(suffixBytes, startBytePos, ste.term.bytes, prefix, suffix);
+    ste.term.setLength(termLength);
+    ste.term.grow(termLength);
+    System.arraycopy(suffixBytes, startBytePos, ste.term.bytes(), prefix, suffix);
   }
 }

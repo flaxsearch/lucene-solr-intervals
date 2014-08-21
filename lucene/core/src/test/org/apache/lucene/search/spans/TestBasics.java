@@ -110,8 +110,8 @@ public class TestBasics extends LuceneTestCase {
   
     directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, simplePayloadAnalyzer)
-                                                     .setMaxBufferedDocs(TestUtil.nextInt(random(), 100, 1000)).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(simplePayloadAnalyzer)
+            .setMaxBufferedDocs(TestUtil.nextInt(random(), 100, 1000)).setMergePolicy(newLogMergePolicy()));
     //writer.infoStream = System.out;
     for (int i = 0; i < 2000; i++) {
       Document doc = new Document();
@@ -120,7 +120,7 @@ public class TestBasics extends LuceneTestCase {
     }
     reader = writer.getReader();
     searcher = newSearcher(reader);
-    writer.shutdown();
+    writer.close();
   }
 
   @AfterClass

@@ -59,7 +59,7 @@ public class TestFacetsConfig extends FacetTestCase {
     // LUCENE-5367: this was a problem with the previous code, making sure it
     // works with the new code.
     Directory indexDir = newDirectory(), taxoDir = newDirectory();
-    IndexWriter indexWriter = new IndexWriter(indexDir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter indexWriter = new IndexWriter(indexDir, newIndexWriterConfig(new MockAnalyzer(random())));
     DirectoryTaxonomyWriter taxoWriter = new DirectoryTaxonomyWriter(taxoDir);
     FacetsConfig facetsConfig = new FacetsConfig();
     Document doc = new Document();
@@ -68,7 +68,7 @@ public class TestFacetsConfig extends FacetTestCase {
     // these two addDocument() used to fail
     indexWriter.addDocument(doc);
     indexWriter.addDocument(doc);
-    indexWriter.shutdown();
+    indexWriter.close();
     IOUtils.close(taxoWriter);
     
     DirectoryReader indexReader = DirectoryReader.open(indexDir);

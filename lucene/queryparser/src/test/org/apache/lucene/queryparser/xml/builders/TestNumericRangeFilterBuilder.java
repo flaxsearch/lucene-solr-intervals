@@ -19,7 +19,6 @@ package org.apache.lucene.queryparser.xml.builders;
 
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.search.Filter;
@@ -63,7 +62,7 @@ public class TestNumericRangeFilterBuilder extends LuceneTestCase {
     Document doc = getDocumentFromString(xml);
     Filter filter = filterBuilder.getFilter(doc.getDocumentElement());
     Directory ramDir = newDirectory();
-    IndexWriter writer = new IndexWriter(ramDir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter writer = new IndexWriter(ramDir, newIndexWriterConfig(null));
     writer.commit();
     try {
       AtomicReader reader = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(ramDir));
@@ -76,7 +75,7 @@ public class TestNumericRangeFilterBuilder extends LuceneTestCase {
     }
     finally {
       writer.commit();
-      writer.shutdown();
+      writer.close();
       ramDir.close();
     }
   }

@@ -20,8 +20,10 @@ package org.apache.lucene.index;
 import java.io.IOException;
 
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.IntsRef;
+import org.apache.lucene.util.BytesRefBuilder;
+import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.StringHelper;
+import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.ByteRunAutomaton;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.automaton.Transition;
@@ -51,13 +53,13 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
   // true if the automaton accepts a finite language
   private final boolean finite;
   // array of sorted transitions for each state, indexed by state number
-  private final Transition[][] allTransitions;
+  private final Automaton automaton;
   // for path tracking: each long records gen when we last
   // visited the state; we use gens to avoid having to clear
   private final long[] visited;
   private long curGen;
   // the reference used for seeking forwards through the term dictionary
-  private final BytesRef seekBytesRef = new BytesRef(10); 
+  private final BytesRefBuilder seekBytesRef = new BytesRefBuilder(); 
   // true if we are enumerating an infinite portion of the DFA.
   // in this case it is faster to drive the query based on the terms dictionary.
   // when this is true, linearUpperBound indicate the end of range
@@ -79,7 +81,7 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
     this.runAutomaton = compiled.runAutomaton;
     assert this.runAutomaton != null;
     this.commonSuffixRef = compiled.commonSuffixRef;
-    this.allTransitions = compiled.sortedTransitions;
+    this.automaton = compiled.automaton;
 
     // used for path tracking, where each bit is a numbered state.
     visited = new long[runAutomaton.getSize()];
@@ -107,10 +109,10 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
   protected BytesRef nextSeekTerm(final BytesRef term) throws IOException {
     //System.out.println("ATE.nextSeekTerm term=" + term);
     if (term == null) {
-      assert seekBytesRef.length == 0;
+      assert seekBytesRef.length() == 0;
       // return the empty term, as its valid
       if (runAutomaton.isAccept(runAutomaton.getInitialState())) {   
-        return seekBytesRef;
+        return seekBytesRef.get();
       }
     } else {
       seekBytesRef.copyBytes(term);
@@ -118,11 +120,13 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
 
     // seek to the next possible string;
     if (nextString()) {
-      return seekBytesRef;  // reposition
+      return seekBytesRef.get();  // reposition
     } else {
       return null;          // no more possible strings can match
     }
   }
+
+  private Transition transition = new Transition();
 
   /**
    * Sets the enum to operate in linear fashion, as we have found
@@ -133,16 +137,20 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
     assert linear == false;
     
     int state = runAutomaton.getInitialState();
+    assert state == 0;
     int maxInterval = 0xff;
+    //System.out.println("setLinear pos=" + position + " seekbytesRef=" + seekBytesRef);
     for (int i = 0; i < position; i++) {
-      state = runAutomaton.step(state, seekBytesRef.bytes[i] & 0xff);
+      state = runAutomaton.step(state, seekBytesRef.byteAt(i) & 0xff);
       assert state >= 0: "state=" + state;
     }
-    for (int i = 0; i < allTransitions[state].length; i++) {
-      Transition t = allTransitions[state][i];
-      if (t.getMin() <= (seekBytesRef.bytes[position] & 0xff) && 
-          (seekBytesRef.bytes[position] & 0xff) <= t.getMax()) {
-        maxInterval = t.getMax();
+    final int numTransitions = automaton.getNumTransitions(state);
+    automaton.initTransition(state, transition);
+    for (int i = 0; i < numTransitions; i++) {
+      automaton.getNextTransition(transition);
+      if (transition.min <= (seekBytesRef.byteAt(position) & 0xff) && 
+          (seekBytesRef.byteAt(position) & 0xff) <= transition.max) {
+        maxInterval = transition.max;
         break;
       }
     }
@@ -152,14 +160,14 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
     int length = position + 1; /* position + maxTransition */
     if (linearUpperBound.bytes.length < length)
       linearUpperBound.bytes = new byte[length];
-    System.arraycopy(seekBytesRef.bytes, 0, linearUpperBound.bytes, 0, position);
+    System.arraycopy(seekBytesRef.bytes(), 0, linearUpperBound.bytes, 0, position);
     linearUpperBound.bytes[position] = (byte) maxInterval;
     linearUpperBound.length = length;
     
     linear = true;
   }
 
-  private final IntsRef savedStates = new IntsRef(10);
+  private final IntsRefBuilder savedStates = new IntsRefBuilder();
   
   /**
    * Increments the byte buffer to the next String in binary order after s that will not put
@@ -174,20 +182,19 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
   private boolean nextString() {
     int state;
     int pos = 0;
-    savedStates.grow(seekBytesRef.length+1);
-    final int[] states = savedStates.ints;
-    states[0] = runAutomaton.getInitialState();
+    savedStates.grow(seekBytesRef.length()+1);
+    savedStates.setIntAt(0, runAutomaton.getInitialState());
     
     while (true) {
       curGen++;
       linear = false;
       // walk the automaton until a character is rejected.
-      for (state = states[pos]; pos < seekBytesRef.length; pos++) {
+      for (state = savedStates.intAt(pos); pos < seekBytesRef.length(); pos++) {
         visited[state] = curGen;
-        int nextState = runAutomaton.step(state, seekBytesRef.bytes[pos] & 0xff);
+        int nextState = runAutomaton.step(state, seekBytesRef.byteAt(pos) & 0xff);
         if (nextState == -1)
           break;
-        states[pos+1] = nextState;
+        savedStates.setIntAt(pos+1, nextState);
         // we found a loop, record it for faster enumeration
         if (!finite && !linear && visited[nextState] == curGen) {
           setLinear(pos);
@@ -202,7 +209,7 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
       } else { /* no more solutions exist from this useful portion, backtrack */
         if ((pos = backtrack(pos)) < 0) /* no more solutions at all */
           return false;
-        final int newState = runAutomaton.step(states[pos], seekBytesRef.bytes[pos] & 0xff);
+        final int newState = runAutomaton.step(savedStates.intAt(pos), seekBytesRef.byteAt(pos) & 0xff);
         if (newState >= 0 && runAutomaton.isAccept(newState))
           /* String is good to go as-is */
           return true;
@@ -238,8 +245,8 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
      * character, if it exists.
      */
     int c = 0;
-    if (position < seekBytesRef.length) {
-      c = seekBytesRef.bytes[position] & 0xff;
+    if (position < seekBytesRef.length()) {
+      c = seekBytesRef.byteAt(position) & 0xff;
       // if the next byte is 0xff and is not part of the useful portion,
       // then by definition it puts us in a reject state, and therefore this
       // path is dead. there cannot be any higher transitions. backtrack.
@@ -247,22 +254,21 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
         return false;
     }
 
-    seekBytesRef.length = position;
+    seekBytesRef.setLength(position);
     visited[state] = curGen;
 
-    Transition transitions[] = allTransitions[state];
-
+    final int numTransitions = automaton.getNumTransitions(state);
+    automaton.initTransition(state, transition);
     // find the minimal path (lexicographic order) that is >= c
     
-    for (int i = 0; i < transitions.length; i++) {
-      Transition transition = transitions[i];
-      if (transition.getMax() >= c) {
-        int nextChar = Math.max(c, transition.getMin());
+    for (int i = 0; i < numTransitions; i++) {
+      automaton.getNextTransition(transition);
+      if (transition.max >= c) {
+        int nextChar = Math.max(c, transition.min);
         // append either the next sequential char, or the minimum transition
-        seekBytesRef.grow(seekBytesRef.length + 1);
-        seekBytesRef.length++;
-        seekBytesRef.bytes[seekBytesRef.length - 1] = (byte) nextChar;
-        state = transition.getDest().getNumber();
+        seekBytesRef.grow(seekBytesRef.length() + 1);
+        seekBytesRef.append((byte) nextChar);
+        state = transition.dest;
         /* 
          * as long as is possible, continue down the minimal path in
          * lexicographic order. if a loop or accept state is encountered, stop.
@@ -274,17 +280,17 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
            * so the below is ok, if it is not an accept state,
            * then there MUST be at least one transition.
            */
-          transition = allTransitions[state][0];
-          state = transition.getDest().getNumber();
+          automaton.initTransition(state, transition);
+          automaton.getNextTransition(transition);
+          state = transition.dest;
           
           // append the minimum transition
-          seekBytesRef.grow(seekBytesRef.length + 1);
-          seekBytesRef.length++;
-          seekBytesRef.bytes[seekBytesRef.length - 1] = (byte) transition.getMin();
+          seekBytesRef.grow(seekBytesRef.length() + 1);
+          seekBytesRef.append((byte) transition.min);
           
           // we found a loop, record it for faster enumeration
           if (!finite && !linear && visited[state] == curGen) {
-            setLinear(seekBytesRef.length-1);
+            setLinear(seekBytesRef.length()-1);
           }
         }
         return true;
@@ -303,12 +309,12 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
    */
   private int backtrack(int position) {
     while (position-- > 0) {
-      int nextChar = seekBytesRef.bytes[position] & 0xff;
+      int nextChar = seekBytesRef.byteAt(position) & 0xff;
       // if a character is 0xff its a dead-end too,
       // because there is no higher character in binary sort order.
       if (nextChar++ != 0xff) {
-        seekBytesRef.bytes[position] = (byte) nextChar;
-        seekBytesRef.length = position+1;
+        seekBytesRef.setByteAt(position, (byte) nextChar);
+        seekBytesRef.setLength(position+1);
         return position;
       }
     }

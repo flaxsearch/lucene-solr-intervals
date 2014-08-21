@@ -163,19 +163,19 @@ public class SolrConfig extends Config {
     luceneMatchVersion = getLuceneVersion("luceneMatchVersion");
     String indexConfigPrefix;
 
-    // Old indexDefaults and mainIndex sections are deprecated and fails fast for luceneMatchVersion=>LUCENE_4_0.
+    // Old indexDefaults and mainIndex sections are deprecated and fails fast for luceneMatchVersion=>LUCENE_4_0_0.
     // For older solrconfig.xml's we allow the old sections, but never mixed with the new <indexConfig>
     boolean hasDeprecatedIndexConfig = (getNode("indexDefaults", false) != null) || (getNode("mainIndex", false) != null);
     boolean hasNewIndexConfig = getNode("indexConfig", false) != null;
     if(hasDeprecatedIndexConfig){
-      if(luceneMatchVersion.onOrAfter(Version.LUCENE_4_0)) {
+      if(luceneMatchVersion.onOrAfter(Version.LUCENE_4_0_0)) {
         throw new SolrException(ErrorCode.FORBIDDEN, "<indexDefaults> and <mainIndex> configuration sections are discontinued. Use <indexConfig> instead.");
       } else {
         // Still allow the old sections for older LuceneMatchVersion's
         if(hasNewIndexConfig) {
           throw new SolrException(ErrorCode.FORBIDDEN, "Cannot specify both <indexDefaults>, <mainIndex> and <indexConfig> at the same time. Please use <indexConfig> only.");
         }
-        log.warn("<indexDefaults> and <mainIndex> configuration sections are deprecated and will fail for luceneMatchVersion=LUCENE_4_0 and later. Please use <indexConfig> instead.");
+        log.warn("<indexDefaults> and <mainIndex> configuration sections are deprecated and will fail for luceneMatchVersion=LUCENE_4_0_0 and later. Please use <indexConfig> instead.");
         defaultIndexConfig = new SolrIndexConfig(this, "indexDefaults", null);
         mainIndexConfig = new SolrIndexConfig(this, "mainIndex", defaultIndexConfig);
         indexConfigPrefix = "mainIndex";
@@ -315,6 +315,7 @@ public class SolrConfig extends Config {
     return new UpdateHandlerInfo(get("updateHandler/@class",null),
             getInt("updateHandler/autoCommit/maxDocs",-1),
             getInt("updateHandler/autoCommit/maxTime",-1),
+            getBool("updateHandler/indexWriter/closeWaitsForMerges",true),
             getBool("updateHandler/autoCommit/openSearcher",true),
             getInt("updateHandler/commitIntervalLowerBound",-1),
             getInt("updateHandler/autoSoftCommit/maxDocs",-1),
@@ -497,6 +498,7 @@ public class SolrConfig extends Config {
     public final String className;
     public final int autoCommmitMaxDocs,autoCommmitMaxTime,commitIntervalLowerBound,
         autoSoftCommmitMaxDocs,autoSoftCommmitMaxTime;
+    public final boolean indexWriterCloseWaitsForMerges;
     public final boolean openSearcher;  // is opening a new searcher part of hard autocommit?
     public final boolean commitWithinSoftCommit;
 
@@ -505,11 +507,12 @@ public class SolrConfig extends Config {
      * @param autoCommmitMaxTime set -1 as default
      * @param commitIntervalLowerBound set -1 as default
      */
-    public UpdateHandlerInfo(String className, int autoCommmitMaxDocs, int autoCommmitMaxTime, boolean openSearcher, int commitIntervalLowerBound,
+    public UpdateHandlerInfo(String className, int autoCommmitMaxDocs, int autoCommmitMaxTime, boolean indexWriterCloseWaitsForMerges, boolean openSearcher, int commitIntervalLowerBound,
         int autoSoftCommmitMaxDocs, int autoSoftCommmitMaxTime, boolean commitWithinSoftCommit) {
       this.className = className;
       this.autoCommmitMaxDocs = autoCommmitMaxDocs;
       this.autoCommmitMaxTime = autoCommmitMaxTime;
+      this.indexWriterCloseWaitsForMerges = indexWriterCloseWaitsForMerges;
       this.openSearcher = openSearcher;
       this.commitIntervalLowerBound = commitIntervalLowerBound;
       

@@ -37,12 +37,13 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.UnicodeUtil;
-import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.AutomatonTestUtil;
 import org.apache.lucene.util.automaton.CharacterRunAutomaton;
+import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.RegExp;
 
 /**
@@ -62,7 +63,7 @@ public class TestRegexpRandom2 extends LuceneTestCase {
     dir = newDirectory();
     fieldName = random().nextBoolean() ? "field" : ""; // sometimes use an empty string as field name
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.KEYWORD, false))
+        newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.KEYWORD, false))
         .setMaxBufferedDocs(TestUtil.nextInt(random(), 50, 1000)));
     Document doc = new Document();
     Field field = newStringField(fieldName, "", Field.Store.NO);
@@ -91,7 +92,7 @@ public class TestRegexpRandom2 extends LuceneTestCase {
     reader = writer.getReader();
     searcher1 = newSearcher(reader);
     searcher2 = newSearcher(reader);
-    writer.shutdown();
+    writer.close();
   }
 
   @Override
@@ -118,7 +119,7 @@ public class TestRegexpRandom2 extends LuceneTestCase {
 
     private class SimpleAutomatonTermsEnum extends FilteredTermsEnum {
       CharacterRunAutomaton runAutomaton = new CharacterRunAutomaton(automaton);
-      CharsRef utf16 = new CharsRef(10);
+      CharsRefBuilder utf16 = new CharsRefBuilder();
 
       private SimpleAutomatonTermsEnum(TermsEnum tenum) {
         super(tenum);
@@ -127,8 +128,8 @@ public class TestRegexpRandom2 extends LuceneTestCase {
       
       @Override
       protected AcceptStatus accept(BytesRef term) throws IOException {
-        UnicodeUtil.UTF8toUTF16(term.bytes, term.offset, term.length, utf16);
-        return runAutomaton.run(utf16.chars, 0, utf16.length) ? 
+        utf16.copyUTF8Bytes(term.bytes, term.offset, term.length);
+        return runAutomaton.run(utf16.chars(), 0, utf16.length()) ? 
             AcceptStatus.YES : AcceptStatus.NO;
       }
     }

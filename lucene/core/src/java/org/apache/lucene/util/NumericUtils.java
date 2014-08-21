@@ -118,7 +118,7 @@ public final class NumericUtils {
    * @param shift how many bits to strip from the right
    * @param bytes will contain the encoded value
    */
-  public static void longToPrefixCoded(final long val, final int shift, final BytesRef bytes) {
+  public static void longToPrefixCoded(final long val, final int shift, final BytesRefBuilder bytes) {
     longToPrefixCodedBytes(val, shift, bytes);
   }
 
@@ -130,7 +130,7 @@ public final class NumericUtils {
    * @param shift how many bits to strip from the right
    * @param bytes will contain the encoded value
    */
-  public static void intToPrefixCoded(final int val, final int shift, final BytesRef bytes) {
+  public static void intToPrefixCoded(final int val, final int shift, final BytesRefBuilder bytes) {
     intToPrefixCodedBytes(val, shift, bytes);
   }
 
@@ -142,22 +142,19 @@ public final class NumericUtils {
    * @param shift how many bits to strip from the right
    * @param bytes will contain the encoded value
    */
-  public static void longToPrefixCodedBytes(final long val, final int shift, final BytesRef bytes) {
+  public static void longToPrefixCodedBytes(final long val, final int shift, final BytesRefBuilder bytes) {
     if ((shift & ~0x3f) != 0)  // ensure shift is 0..63
       throw new IllegalArgumentException("Illegal shift value, must be 0..63");
     int nChars = (((63-shift)*37)>>8) + 1;    // i/7 is the same as (i*37)>>8 for i in 0..63
-    bytes.offset = 0;
-    bytes.length = nChars+1;   // one extra for the byte that contains the shift info
-    if (bytes.bytes.length < bytes.length) {
-      bytes.bytes = new byte[NumericUtils.BUF_SIZE_LONG];  // use the max
-    }
-    bytes.bytes[0] = (byte)(SHIFT_START_LONG + shift);
+    bytes.setLength(nChars+1);   // one extra for the byte that contains the shift info
+    bytes.grow(BUF_SIZE_LONG);
+    bytes.setByteAt(0, (byte)(SHIFT_START_LONG + shift));
     long sortableBits = val ^ 0x8000000000000000L;
     sortableBits >>>= shift;
     while (nChars > 0) {
       // Store 7 bits per byte for compatibility
       // with UTF-8 encoding of terms
-      bytes.bytes[nChars--] = (byte)(sortableBits & 0x7f);
+      bytes.setByteAt(nChars--, (byte)(sortableBits & 0x7f));
       sortableBits >>>= 7;
     }
   }
@@ -171,22 +168,19 @@ public final class NumericUtils {
    * @param shift how many bits to strip from the right
    * @param bytes will contain the encoded value
    */
-  public static void intToPrefixCodedBytes(final int val, final int shift, final BytesRef bytes) {
+  public static void intToPrefixCodedBytes(final int val, final int shift, final BytesRefBuilder bytes) {
     if ((shift & ~0x1f) != 0)  // ensure shift is 0..31
       throw new IllegalArgumentException("Illegal shift value, must be 0..31");
     int nChars = (((31-shift)*37)>>8) + 1;    // i/7 is the same as (i*37)>>8 for i in 0..63
-    bytes.offset = 0;
-    bytes.length = nChars+1;   // one extra for the byte that contains the shift info
-    if (bytes.bytes.length < bytes.length) {
-      bytes.bytes = new byte[NumericUtils.BUF_SIZE_LONG];  // use the max
-    }
-    bytes.bytes[0] = (byte)(SHIFT_START_INT + shift);
+    bytes.setLength(nChars+1);   // one extra for the byte that contains the shift info
+    bytes.grow(NumericUtils.BUF_SIZE_LONG);  // use the max
+    bytes.setByteAt(0, (byte)(SHIFT_START_INT + shift));
     int sortableBits = val ^ 0x80000000;
     sortableBits >>>= shift;
     while (nChars > 0) {
       // Store 7 bits per byte for compatibility
       // with UTF-8 encoding of terms
-      bytes.bytes[nChars--] = (byte)(sortableBits & 0x7f);
+      bytes.setByteAt(nChars--, (byte)(sortableBits & 0x7f));
       sortableBits >>>= 7;
     }
   }
@@ -274,9 +268,7 @@ public final class NumericUtils {
    * @see #sortableLongToDouble
    */
   public static long doubleToSortableLong(double val) {
-    long f = Double.doubleToLongBits(val);
-    if (f<0) f ^= 0x7fffffffffffffffL;
-    return f;
+    return sortableDoubleBits(Double.doubleToLongBits(val));
   }
 
   /**
@@ -284,8 +276,7 @@ public final class NumericUtils {
    * @see #doubleToSortableLong
    */
   public static double sortableLongToDouble(long val) {
-    if (val<0) val ^= 0x7fffffffffffffffL;
-    return Double.longBitsToDouble(val);
+    return Double.longBitsToDouble(sortableDoubleBits(val));
   }
 
   /**
@@ -298,9 +289,7 @@ public final class NumericUtils {
    * @see #sortableIntToFloat
    */
   public static int floatToSortableInt(float val) {
-    int f = Float.floatToIntBits(val);
-    if (f<0) f ^= 0x7fffffff;
-    return f;
+    return sortableFloatBits(Float.floatToIntBits(val));
   }
 
   /**
@@ -308,8 +297,17 @@ public final class NumericUtils {
    * @see #floatToSortableInt
    */
   public static float sortableIntToFloat(int val) {
-    if (val<0) val ^= 0x7fffffff;
-    return Float.intBitsToFloat(val);
+    return Float.intBitsToFloat(sortableFloatBits(val));
+  }
+  
+  /** Converts IEEE 754 representation of a double to sortable order (or back to the original) */
+  public static long sortableDoubleBits(long bits) {
+    return bits ^ (bits >> 63) & 0x7fffffffffffffffL;
+  }
+  
+  /** Converts IEEE 754 representation of a float to sortable order (or back to the original) */
+  public static int sortableFloatBits(int bits) {
+    return bits ^ (bits >> 31) & 0x7fffffff;
   }
 
   /**
@@ -426,10 +424,10 @@ public final class NumericUtils {
      * You can use this for e.g. debugging purposes (print out range bounds).
      */
     public void addRange(final long min, final long max, final int shift) {
-      final BytesRef minBytes = new BytesRef(BUF_SIZE_LONG), maxBytes = new BytesRef(BUF_SIZE_LONG);
+      final BytesRefBuilder minBytes = new BytesRefBuilder(), maxBytes = new BytesRefBuilder();
       longToPrefixCodedBytes(min, shift, minBytes);
       longToPrefixCodedBytes(max, shift, maxBytes);
-      addRange(minBytes, maxBytes);
+      addRange(minBytes.get(), maxBytes.get());
     }
   
   }
@@ -455,10 +453,10 @@ public final class NumericUtils {
      * You can use this for e.g. debugging purposes (print out range bounds).
      */
     public void addRange(final int min, final int max, final int shift) {
-      final BytesRef minBytes = new BytesRef(BUF_SIZE_INT), maxBytes = new BytesRef(BUF_SIZE_INT);
+      final BytesRefBuilder minBytes = new BytesRefBuilder(), maxBytes = new BytesRefBuilder();
       intToPrefixCodedBytes(min, shift, minBytes);
       intToPrefixCodedBytes(max, shift, maxBytes);
-      addRange(minBytes, maxBytes);
+      addRange(minBytes.get(), maxBytes.get());
     }
   
   }

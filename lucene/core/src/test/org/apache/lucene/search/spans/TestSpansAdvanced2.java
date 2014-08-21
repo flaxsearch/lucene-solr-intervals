@@ -48,8 +48,7 @@ public class TestSpansAdvanced2 extends TestSpansAdvanced {
     
     // create test index
     final RandomIndexWriter writer = new RandomIndexWriter(random(), mDirectory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(),
-            MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET))
+        newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET))
             .setOpenMode(OpenMode.APPEND).setMergePolicy(newLogMergePolicy())
             .setSimilarity(new DefaultSimilarity()));
     addDocument(writer, "A", "Should we, could we, would we?");
@@ -57,7 +56,7 @@ public class TestSpansAdvanced2 extends TestSpansAdvanced {
     addDocument(writer, "C", "It shouldn't.");
     addDocument(writer, "D", "Should we, should we, should we.");
     reader2 = writer.getReader();
-    writer.shutdown();
+    writer.close();
     
     // re-open the searcher since we added more docs
     searcher2 = newSearcher(reader2);

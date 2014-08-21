@@ -81,6 +81,10 @@ public class DataImportHandler extends RequestHandlerBase implements
 
   private static final String PARAM_WRITER_IMPL = "writerImpl";
   private static final String DEFAULT_WRITER_NAME = "SolrWriter";
+
+  public DataImporter getImporter() {
+    return this.importer;
+  }
   
   @Override
   @SuppressWarnings("unchecked")
@@ -210,8 +214,6 @@ public class DataImportHandler extends RequestHandlerBase implements
     rsp.add("status", importer.isBusy() ? "busy" : "idle");
     rsp.add("importResponse", message);
     rsp.add("statusMessages", importer.getStatusMessages());
-
-    RequestHandlerUtils.addExperimentalFormatWarning(rsp);
   }
 
   private Map<String, Object> getParamsMap(SolrParams params) {
@@ -309,11 +311,6 @@ public class DataImportHandler extends RequestHandlerBase implements
   @Override
   public String getDescription() {
     return DataImporter.MSG.JMX_DESC;
-  }
-
-  @Override
-  public String getSource() {
-    return "$URL$";
   }
 
   public static final String ENABLE_DEBUG = "enableDebug";

@@ -30,15 +30,16 @@ import org.apache.lucene.index.MergePolicy;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.MergeTrigger;
 import org.apache.lucene.index.MultiReader;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentCommitInfo;
+import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.index.SegmentReader;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.packed.MonotonicAppendingLongBuffer;
+import org.apache.lucene.util.packed.PackedInts;
+import org.apache.lucene.util.packed.PackedLongValues;
 
 /** A {@link MergePolicy} that reorders documents according to a {@link Sort}
  *  before merging them. As a consequence, all segments resulting from a merge
@@ -96,8 +97,8 @@ public final class SortingMergePolicy extends MergePolicy {
       super.setInfo(info);
     }
 
-    private MonotonicAppendingLongBuffer getDeletes(List<AtomicReader> readers) {
-      MonotonicAppendingLongBuffer deletes = new MonotonicAppendingLongBuffer();
+    private PackedLongValues getDeletes(List<AtomicReader> readers) {
+      PackedLongValues.Builder deletes = PackedLongValues.monotonicBuilder(PackedInts.COMPACT);
       int deleteCount = 0;
       for (AtomicReader reader : readers) {
         final int maxDoc = reader.maxDoc();
@@ -110,8 +111,7 @@ public final class SortingMergePolicy extends MergePolicy {
           }
         }
       }
-      deletes.freeze();
-      return deletes;
+      return deletes.build();
     }
 
     @Override
@@ -123,7 +123,7 @@ public final class SortingMergePolicy extends MergePolicy {
         return super.getDocMap(mergeState);
       }
       assert mergeState.docMaps.length == 1; // we returned a singleton reader
-      final MonotonicAppendingLongBuffer deletes = getDeletes(unsortedReaders);
+      final PackedLongValues deletes = getDeletes(unsortedReaders);
       return new MergePolicy.DocMap() {
         @Override
         public int map(int old) {
@@ -186,42 +186,27 @@ public final class SortingMergePolicy extends MergePolicy {
 
   @Override
   public MergeSpecification findMerges(MergeTrigger mergeTrigger,
-      SegmentInfos segmentInfos) throws IOException {
-    return sortedMergeSpecification(in.findMerges(mergeTrigger, segmentInfos));
+      SegmentInfos segmentInfos, IndexWriter writer) throws IOException {
+    return sortedMergeSpecification(in.findMerges(mergeTrigger, segmentInfos, writer));
   }
 
   @Override
   public MergeSpecification findForcedMerges(SegmentInfos segmentInfos,
-      int maxSegmentCount, Map<SegmentCommitInfo,Boolean> segmentsToMerge)
+      int maxSegmentCount, Map<SegmentCommitInfo,Boolean> segmentsToMerge, IndexWriter writer)
       throws IOException {
-    return sortedMergeSpecification(in.findForcedMerges(segmentInfos, maxSegmentCount, segmentsToMerge));
+    return sortedMergeSpecification(in.findForcedMerges(segmentInfos, maxSegmentCount, segmentsToMerge, writer));
   }
 
   @Override
-  public MergeSpecification findForcedDeletesMerges(SegmentInfos segmentInfos)
+  public MergeSpecification findForcedDeletesMerges(SegmentInfos segmentInfos, IndexWriter writer)
       throws IOException {
-    return sortedMergeSpecification(in.findForcedDeletesMerges(segmentInfos));
-  }
-
-  @Override
-  public MergePolicy clone() {
-    return new SortingMergePolicy(in.clone(), sort);
-  }
-
-  @Override
-  public void close() {
-    in.close();
+    return sortedMergeSpecification(in.findForcedDeletesMerges(segmentInfos, writer));
   }
 
   @Override
   public boolean useCompoundFile(SegmentInfos segments,
-      SegmentCommitInfo newSegment) throws IOException {
-    return in.useCompoundFile(segments, newSegment);
-  }
-
-  @Override
-  public void setIndexWriter(IndexWriter writer) {
-    in.setIndexWriter(writer);
+      SegmentCommitInfo newSegment, IndexWriter writer) throws IOException {
+    return in.useCompoundFile(segments, newSegment, writer);
   }
 
   @Override

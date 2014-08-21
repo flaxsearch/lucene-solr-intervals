@@ -57,7 +57,7 @@ public class TestForceMergeForever extends LuceneTestCase {
     MockAnalyzer analyzer = new MockAnalyzer(random());
     analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
 
-    final MyIndexWriter w = new MyIndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    final MyIndexWriter w = new MyIndexWriter(d, newIndexWriterConfig(analyzer));
 
     // Try to make an index that requires merging:
     w.getConfig().setMaxBufferedDocs(TestUtil.nextInt(random(), 2, 11));
@@ -74,7 +74,7 @@ public class TestForceMergeForever extends LuceneTestCase {
       ((LogMergePolicy) mp).setMergeFactor(mergeAtOnce);
     } else {
       // skip test
-      w.shutdown();
+      w.close();
       d.close();
       return;
     }
@@ -101,7 +101,7 @@ public class TestForceMergeForever extends LuceneTestCase {
     doStop.set(true);
     t.join();
     assertTrue("merge count is " + w.mergeCount.get(), w.mergeCount.get() <= 1);
-    w.shutdown();
+    w.close();
     d.close();
     docs.close();
   }

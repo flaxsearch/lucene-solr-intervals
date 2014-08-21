@@ -25,7 +25,6 @@ import java.util.List;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.lucene42.Lucene42DocValuesFormat;
 import org.apache.lucene.document.BinaryDocValuesField;
 import org.apache.lucene.document.Document;
@@ -134,7 +133,7 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
     } else {
       numDocs = TestUtil.nextInt(random(), 100, 200);
     }
-    IndexWriter w = new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter w = new IndexWriter(d, newIndexWriterConfig(analyzer));
     List<byte[]> docBytes = new ArrayList<>();
     long totalBytes = 0;
     for(int docID=0;docID<numDocs;docID++) {
@@ -193,15 +192,14 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
         return;
       }
     }
-    w.shutdown();
+    w.close();
 
     AtomicReader ar = SlowCompositeReaderWrapper.wrap(r);
 
     BinaryDocValues s = FieldCache.DEFAULT.getTerms(ar, "field", false);
     for(int docID=0;docID<docBytes.size();docID++) {
       StoredDocument doc = ar.document(docID);
-      BytesRef bytes = new BytesRef();
-      s.get(docID, bytes);
+      BytesRef bytes = s.get(docID);
       byte[] expected = docBytes.get(Integer.parseInt(doc.get("id")));
       assertEquals(expected.length, bytes.length);
       assertEquals(new BytesRef(expected), bytes);
@@ -232,7 +230,7 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
     } else {
       numDocs = TestUtil.nextInt(random(), 100, 200);
     }
-    IndexWriter w = new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter w = new IndexWriter(d, newIndexWriterConfig(analyzer));
     List<byte[]> docBytes = new ArrayList<>();
     long totalBytes = 0;
     for(int docID=0;docID<numDocs;docID++) {
@@ -265,15 +263,14 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
     }
     
     DirectoryReader r = DirectoryReader.open(w, true);
-    w.shutdown();
+    w.close();
 
     AtomicReader ar = SlowCompositeReaderWrapper.wrap(r);
 
     BinaryDocValues s = FieldCache.DEFAULT.getTerms(ar, "field", false);
     for(int docID=0;docID<docBytes.size();docID++) {
       StoredDocument doc = ar.document(docID);
-      BytesRef bytes = new BytesRef();
-      s.get(docID, bytes);
+      BytesRef bytes = s.get(docID);
       byte[] expected = docBytes.get(Integer.parseInt(doc.get("id")));
       assertEquals(expected.length, bytes.length);
       assertEquals(new BytesRef(expected), bytes);
@@ -285,7 +282,7 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
   
   private void doTestSortedVsFieldCache(int minLength, int maxLength) throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig conf = newIndexWriterConfig(new MockAnalyzer(random()));
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir, conf);
     Document doc = new Document();
     Field idField = new StringField("id", "", Field.Store.NO);
@@ -320,7 +317,7 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
       int id = random().nextInt(numDocs);
       writer.deleteDocuments(new Term("id", Integer.toString(id)));
     }
-    writer.shutdown();
+    writer.close();
     
     // compare
     DirectoryReader ir = DirectoryReader.open(dir);
@@ -336,7 +333,7 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
   
   private void doTestSortedSetVsUninvertedField(int minLength, int maxLength) throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig conf = new IndexWriterConfig(new MockAnalyzer(random()));
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir, conf);
     
     // index some docs
@@ -345,17 +342,12 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
       Document doc = new Document();
       Field idField = new StringField("id", Integer.toString(i), Field.Store.NO);
       doc.add(idField);
-      final int length;
-      if (minLength == maxLength) {
-        length = minLength; // fixed length
-      } else {
-        length = TestUtil.nextInt(random(), minLength, maxLength);
-      }
+      final int length = TestUtil.nextInt(random(), minLength, maxLength);
       int numValues = random().nextInt(17);
       // create a random list of strings
       List<String> values = new ArrayList<>();
       for (int v = 0; v < numValues; v++) {
-        values.add(TestUtil.randomSimpleString(random(), length));
+        values.add(TestUtil.randomSimpleString(random(), minLength, length));
       }
       
       // add in any order to the indexed field
@@ -405,14 +397,14 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
     assertEquals(ir.maxDoc(), expected, actual);
     ir.close();
     
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
   
   private void doTestMissingVsFieldCache(LongProducer longs) throws Exception {
     assumeTrue("Codec does not support getDocsWithField", defaultCodecSupportsDocsWithField());
     Directory dir = newDirectory();
-    IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig conf = newIndexWriterConfig(new MockAnalyzer(random()));
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir, conf);
     Field idField = new StringField("id", "", Field.Store.NO);
     Field indexedField = newStringField("indexed", "", Field.Store.NO);
@@ -453,7 +445,7 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
     // 256 values
     writer.forceMerge(numDocs / 256);
 
-    writer.shutdown();
+    writer.close();
     
     // compare
     DirectoryReader ir = DirectoryReader.open(dir);
@@ -495,7 +487,7 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
     // can be null for the segment if no docs actually had any SortedDocValues
     // in this case FC.getDocTermsOrds returns EMPTY
     if (actual == null) {
-      assertEquals(DocValues.EMPTY_SORTED_SET, expected);
+      assertEquals(expected.getValueCount(), 0);
       return;
     }
     assertEquals(expected.getValueCount(), actual.getValueCount());
@@ -511,11 +503,9 @@ public class TestFieldCacheVsDocValues extends LuceneTestCase {
     }
     
     // compare ord dictionary
-    BytesRef expectedBytes = new BytesRef();
-    BytesRef actualBytes = new BytesRef();
     for (long i = 0; i < expected.getValueCount(); i++) {
-      expected.lookupOrd(i, expectedBytes);
-      actual.lookupOrd(i, actualBytes);
+      final BytesRef expectedBytes = BytesRef.deepCopyOf(expected.lookupOrd(i));
+      final BytesRef actualBytes = actual.lookupOrd(i);
       assertEquals(expectedBytes, actualBytes);
     }
     

@@ -48,6 +48,7 @@ public abstract class QParserPlugin implements NamedListInitializedPlugin, SolrI
     FieldQParserPlugin.NAME, FieldQParserPlugin.class,
     RawQParserPlugin.NAME, RawQParserPlugin.class,
     TermQParserPlugin.NAME, TermQParserPlugin.class,
+    TermsQParserPlugin.NAME, TermsQParserPlugin.class,
     NestedQParserPlugin.NAME, NestedQParserPlugin.class,
     FunctionRangeQParserPlugin.NAME, FunctionRangeQParserPlugin.class,
     SpatialFilterQParserPlugin.NAME, SpatialFilterQParserPlugin.class,
@@ -60,7 +61,9 @@ public abstract class QParserPlugin implements NamedListInitializedPlugin, SolrI
     BlockJoinChildQParserPlugin.NAME, BlockJoinChildQParserPlugin.class,
     CollapsingQParserPlugin.NAME, CollapsingQParserPlugin.class,
     SimpleQParserPlugin.NAME, SimpleQParserPlugin.class,
-    ComplexPhraseQParserPlugin.NAME, ComplexPhraseQParserPlugin.class
+    ComplexPhraseQParserPlugin.NAME, ComplexPhraseQParserPlugin.class,
+    ReRankQParserPlugin.NAME, ReRankQParserPlugin.class,
+    ExportQParserPlugin.NAME, ExportQParserPlugin.class
   };
 
   /** return a {@link QParser} */
@@ -90,7 +93,7 @@ public abstract class QParserPlugin implements NamedListInitializedPlugin, SolrI
 
   @Override
   public String getSource() {
-    return "$URL$";
+    return null;
   }
 
   @Override

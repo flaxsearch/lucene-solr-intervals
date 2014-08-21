@@ -19,20 +19,27 @@ package org.apache.lucene.codecs.blocktree;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.fst.ByteSequenceOutputs;
 import org.apache.lucene.util.fst.FST;
 
 /** BlockTree's implementation of {@link Terms}. */
 // public for CheckIndex:
-public final class FieldReader extends Terms {
+public final class FieldReader extends Terms implements Accountable {
+
+  private static final long BASE_RAM_BYTES_USED =
+      RamUsageEstimator.shallowSizeOfInstance(FieldReader.class)
+      + 3 * RamUsageEstimator.shallowSizeOfInstance(BytesRef.class);
+
   final long numTerms;
   final FieldInfo fieldInfo;
   final long sumTotalTermFreq;
@@ -169,8 +176,8 @@ public final class FieldReader extends Terms {
     return new IntersectTermsEnum(this, compiled, startTerm);
   }
     
-  /** Returns approximate RAM bytes used */
+  @Override
   public long ramBytesUsed() {
-    return ((index!=null)? index.sizeInBytes() : 0);
+    return BASE_RAM_BYTES_USED + ((index!=null)? index.ramBytesUsed() : 0);
   }
 }

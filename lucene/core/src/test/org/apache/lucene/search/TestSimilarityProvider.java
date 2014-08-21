@@ -45,8 +45,7 @@ public class TestSimilarityProvider extends LuceneTestCase {
     super.setUp();
     directory = newDirectory();
     PerFieldSimilarityWrapper sim = new ExampleSimilarityProvider();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, 
-        new MockAnalyzer(random())).setSimilarity(sim);
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random())).setSimilarity(sim);
     RandomIndexWriter iw = new RandomIndexWriter(random(), directory, iwc);
     Document doc = new Document();
     Field field = newTextField("foo", "", Field.Store.NO);
@@ -61,7 +60,7 @@ public class TestSimilarityProvider extends LuceneTestCase {
     field2.setStringValue("jumps over lazy brown dog");
     iw.addDocument(doc);
     reader = iw.getReader();
-    iw.shutdown();
+    iw.close();
     searcher = newSearcher(reader);
     searcher.setSimilarity(sim);
   }

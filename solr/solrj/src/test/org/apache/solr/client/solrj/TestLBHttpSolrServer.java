@@ -122,7 +122,9 @@ public class TestLBHttpSolrServer extends SolrTestCaseJ4 {
   @Override
   public void tearDown() throws Exception {
     for (SolrInstance aSolr : solr) {
-      aSolr.tearDown();
+      if (aSolr != null)  {
+        aSolr.tearDown();
+      }
     }
     httpClient.getConnectionManager().shutdown();
     super.tearDown();
@@ -302,16 +304,13 @@ public class TestLBHttpSolrServer extends SolrTestCaseJ4 {
     }
 
     public void tearDown() throws Exception {
-      try {
-        jetty.stop();
-      } catch (Exception e) {
-      }
-      AbstractSolrTestCase.recurseDelete(homeDir);
+      if (jetty != null) jetty.stop();
+      TestUtil.rm(homeDir);
     }
 
     public void startJetty() throws Exception {
       jetty = new JettySolrRunner(getHomeDir(), "/solr", port, "bad_solrconfig.xml", null, true, null, sslConfig);
-      System.setProperty("solr.data.dir", getDataDir());
+      jetty.setDataDir(getDataDir());
       jetty.start();
       int newPort = jetty.getLocalPort();
       if (port != 0 && newPort != port) {

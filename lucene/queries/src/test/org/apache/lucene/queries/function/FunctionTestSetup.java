@@ -94,7 +94,7 @@ public abstract class FunctionTestSetup extends LuceneTestCase {
     // prepare a small index with just a few documents.
     dir = newDirectory();
     anlzr = new MockAnalyzer(random());
-    IndexWriterConfig iwc = newIndexWriterConfig( TEST_VERSION_CURRENT, anlzr).setMergePolicy(newLogMergePolicy());
+    IndexWriterConfig iwc = newIndexWriterConfig(anlzr).setMergePolicy(newLogMergePolicy());
     if (doMultiSegment) {
       iwc.setMaxBufferedDocs(TestUtil.nextInt(random(), 2, 7));
     }
@@ -118,7 +118,7 @@ public abstract class FunctionTestSetup extends LuceneTestCase {
       }
       iw.forceMerge(1);
     }
-    iw.shutdown();
+    iw.close();
     if (VERBOSE) {
       System.out.println("TEST: setUp done close");
     }

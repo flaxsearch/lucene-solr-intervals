@@ -49,9 +49,9 @@ public class TestScorerPerf extends LuceneTestCase {
       // Create a dummy index with nothing in it.
     // This could possibly fail if Lucene starts checking for docid ranges...
     d = newDirectory();
-    IndexWriter iw = new IndexWriter(d, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter iw = new IndexWriter(d, newIndexWriterConfig(new MockAnalyzer(random())));
     iw.addDocument(new Document());
-    iw.shutdown();
+    iw.close();
     r = DirectoryReader.open(d);
     s = newSearcher(r);
   }
@@ -65,7 +65,7 @@ public class TestScorerPerf extends LuceneTestCase {
       terms[i] = new Term("f",Character.toString((char)('A'+i)));
     }
 
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.CREATE));
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())).setOpenMode(OpenMode.CREATE));
     for (int i=0; i<nDocs; i++) {
       Document d = new Document();
       for (int j=0; j<nTerms; j++) {
@@ -77,7 +77,7 @@ public class TestScorerPerf extends LuceneTestCase {
       iw.addDocument(d);
     }
     iw.forceMerge(1);
-    iw.shutdown();
+    iw.close();
   }
 
 

@@ -59,7 +59,7 @@ public class TestNumericTerms64 extends LuceneTestCase {
     distance = (1L << 60) / noDocs;
     directory = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+        newIndexWriterConfig(new MockAnalyzer(random()))
         .setMaxBufferedDocs(TestUtil.nextInt(random(), 100, 1000))
         .setMergePolicy(newLogMergePolicy()));
 
@@ -107,12 +107,13 @@ public class TestNumericTerms64 extends LuceneTestCase {
     map.put("field8", Type.LONG);
     reader = UninvertingReader.wrap(writer.getReader(), map);
     searcher=newSearcher(reader);
-    writer.shutdown();
+    writer.close();
   }
   
   @AfterClass
   public static void afterClass() throws Exception {
     searcher = null;
+    TestUtil.checkReader(reader);
     reader.close();
     reader = null;
     directory.close();

@@ -22,14 +22,17 @@ import org.apache.lucene.store.IndexInput;
 import java.io.IOException;
 
 /* Reads directly from disk on each get */
+// just for back compat, use DirectReader/DirectWriter for more efficient impl
 class DirectPackedReader extends PackedInts.ReaderImpl {
-  private final IndexInput in;
-  private final long startPointer;
-  private final long valueMask;
+  final IndexInput in;
+  final int bitsPerValue;
+  final long startPointer;
+  final long valueMask;
 
-  public DirectPackedReader(int bitsPerValue, int valueCount, IndexInput in) {
-    super(valueCount, bitsPerValue);
+  DirectPackedReader(int bitsPerValue, int valueCount, IndexInput in) {
+    super(valueCount);
     this.in = in;
+    this.bitsPerValue = bitsPerValue;
 
     startPointer = in.getFilePointer();
     if (bitsPerValue == 64) {
@@ -90,7 +93,7 @@ class DirectPackedReader extends PackedInts.ReaderImpl {
       return (rawValue >>> shiftRightBits) & valueMask;
 
     } catch (IOException ioe) {
-      throw new IllegalStateException("failed", ioe);
+      throw new RuntimeException(ioe);
     }
   }
 

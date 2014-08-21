@@ -17,13 +17,15 @@ package org.apache.solr.common.cloud;
  * the License.
  */
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.xml.transform.OutputKeys;
@@ -36,10 +38,13 @@ import javax.xml.transform.stream.StreamSource;
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.cloud.ZkClientConnectionStrategy.ZkUpdate;
+import org.apache.solr.common.util.ExecutorUtil;
+import org.apache.solr.common.util.SolrjNamedThreadFactory;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.apache.zookeeper.KeeperException.NodeExistsException;
+import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
@@ -54,7 +59,7 @@ import org.slf4j.LoggerFactory;
  * ZooKeeper. This class handles synchronous connects and reconnections.
  *
  */
-public class SolrZkClient {
+public class SolrZkClient implements Closeable {
   // These should *only* be used for debugging or monitoring purposes
   public static final AtomicLong numOpens = new AtomicLong();
   public static final AtomicLong numCloses = new AtomicLong();
@@ -72,14 +77,21 @@ public class SolrZkClient {
   
   private ZkCmdExecutor zkCmdExecutor;
 
+  private final ExecutorService zkCallbackExecutor = Executors.newCachedThreadPool(new SolrjNamedThreadFactory("zkCallback"));
+
   private volatile boolean isClosed = false;
   private ZkClientConnectionStrategy zkClientConnectionStrategy;
   private int zkClientTimeout;
-  
+
   public int getZkClientTimeout() {
     return zkClientTimeout;
   }
 
+  // expert: for tests
+  public SolrZkClient() {
+    
+  }
+  
   public SolrZkClient(String zkServerAddress, int zkClientTimeout) {
     this(zkServerAddress, zkClientTimeout, new DefaultConnectionStrategy(), null);
   }
@@ -183,6 +195,24 @@ public class SolrZkClient {
     }
   }
 
+  private Watcher wrapWatcher (final Watcher watcher) {
+    if (watcher == null) return watcher;
+
+    // wrap the watcher so that it doesn't fire off ZK's event queue
+    return new Watcher() {
+      @Override
+      public void process(final WatchedEvent event) {
+        log.debug("Submitting job to respond to event " + event);
+        zkCallbackExecutor.submit(new Runnable () {
+          @Override
+          public void run () {
+            watcher.process(event);
+          }
+        });
+      }
+    };
+  }
+
   /**
    * Return the stat of the node of the given path. Return null if no such a
    * node exists.
@@ -206,11 +236,11 @@ public class SolrZkClient {
       return zkCmdExecutor.retryOperation(new ZkOperation() {
         @Override
         public Stat execute() throws KeeperException, InterruptedException {
-          return keeper.exists(path, watcher);
+          return keeper.exists(path, wrapWatcher(watcher));
         }
       });
     } else {
-      return keeper.exists(path, watcher);
+      return keeper.exists(path, wrapWatcher(watcher));
     }
   }
   
@@ -257,11 +287,11 @@ public class SolrZkClient {
       return zkCmdExecutor.retryOperation(new ZkOperation() {
         @Override
         public List<String> execute() throws KeeperException, InterruptedException {
-          return keeper.getChildren(path, watcher);
+          return keeper.getChildren(path, wrapWatcher(watcher));
         }
       });
     } else {
-      return keeper.getChildren(path, watcher);
+      return keeper.getChildren(path, wrapWatcher(watcher));
     }
   }
 
@@ -274,11 +304,11 @@ public class SolrZkClient {
       return zkCmdExecutor.retryOperation(new ZkOperation() {
         @Override
         public byte[] execute() throws KeeperException, InterruptedException {
-          return keeper.getData(path, watcher, stat);
+          return keeper.getData(path, wrapWatcher(watcher), stat);
         }
       });
     } else {
-      return keeper.getData(path, watcher, stat);
+      return keeper.getData(path, wrapWatcher(watcher), stat);
     }
   }
 
@@ -570,6 +600,7 @@ public class SolrZkClient {
       closeKeeper(keeper);
     } finally {
       connManager.close();
+      closeCallbackExecutor();
     }
     numCloses.incrementAndGet();
   }
@@ -606,6 +637,14 @@ public class SolrZkClient {
         throw new ZooKeeperException(SolrException.ErrorCode.SERVER_ERROR, "",
             e);
       }
+    }
+  }
+
+  private void closeCallbackExecutor() {
+    try {
+      ExecutorUtil.shutdownAndAwaitTermination(zkCallbackExecutor);
+    } catch (Exception e) {
+      SolrException.log(log, e);
     }
   }
 

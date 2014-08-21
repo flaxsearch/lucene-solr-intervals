@@ -29,7 +29,6 @@ import org.apache.lucene.document.IntField;
 import org.apache.lucene.index.BaseStoredFieldsFormatTestCase;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.store.Directory;
 import org.junit.Test;
 
@@ -47,7 +46,7 @@ public class TestCompressingStoredFieldsFormat extends BaseStoredFieldsFormatTes
   @Test(expected=IllegalArgumentException.class)
   public void testDeletePartiallyWrittenFilesIfAbort() throws IOException {
     Directory dir = newDirectory();
-    IndexWriterConfig iwConf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwConf = newIndexWriterConfig(new MockAnalyzer(random()));
     iwConf.setMaxBufferedDocs(RandomInts.randomIntBetween(random(), 2, 30));
     iwConf.setCodec(CompressingCodec.randomInstance(random()));
     // disable CFS because this test checks file names
@@ -90,7 +89,7 @@ public class TestCompressingStoredFieldsFormat extends BaseStoredFieldsFormatTes
       }
       // Only one .fdt and one .fdx files must have been found
       assertEquals(2, counter);
-      iw.shutdown();
+      iw.close();
       dir.close();
     }
   }

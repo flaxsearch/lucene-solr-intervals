@@ -50,10 +50,8 @@ import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
@@ -85,8 +83,7 @@ public class TestJoinUtil extends LuceneTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random(),
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-            new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
 
     // 0
     Document doc = new Document();
@@ -142,7 +139,7 @@ public class TestJoinUtil extends LuceneTestCase {
     w.addDocument(doc);
 
     IndexSearcher indexSearcher = new IndexSearcher(w.getReader());
-    w.shutdown();
+    w.close();
 
     // Search for product
     Query joinQuery =
@@ -186,8 +183,7 @@ public class TestJoinUtil extends LuceneTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random(),
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-            new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
 
     // 0
     Document doc = new Document();
@@ -210,7 +206,7 @@ public class TestJoinUtil extends LuceneTestCase {
     w.addDocument(doc);
 
     IndexSearcher indexSearcher = new IndexSearcher(w.getReader());
-    w.shutdown();
+    w.close();
 
     // Search for product
     Query joinQuery =
@@ -235,8 +231,7 @@ public class TestJoinUtil extends LuceneTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random(),
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-            new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
 
     // 0
     Document doc = new Document();
@@ -284,7 +279,7 @@ public class TestJoinUtil extends LuceneTestCase {
     w.forceMerge(1);
 
     IndexSearcher indexSearcher = new IndexSearcher(w.getReader());
-    w.shutdown();
+    w.close();
 
     // Search for product
     Query joinQuery =
@@ -325,8 +320,7 @@ public class TestJoinUtil extends LuceneTestCase {
     RandomIndexWriter w = new RandomIndexWriter(
         random(),
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT,
-            new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+        newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
 
     // 0
     Document doc = new Document();
@@ -382,7 +376,7 @@ public class TestJoinUtil extends LuceneTestCase {
     w.addDocument(doc);
 
     IndexSearcher indexSearcher = new IndexSearcher(w.getReader());
-    w.shutdown();
+    w.close();
 
     // Search for movie via subtitle
     Query joinQuery =
@@ -443,13 +437,13 @@ public class TestJoinUtil extends LuceneTestCase {
       RandomIndexWriter w = new RandomIndexWriter(
           random(),
           dir,
-          newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.KEYWORD, false)).setMergePolicy(newLogMergePolicy())
+          newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.KEYWORD, false)).setMergePolicy(newLogMergePolicy())
       );
       final boolean scoreDocsInOrder = TestJoinUtil.random().nextBoolean();
       IndexIterationContext context = createContext(numberOfDocumentsToIndex, w, multipleValuesPerDocument, scoreDocsInOrder);
 
       IndexReader topLevelReader = w.getReader();
-      w.shutdown();
+      w.close();
       for (int searchIter = 1; searchIter <= maxSearchIter; searchIter++) {
         if (VERBOSE) {
           System.out.println("searchIter=" + searchIter);
@@ -662,14 +656,13 @@ public class TestJoinUtil extends LuceneTestCase {
 
           private Scorer scorer;
           private SortedSetDocValues docTermOrds;
-          final BytesRef joinValue = new BytesRef();
 
           @Override
           public void collect(int doc) throws IOException {
             docTermOrds.setDocument(doc);
             long ord;
             while ((ord = docTermOrds.nextOrd()) != SortedSetDocValues.NO_MORE_ORDS) {
-              docTermOrds.lookupOrd(ord, joinValue);
+              final BytesRef joinValue = docTermOrds.lookupOrd(ord);
               JoinScore joinScore = joinValueToJoinScores.get(joinValue);
               if (joinScore == null) {
                 joinValueToJoinScores.put(BytesRef.deepCopyOf(joinValue), joinScore = new JoinScore());
@@ -699,12 +692,10 @@ public class TestJoinUtil extends LuceneTestCase {
           private Scorer scorer;
           private BinaryDocValues terms;
           private Bits docsWithField;
-          private final BytesRef spare = new BytesRef();
 
           @Override
           public void collect(int doc) throws IOException {
-            terms.get(doc, spare);
-            BytesRef joinValue = spare;
+            final BytesRef joinValue = terms.get(doc);
             if (joinValue.length == 0 && !docsWithField.get(doc)) {
               return;
             }
@@ -764,7 +755,6 @@ public class TestJoinUtil extends LuceneTestCase {
           toSearcher.search(new MatchAllDocsQuery(), new SimpleCollector() {
 
             private SortedSetDocValues docTermOrds;
-            private final BytesRef scratch = new BytesRef();
             private int docBase;
 
             @Override
@@ -772,8 +762,8 @@ public class TestJoinUtil extends LuceneTestCase {
               docTermOrds.setDocument(doc);
               long ord;
               while ((ord = docTermOrds.nextOrd()) != SortedSetDocValues.NO_MORE_ORDS) {
-                docTermOrds.lookupOrd(ord, scratch);
-                JoinScore joinScore = joinValueToJoinScores.get(scratch);
+                final BytesRef joinValue = docTermOrds.lookupOrd(ord);
+                JoinScore joinScore = joinValueToJoinScores.get(joinValue);
                 if (joinScore == null) {
                   continue;
                 }
@@ -803,12 +793,11 @@ public class TestJoinUtil extends LuceneTestCase {
 
           private BinaryDocValues terms;
           private int docBase;
-          private final BytesRef spare = new BytesRef();
 
           @Override
           public void collect(int doc) {
-            terms.get(doc, spare);
-            JoinScore joinScore = joinValueToJoinScores.get(spare);
+            final BytesRef joinValue = terms.get(doc);
+            JoinScore joinScore = joinValueToJoinScores.get(joinValue);
             if (joinScore == null) {
               return;
             }

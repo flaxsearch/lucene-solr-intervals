@@ -17,9 +17,13 @@
 
 package org.apache.solr.handler.component;
 
+import com.carrotsearch.hppc.IntOpenHashSet;
+import com.carrotsearch.hppc.IntIntOpenHashMap;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.Fields;
@@ -38,6 +42,7 @@ import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.SentinelIntSet;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
@@ -71,6 +76,7 @@ import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -80,6 +86,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -98,6 +105,10 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
   static final String CONFIG_FILE = "config-file";
   static final String EXCLUDE = "exclude";
   public static final String BOOSTED = "BOOSTED";
+  public static final String BOOSTED_DOCIDS = "BOOSTED_DOCIDS";
+  public static final String BOOSTED_PRIORITY = "BOOSTED_PRIORITY";
+
+
   public static final String EXCLUDED = "EXCLUDED";
 
   // Runtime param -- should be in common?
@@ -401,6 +412,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
 
     if (booster != null) {
       rb.req.getContext().put(BOOSTED, booster.ids);
+      rb.req.getContext().put(BOOSTED_PRIORITY, booster.priority);
 
       // Change the query to insert forced documents
       if (exclusive == true) {
@@ -519,6 +531,67 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
     return null;
   }
 
+
+  public static IntIntOpenHashMap getBoostDocs(SolrIndexSearcher indexSearcher, Map<BytesRef, Integer>boosted, Map context) throws IOException {
+
+    IntIntOpenHashMap boostDocs = null;
+
+    if(boosted != null) {
+
+      //First see if it's already in the request context. Could have been put there
+      //by another caller.
+      if(context != null) {
+        boostDocs = (IntIntOpenHashMap)context.get(BOOSTED_DOCIDS);
+      }
+
+      if(boostDocs != null) {
+        return boostDocs;
+      }
+      //Not in the context yet so load it.
+
+      SchemaField idField = indexSearcher.getSchema().getUniqueKeyField();
+      String fieldName = idField.getName();
+      HashSet<BytesRef> localBoosts = new HashSet(boosted.size()*2);
+      Iterator<BytesRef> boostedIt = boosted.keySet().iterator();
+      while(boostedIt.hasNext()) {
+        localBoosts.add(boostedIt.next());
+      }
+
+      boostDocs = new IntIntOpenHashMap(boosted.size()*2);
+
+      List<AtomicReaderContext>leaves = indexSearcher.getTopReaderContext().leaves();
+      TermsEnum termsEnum = null;
+      DocsEnum docsEnum = null;
+      for(AtomicReaderContext leaf : leaves) {
+        AtomicReader reader = leaf.reader();
+        int docBase = leaf.docBase;
+        Bits liveDocs = reader.getLiveDocs();
+        Terms terms = reader.terms(fieldName);
+        termsEnum = terms.iterator(termsEnum);
+        Iterator<BytesRef> it = localBoosts.iterator();
+        while(it.hasNext()) {
+          BytesRef ref = it.next();
+          if(termsEnum.seekExact(ref)) {
+            docsEnum = termsEnum.docs(liveDocs, docsEnum);
+            int doc = docsEnum.nextDoc();
+            if(doc != DocsEnum.NO_MORE_DOCS) {
+              //Found the document.
+              int p = boosted.get(ref);
+              boostDocs.put(doc+docBase, p);
+              it.remove();
+            }
+          }
+        }
+      }
+    }
+
+    if(context != null) {
+      context.put(BOOSTED_DOCIDS, boostDocs);
+    }
+
+    return boostDocs;
+  }
+
   @Override
   public void process(ResponseBuilder rb) throws IOException {
     // Do nothing -- the real work is modifying the input query
@@ -531,11 +604,6 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
   @Override
   public String getDescription() {
     return "Query Boosting -- boost particular documents for a given query";
-  }
-
-  @Override
-  public String getSource() {
-    return "$URL$";
   }
 
   @Override
@@ -616,17 +684,17 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         Terms terms = fields.terms(idField);
         if (terms == null) return this;
         termsEnum = terms.iterator(termsEnum);
-        BytesRef term = new BytesRef();
+        BytesRefBuilder term = new BytesRefBuilder();
         Bits liveDocs = context.reader().getLiveDocs();
 
         for (String id : elevations.ids) {
           term.copyChars(id);
-          if (seen.contains(id) == false  && termsEnum.seekExact(term)) {
+          if (seen.contains(id) == false  && termsEnum.seekExact(term.get())) {
             docsEnum = termsEnum.docs(liveDocs, docsEnum, DocsEnum.FLAG_NONE);
             if (docsEnum != null) {
               int docId = docsEnum.nextDoc();
               if (docId == DocIdSetIterator.NO_MORE_DOCS ) continue;  // must have been deleted
-              termValues[ordSet.put(docId)] = BytesRef.deepCopyOf(term);
+              termValues[ordSet.put(docId)] = term.toBytesRef();
               seen.add(id);
               assert docsEnum.nextDoc() == DocIdSetIterator.NO_MORE_DOCS;
             }

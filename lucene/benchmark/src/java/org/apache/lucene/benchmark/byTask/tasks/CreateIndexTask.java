@@ -20,6 +20,8 @@ package org.apache.lucene.benchmark.byTask.tasks;
 import org.apache.lucene.benchmark.byTask.PerfRunData;
 import org.apache.lucene.benchmark.byTask.utils.Config;
 import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.PostingsFormat;
+import org.apache.lucene.codecs.lucene410.Lucene410Codec;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexDeletionPolicy;
@@ -97,8 +99,7 @@ public class CreateIndexTask extends PerfTask {
   
   public static IndexWriterConfig createWriterConfig(Config config, PerfRunData runData, OpenMode mode, IndexCommit commit) {
     @SuppressWarnings("deprecation")
-    Version version = Version.parseLeniently(config.get("writer.version", Version.LUCENE_CURRENT.toString()));
-    IndexWriterConfig iwConf = new IndexWriterConfig(version, runData.getAnalyzer());
+    IndexWriterConfig iwConf = new IndexWriterConfig(runData.getAnalyzer());
     iwConf.setOpenMode(mode);
     IndexDeletionPolicy indexDeletionPolicy = getIndexDeletionPolicy(config);
     iwConf.setIndexDeletionPolicy(indexDeletionPolicy);
@@ -132,6 +133,21 @@ public class CreateIndexTask extends PerfTask {
         iwConf.setCodec(clazz.newInstance());
       } catch (Exception e) {
         throw new RuntimeException("Couldn't instantiate Codec: " + defaultCodec, e);
+      }
+    }
+
+    final String postingsFormat = config.get("codec.postingsFormat",null);
+    if (defaultCodec == null && postingsFormat != null) {
+      try {
+        final PostingsFormat postingsFormatChosen = PostingsFormat.forName(postingsFormat);
+        iwConf.setCodec(new Lucene410Codec(){
+          @Override
+          public PostingsFormat getPostingsFormatForField(String field) {
+            return postingsFormatChosen;
+          }
+        });
+      } catch (Exception e) {
+        throw new RuntimeException("Couldn't instantiate Postings Format: " + postingsFormat, e);
       }
     }
 

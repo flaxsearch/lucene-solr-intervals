@@ -32,8 +32,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.Lookup.LookupResult;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.ShardParams;
@@ -56,7 +58,7 @@ import org.slf4j.LoggerFactory;
  * Responsible for routing commands and queries to the appropriate {@link SolrSuggester}
  * and for initializing them as specified by SolrConfig
  */
-public class SuggestComponent extends SearchComponent implements SolrCoreAware, SuggesterParams {
+public class SuggestComponent extends SearchComponent implements SolrCoreAware, SuggesterParams, Accountable {
   private static final Logger LOG = LoggerFactory.getLogger(SuggestComponent.class);
   
   /** Name used to identify whether the user query concerns this component */
@@ -207,7 +209,7 @@ public class SuggestComponent extends SearchComponent implements SolrCoreAware, 
     Set<SolrSuggester> querySuggesters;
     try {
       querySuggesters = getSuggesters(params);
-    } catch(IllegalArgumentException ex) {
+    } catch(SolrException ex) {
       if (!buildAll && !reloadAll) {
         throw ex;
       } else {
@@ -319,14 +321,9 @@ public class SuggestComponent extends SearchComponent implements SolrCoreAware, 
   }
 
   @Override
-  public String getSource() {
-    return "$URL$";
-  }
-  
-  @Override
   public NamedList getStatistics() {
     NamedList<String> stats = new SimpleOrderedMap<>();
-    stats.add("totalSizeInBytes", String.valueOf(sizeInBytes()));
+    stats.add("totalSizeInBytes", String.valueOf(ramBytesUsed()));
     for (Map.Entry<String, SolrSuggester> entry : suggesters.entrySet()) {
       SolrSuggester suggester = entry.getValue();
       stats.add(entry.getKey(), suggester.toString());
@@ -334,11 +331,11 @@ public class SuggestComponent extends SearchComponent implements SolrCoreAware, 
     return stats;
   }
   
-  /** Returns the total size of all the suggester */
-  public long sizeInBytes() {
+  @Override
+  public long ramBytesUsed() {
     long sizeInBytes = 0;
     for (SolrSuggester suggester : suggesters.values()) {
-      sizeInBytes += suggester.sizeInBytes();
+      sizeInBytes += suggester.ramBytesUsed();
     }
     return sizeInBytes;
   }
@@ -350,11 +347,12 @@ public class SuggestComponent extends SearchComponent implements SolrCoreAware, 
       if (curSuggester != null) {
         solrSuggesters.add(curSuggester);
       } else {
-        throw new IllegalArgumentException("No suggester named " + suggesterName +" was configured");
+        throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "No suggester named " + suggesterName +" was configured");
       }
     }
     if (solrSuggesters.size() == 0) {
-        throw new IllegalArgumentException("No default suggester was configured");
+        throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, 
+            "'" + SUGGEST_DICT + "' parameter not specified and no default suggester configured");
     }
     return solrSuggesters;
     

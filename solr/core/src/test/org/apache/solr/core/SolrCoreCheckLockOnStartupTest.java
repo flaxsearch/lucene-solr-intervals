@@ -17,9 +17,6 @@ package org.apache.solr.core;
  * limitations under the License.
  */
 
-import java.io.File;
-import java.util.Map;
-
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.Directory;
@@ -29,6 +26,9 @@ import org.apache.lucene.store.SimpleFSLockFactory;
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.io.File;
+import java.util.Map;
 
 public class SolrCoreCheckLockOnStartupTest extends SolrTestCaseJ4 {
 
@@ -49,7 +49,7 @@ public class SolrCoreCheckLockOnStartupTest extends SolrTestCaseJ4 {
 
     Directory directory = newFSDirectory(new File(initCoreDataDir, "index"), new SimpleFSLockFactory());
     //creates a new IndexWriter without releasing the lock yet
-    IndexWriter indexWriter = new IndexWriter(directory, new IndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter indexWriter = new IndexWriter(directory, new IndexWriterConfig(null));
 
     ignoreException("locked");
     try {
@@ -62,7 +62,7 @@ public class SolrCoreCheckLockOnStartupTest extends SolrTestCaseJ4 {
     } finally {
       System.clearProperty("solr.tests.lockType");
       unIgnoreException("locked");
-      indexWriter.shutdown();
+      indexWriter.close();
       directory.close();
       deleteCore();
     }
@@ -75,7 +75,7 @@ public class SolrCoreCheckLockOnStartupTest extends SolrTestCaseJ4 {
     log.info("Acquiring lock on {}", indexDir.getAbsolutePath());
     Directory directory = newFSDirectory(indexDir, new NativeFSLockFactory());
     //creates a new IndexWriter without releasing the lock yet
-    IndexWriter indexWriter = new IndexWriter(directory, new IndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter indexWriter = new IndexWriter(directory, new IndexWriterConfig(null));
 
     ignoreException("locked");
     try {
@@ -89,15 +89,15 @@ public class SolrCoreCheckLockOnStartupTest extends SolrTestCaseJ4 {
     } finally {
       System.clearProperty("solr.tests.lockType");
       unIgnoreException("locked");
-      indexWriter.shutdown();
+      indexWriter.close();
       directory.close();
       deleteCore();
     }
   }
 
   private boolean checkForCoreInitException(Class<? extends Exception> clazz) {
-    for (Map.Entry<String, Exception> entry : h.getCoreContainer().getCoreInitFailures().entrySet()) {
-      for (Throwable t = entry.getValue(); t != null; t = t.getCause()) {
+    for (Map.Entry<String, CoreContainer.CoreLoadFailure> entry : h.getCoreContainer().getCoreInitFailures().entrySet()) {
+      for (Throwable t = entry.getValue().exception; t != null; t = t.getCause()) {
         if (clazz.isInstance(t))
           return true;
       }

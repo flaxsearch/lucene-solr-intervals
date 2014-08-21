@@ -31,7 +31,9 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.AutomatonQuery;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.DisjunctionMaxQuery;
+import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
@@ -44,11 +46,11 @@ import org.apache.lucene.search.spans.SpanPositionCheckQuery;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.UnicodeUtil;
-import org.apache.lucene.util.automaton.Automaton;
-import org.apache.lucene.util.automaton.BasicAutomata;
-import org.apache.lucene.util.automaton.BasicOperations;
+import org.apache.lucene.util.automaton.Automata;
+import org.apache.lucene.util.automaton.Operations;
 import org.apache.lucene.util.automaton.CharacterRunAutomaton;
 import org.apache.lucene.util.automaton.LevenshteinAutomata;
+import org.apache.lucene.util.automaton.Automaton;
 
 /**
  * Support for highlighting multiterm queries in PostingsHighlighter.
@@ -68,6 +70,10 @@ class MultiTermHighlighting {
           list.addAll(Arrays.asList(extractAutomata(clause.getQuery(), field)));
         }
       }
+    } else if (query instanceof FilteredQuery) {
+      list.addAll(Arrays.asList(extractAutomata(((FilteredQuery) query).getQuery(), field)));
+    } else if (query instanceof ConstantScoreQuery) {
+      list.addAll(Arrays.asList(extractAutomata(((ConstantScoreQuery) query).getQuery(), field)));
     } else if (query instanceof DisjunctionMaxQuery) {
       for (Query sub : ((DisjunctionMaxQuery) query).getDisjuncts()) {
         list.addAll(Arrays.asList(extractAutomata(sub, field)));
@@ -100,8 +106,8 @@ class MultiTermHighlighting {
       final PrefixQuery pq = (PrefixQuery) query;
       Term prefix = pq.getPrefix();
       if (prefix.field().equals(field)) {
-        list.add(new CharacterRunAutomaton(BasicOperations.concatenate(BasicAutomata.makeString(prefix.text()), 
-                                                                       BasicAutomata.makeAnyString())) {
+        list.add(new CharacterRunAutomaton(Operations.concatenate(Automata.makeString(prefix.text()), 
+                                                                       Automata.makeAnyString())) {
           @Override
           public String toString() {
             return pq.toString();
@@ -120,11 +126,8 @@ class MultiTermHighlighting {
         int prefixLength = Math.min(fq.getPrefixLength(), termLength);
         String suffix = UnicodeUtil.newString(termText, prefixLength, termText.length - prefixLength);
         LevenshteinAutomata builder = new LevenshteinAutomata(suffix, fq.getTranspositions());
-        Automaton automaton = builder.toAutomaton(fq.getMaxEdits());
-        if (prefixLength > 0) {
-          Automaton prefix = BasicAutomata.makeString(UnicodeUtil.newString(termText, 0, prefixLength));
-          automaton = BasicOperations.concatenate(prefix, automaton);
-        }
+        String prefix = UnicodeUtil.newString(termText, 0, prefixLength);
+        Automaton automaton = builder.toAutomaton(fq.getMaxEdits(), prefix);
         list.add(new CharacterRunAutomaton(automaton) {
           @Override
           public String toString() {
@@ -155,7 +158,7 @@ class MultiTermHighlighting {
         final Comparator<CharsRef> comparator = CharsRef.getUTF16SortedAsUTF8Comparator();
         
         // this is *not* an automaton, but its very simple
-        list.add(new CharacterRunAutomaton(BasicAutomata.makeEmpty()) {
+        list.add(new CharacterRunAutomaton(Automata.makeEmpty()) {
           @Override
           public boolean run(char[] s, int offset, int length) {
             scratch.chars = s;

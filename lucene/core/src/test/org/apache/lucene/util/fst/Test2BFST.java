@@ -28,7 +28,6 @@ import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TimeUnits;
 import org.apache.lucene.util.packed.PackedInts;
 import org.junit.Ignore;
@@ -56,7 +55,7 @@ public class Test2BFST extends LuceneTestCase {
         Outputs<Object> outputs = NoOutputs.getSingleton();
         Object NO_OUTPUT = outputs.getNoOutput();
         final Builder<Object> b = new Builder<>(FST.INPUT_TYPE.BYTE1, 0, 0, true, true, Integer.MAX_VALUE, outputs,
-                                                      null, doPack, PackedInts.COMPACT, true, 15);
+                                                doPack, PackedInts.COMPACT, true, 15);
 
         int count = 0;
         Random r = new Random(seed);
@@ -70,7 +69,7 @@ public class Test2BFST extends LuceneTestCase {
           b.add(input2, NO_OUTPUT);
           count++;
           if (count % 100000 == 0) {
-            System.out.println(count + ": " + b.fstSizeInBytes() + " bytes; " + b.getTotStateCount() + " nodes");
+            System.out.println(count + ": " + b.fstRamBytesUsed() + " bytes; " + b.getTotStateCount() + " nodes");
           }
           if (b.getTotStateCount() > Integer.MAX_VALUE + 100L * 1024 * 1024) {
             break;
@@ -81,7 +80,7 @@ public class Test2BFST extends LuceneTestCase {
         FST<Object> fst = b.finish();
 
         for(int verify=0;verify<2;verify++) {
-          System.out.println("\nTEST: now verify [fst size=" + fst.sizeInBytes() + "; nodeCount=" + fst.getNodeCount() + "; arcCount=" + fst.getArcCount() + "]");
+          System.out.println("\nTEST: now verify [fst size=" + fst.ramBytesUsed() + "; nodeCount=" + fst.getNodeCount() + "; arcCount=" + fst.getArcCount() + "]");
 
           Arrays.fill(ints2, 0);
           r = new Random(seed);
@@ -138,7 +137,7 @@ public class Test2BFST extends LuceneTestCase {
         System.out.println("\nTEST: 3 GB size; doPack=" + doPack + " outputs=bytes");
         Outputs<BytesRef> outputs = ByteSequenceOutputs.getSingleton();
         final Builder<BytesRef> b = new Builder<>(FST.INPUT_TYPE.BYTE1, 0, 0, true, true, Integer.MAX_VALUE, outputs,
-                                                          null, doPack, PackedInts.COMPACT, true, 15);
+                                                  doPack, PackedInts.COMPACT, true, 15);
 
         byte[] outputBytes = new byte[20];
         BytesRef output = new BytesRef(outputBytes);
@@ -151,9 +150,9 @@ public class Test2BFST extends LuceneTestCase {
           b.add(input, BytesRef.deepCopyOf(output));
           count++;
           if (count % 1000000 == 0) {
-            System.out.println(count + "...: " + b.fstSizeInBytes() + " bytes");
+            System.out.println(count + "...: " + b.fstRamBytesUsed() + " bytes");
           }
-          if (b.fstSizeInBytes() > LIMIT) {
+          if (b.fstRamBytesUsed() > LIMIT) {
             break;
           }
           nextInput(r, ints);
@@ -162,7 +161,7 @@ public class Test2BFST extends LuceneTestCase {
         FST<BytesRef> fst = b.finish();
         for(int verify=0;verify<2;verify++) {
 
-          System.out.println("\nTEST: now verify [fst size=" + fst.sizeInBytes() + "; nodeCount=" + fst.getNodeCount() + "; arcCount=" + fst.getArcCount() + "]");
+          System.out.println("\nTEST: now verify [fst size=" + fst.ramBytesUsed() + "; nodeCount=" + fst.getNodeCount() + "; arcCount=" + fst.getArcCount() + "]");
 
           r = new Random(seed);
           Arrays.fill(ints, 0);
@@ -215,7 +214,7 @@ public class Test2BFST extends LuceneTestCase {
         System.out.println("\nTEST: 3 GB size; doPack=" + doPack + " outputs=long");
         Outputs<Long> outputs = PositiveIntOutputs.getSingleton();
         final Builder<Long> b = new Builder<>(FST.INPUT_TYPE.BYTE1, 0, 0, true, true, Integer.MAX_VALUE, outputs,
-                                                  null, doPack, PackedInts.COMPACT, true, 15);
+                                              doPack, PackedInts.COMPACT, true, 15);
 
         long output = 1;
 
@@ -228,9 +227,9 @@ public class Test2BFST extends LuceneTestCase {
           output += 1+r.nextInt(10);
           count++;
           if (count % 1000000 == 0) {
-            System.out.println(count + "...: " + b.fstSizeInBytes() + " bytes");
+            System.out.println(count + "...: " + b.fstRamBytesUsed() + " bytes");
           }
-          if (b.fstSizeInBytes() > LIMIT) {
+          if (b.fstRamBytesUsed() > LIMIT) {
             break;
           }
           nextInput(r, ints);
@@ -240,7 +239,7 @@ public class Test2BFST extends LuceneTestCase {
 
         for(int verify=0;verify<2;verify++) {
 
-          System.out.println("\nTEST: now verify [fst size=" + fst.sizeInBytes() + "; nodeCount=" + fst.getNodeCount() + "; arcCount=" + fst.getArcCount() + "]");
+          System.out.println("\nTEST: now verify [fst size=" + fst.ramBytesUsed() + "; nodeCount=" + fst.getNodeCount() + "; arcCount=" + fst.getArcCount() + "]");
 
           Arrays.fill(ints, 0);
 

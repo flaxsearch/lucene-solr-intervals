@@ -30,7 +30,6 @@ import org.apache.lucene.analysis.MockPayloadAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.Analyzer.TokenStreamComponents;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
@@ -56,7 +55,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    iwc = newIndexWriterConfig(new MockAnalyzer(random()));
   }
 
   public void testBasic() throws Exception {
@@ -82,7 +81,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
 
     w.addDocument(doc);
     IndexReader r = w.getReader();
-    w.shutdown();
+    w.close();
 
     DocsAndPositionsEnum dp = MultiFields.getTermPositionsEnum(r, null, "content", new BytesRef("a"));
     assertNotNull(dp);
@@ -129,7 +128,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
   public void doTestNumbers(boolean withPayloads) throws Exception {
     Directory dir = newDirectory();
     Analyzer analyzer = withPayloads ? new MockPayloadAnalyzer() : new MockAnalyzer(random());
-    iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy()); // will rely on docids a bit for skipping
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
     
@@ -151,7 +150,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
     }
     
     IndexReader reader = w.getReader();
-    w.shutdown();
+    w.close();
     
     String terms[] = { "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "hundred" };
     
@@ -288,7 +287,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
       w.addDocument(doc);
     }
     final DirectoryReader r = w.getReader();
-    w.shutdown();
+    w.close();
 
     final String[] terms = new String[] {"a", "b", "c", "d"};
     for(AtomicReaderContext ctx : r.leaves()) {
@@ -385,7 +384,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
     assertEquals(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS, fis.fieldInfo("foo").getIndexOptions());
     slow.close();
     ir.close();
-    riw.shutdown();
+    riw.close();
     dir.close();
   }
   
@@ -401,7 +400,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
     doc.add(new Field("content3", "here is more content with aaa aaa aaa", customType3));
     doc.add(new Field("content3", "here is more content with aaa aaa aaa", customType3));
     iw.addDocument(doc);
-    iw.shutdown();
+    iw.close();
     dir.close(); // checkindex
   }
   
@@ -462,7 +461,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
         return -10;
       }
     };
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(analyzer));
     // add good document
     Document doc = new Document();
     iw.addDocument(doc);
@@ -474,7 +473,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
       iw.addDocument(doc);
       fail("didn't get expected exception");
     } catch (IllegalArgumentException expected) {}
-    iw.shutdown();
+    iw.close();
 
     // make sure we see our good doc
     DirectoryReader r = DirectoryReader.open(dir);   
@@ -485,7 +484,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
 
   public void testLegalbutVeryLargeOffsets() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
     Document doc = new Document();
     Token t1 = new Token("foo", 0, Integer.MAX_VALUE-500);
     if (random().nextBoolean()) {
@@ -504,7 +503,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
     Field field = new Field("foo", tokenStream, ft);
     doc.add(field);
     iw.addDocument(doc);
-    iw.shutdown();
+    iw.close();
     dir.close();
   }
   // TODO: more tests with other possibilities
@@ -524,7 +523,7 @@ public class TestPostingsOffsets extends LuceneTestCase {
       Document doc = new Document();
       doc.add(new Field("body", new CannedTokenStream(tokens), ft));
       riw.addDocument(doc);
-      riw.shutdown();
+      riw.close();
       success = true;
     } finally {
       if (success) {

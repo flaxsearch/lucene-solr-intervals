@@ -99,6 +99,24 @@ public interface FacetParams {
    */
   public static final String FACET_MISSING = FACET + ".missing";
 
+  
+  static final String FACET_OVERREQUEST = FACET + ".overrequest";
+  
+  /**
+   * The percentage to over-request by when performing initial distributed requests.
+   * 
+   * default value is 1.5
+   */
+  public static final String FACET_OVERREQUEST_RATIO = FACET_OVERREQUEST + ".ratio";
+
+  /**
+   * An additional amount to over-request by when performing initial distributed requests.  This
+   * value will be added after accounting for the over-request ratio.
+   * 
+   * default value is 10
+   */
+  public static final String FACET_OVERREQUEST_COUNT = FACET_OVERREQUEST + ".count";
+
 
   /**
    * Comma separated list of fields to pivot
@@ -254,6 +272,15 @@ public interface FacetParams {
    */
   public static final String FACET_RANGE_INCLUDE = FACET_RANGE + ".include";
 
+  /**
+   * Any field whose values the user wants to enumerate as explicit intervals of terms.
+   */
+  public static final String FACET_INTERVAL = FACET + ".interval";
+
+  /**
+   * Set of terms for a single interval to facet on.
+   */
+  public static final String FACET_INTERVAL_SET = FACET_INTERVAL + ".set";
 
   /**
    * An enumeration of the legal values for {@link #FACET_RANGE_OTHER} and {@link #FACET_DATE_OTHER} ...

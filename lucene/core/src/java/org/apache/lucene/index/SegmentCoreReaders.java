@@ -17,6 +17,14 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.codecs.FieldsProducer;
@@ -28,21 +36,17 @@ import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.CloseableThreadLocal;
 import org.apache.lucene.util.IOUtils;
-
-import java.io.IOException;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.lucene.util.RamUsageEstimator;
 
 /** Holds core readers that are shared (unchanged) when
  * SegmentReader is cloned or reopened */
-final class SegmentCoreReaders {
-  
+final class SegmentCoreReaders implements Accountable {
+
+  private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(SegmentCoreReaders.class);
+
   // Counts how many other readers share the core objects
   // (freqStream, proxStream, tis, etc.) of this reader;
   // when coreRef drops to 0, these core objects may be
@@ -210,9 +214,10 @@ final class SegmentCoreReaders {
     coreClosedListeners.remove(listener);
   }
 
-  /** Returns approximate RAM bytes used */
+  @Override
   public long ramBytesUsed() {
-    return ((normsProducer!=null) ? normsProducer.ramBytesUsed() : 0) +
+    return BASE_RAM_BYTES_USED +
+        ((normsProducer!=null) ? normsProducer.ramBytesUsed() : 0) +
         ((fields!=null) ? fields.ramBytesUsed() : 0) + 
         ((fieldsReaderOrig!=null)? fieldsReaderOrig.ramBytesUsed() : 0) + 
         ((termVectorsReaderOrig!=null) ? termVectorsReaderOrig.ramBytesUsed() : 0);

@@ -59,8 +59,11 @@ public class QueryWrapperFilter extends Filter {
       public DocIdSetIterator iterator() throws IOException {
         return weight.scorer(privateContext, PostingFeatures.DOCS_AND_FREQS, acceptDocs);
       }
+
       @Override
-      public boolean isCacheable() { return false; }
+      public long ramBytesUsed() {
+        return 0L;
+      }
     };
   }
 

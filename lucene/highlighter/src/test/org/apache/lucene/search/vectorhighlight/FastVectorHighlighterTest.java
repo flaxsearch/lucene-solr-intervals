@@ -22,8 +22,8 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.AnalyzerWrapper;
 import org.apache.lucene.analysis.CannedTokenStream;
+import org.apache.lucene.analysis.DelegatingAnalyzerWrapper;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenFilter;
 import org.apache.lucene.analysis.MockTokenizer;
@@ -59,7 +59,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
   
   public void testSimpleHighlightTest() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
     Document doc = new Document();
     FieldType type = new FieldType(TextField.TYPE_STORED);
     type.setStoreTermVectorOffsets(true);
@@ -83,13 +83,13 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     bestFragments = highlighter.getBestFragments(fieldQuery, reader, docId, "field", 30, 1);
     assertEquals("a test where <b>foo</b> is highlighed", bestFragments[0]);
     reader.close();
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
   
   public void testPhraseHighlightLongTextTest() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
     Document doc = new Document();
     FieldType type = new FieldType(TextField.TYPE_STORED);
     type.setStoreTermVectorOffsets(true);
@@ -128,14 +128,14 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
       assertEquals("first browser war it lost virtually all of its share to <b>Internet Explorer</b> Netscape was discontinued and support for all Netscape browsers", bestFragments[0]);
     }
     reader.close();
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
   
   // see LUCENE-4899
   public void testPhraseHighlightTest() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
     Document doc = new Document();
     FieldType type = new FieldType(TextField.TYPE_STORED);
     type.setStoreTermVectorOffsets(true);
@@ -256,13 +256,13 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
           bestFragments[0]);
     }
     reader.close();
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
 
   public void testBoostedPhraseHighlightTest() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter( dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer( random() ) ) );
+    IndexWriter writer = new IndexWriter( dir, newIndexWriterConfig(new MockAnalyzer( random() ) ) );
     Document doc = new Document();
     FieldType type = new FieldType( TextField.TYPE_STORED  );
     type.setStoreTermVectorOffsets( true );
@@ -301,13 +301,13 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     assertEquals( "junk junk junk junk junk junk junk junk <b>highlight words together</b> junk junk junk junk junk junk junk junk", fragment );
 
     reader.close();
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
 
   public void testCommonTermsQueryHighlight() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT,  new MockAnalyzer(random(), MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET)));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.SIMPLE, true, MockTokenFilter.ENGLISH_STOPSET)));
     FieldType type = new FieldType(TextField.TYPE_STORED);
     type.setStoreTermVectorOffsets(true);
     type.setStoreTermVectorPositions(true);
@@ -344,7 +344,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     assertEquals("Hello this is a piece of <b>text</b> that is <b>very</b> <b>long</b> and contains too much preamble and the meat is really here which says kennedy has been shot", bestFragments[0]);
 
     reader.close();
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
   
@@ -461,7 +461,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
 
   public void testMultiValuedSortByScore() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter( dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer( random() ) ) );
+    IndexWriter writer = new IndexWriter( dir, newIndexWriterConfig(new MockAnalyzer( random() ) ) );
     Document doc = new Document();
     FieldType type = new FieldType( TextField.TYPE_STORED );
     type.setStoreTermVectorOffsets( true );
@@ -503,13 +503,13 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     }
 
     reader.close();
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
   
   public void testBooleanPhraseWithSynonym() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
     Document doc = new Document();
     FieldType type = new FieldType(TextField.TYPE_NOT_STORED);
     type.setStoreTermVectorOffsets(true);
@@ -566,7 +566,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     assertEquals("<b>Test: http://www.facebook.com</b>", bestFragments[0]);
     
     reader.close();
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
 
@@ -606,14 +606,14 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     fieldAnalyzers.put( "field_tripples", new MockAnalyzer( random(), new CharacterRunAutomaton( new RegExp("...").toAutomaton() ), true ) );
     fieldAnalyzers.put( "field_sliced", fieldAnalyzers.get( "field" ) );
     fieldAnalyzers.put( "field_der_red", fieldAnalyzers.get( "field" ) );  // This is required even though we provide a token stream
-    Analyzer analyzer = new AnalyzerWrapper() {
+    Analyzer analyzer = new DelegatingAnalyzerWrapper(Analyzer.PER_FIELD_REUSE_STRATEGY) {
       public Analyzer getWrappedAnalyzer(String fieldName) {
         return fieldAnalyzers.get( fieldName );
       }
     };
 
     Directory dir = newDirectory();
-    IndexWriter writer = new IndexWriter( dir, newIndexWriterConfig( TEST_VERSION_CURRENT, analyzer ) );
+    IndexWriter writer = new IndexWriter( dir, newIndexWriterConfig(analyzer));
     writer.addDocument( doc );
 
     FastVectorHighlighter highlighter = new FastVectorHighlighter();
@@ -648,7 +648,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     assertEquals( expected, bestFragments[ 0 ] );
 
     reader.close();
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
 

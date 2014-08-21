@@ -18,7 +18,6 @@ package org.apache.lucene.queryparser.flexible.standard;
  */
 
 import java.io.IOException;
-import java.io.Reader;
 import java.text.DateFormat;
 import java.util.Calendar;
 import java.util.Date;
@@ -67,7 +66,7 @@ import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.automaton.BasicAutomata;
+import org.apache.lucene.util.automaton.Automata;
 import org.apache.lucene.util.automaton.CharacterRunAutomaton;
 import org.apache.lucene.util.automaton.RegExp;
 import org.junit.AfterClass;
@@ -957,7 +956,7 @@ public class TestQPHelper extends LuceneTestCase {
   }
 
   public void testBoost() throws Exception {
-    CharacterRunAutomaton stopSet = new CharacterRunAutomaton(BasicAutomata.makeString("on"));
+    CharacterRunAutomaton stopSet = new CharacterRunAutomaton(Automata.makeString("on"));
     Analyzer oneStopAnalyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true, stopSet);
     StandardQueryParser qp = new StandardQueryParser();
     qp.setAnalyzer(oneStopAnalyzer);
@@ -1310,7 +1309,7 @@ public class TestQPHelper extends LuceneTestCase {
 
   public void testMultiPhraseQuery() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new CannedAnalyzer()));
+    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(new CannedAnalyzer()));
     Document doc = new Document();
     doc.add(newTextField("field", "", Field.Store.NO));
     w.addDocument(doc);
@@ -1321,7 +1320,7 @@ public class TestQPHelper extends LuceneTestCase {
     assertTrue(q instanceof MultiPhraseQuery);
     assertEquals(1, s.search(q, 10).totalHits);
     r.close();
-    w.shutdown();
+    w.close();
     dir.close();
   }
 

@@ -42,7 +42,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
   public static final String INDEX_PATH = "test.snapshots";
   
   protected IndexWriterConfig getConfig(Random random, IndexDeletionPolicy dp) {
-    IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
+    IndexWriterConfig conf = newIndexWriterConfig(new MockAnalyzer(random));
     if (dp != null) {
       conf.setIndexDeletionPolicy(dp);
     }
@@ -105,8 +105,8 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
     final long stopTime = System.currentTimeMillis() + 1000;
 
     SnapshotDeletionPolicy dp = getDeletionPolicy();
-    final IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random)).setIndexDeletionPolicy(dp)
+    final IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random))
+        .setIndexDeletionPolicy(dp)
         .setMaxBufferedDocs(2));
 
     // Verify we catch misuse:
@@ -177,7 +177,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
 
     // Make sure we don't have any leftover files in the
     // directory:
-    writer.shutdown();
+    writer.close();
     TestIndexWriter.assertNoUnreferencedFiles(dir, "some files were not deleted but should have been");
   }
 
@@ -254,7 +254,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
     IndexWriter writer = new IndexWriter(dir, getConfig(random(), getDeletionPolicy()));
     SnapshotDeletionPolicy sdp = (SnapshotDeletionPolicy) writer.getConfig().getIndexDeletionPolicy();
     prepareIndexAndSnapshots(sdp, writer, numSnapshots);
-    writer.shutdown();
+    writer.close();
     
     assertEquals(numSnapshots, sdp.getSnapshots().size());
     assertEquals(numSnapshots, sdp.getSnapshotCount());
@@ -267,7 +267,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
     sdp = getDeletionPolicy();
     writer = new IndexWriter(dir, getConfig(random(), sdp));
     writer.deleteUnusedFiles();
-    writer.shutdown();
+    writer.close();
     assertEquals("no snapshots should exist", 1, DirectoryReader.listCommits(dir).size());
     dir.close();
   }
@@ -314,7 +314,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
       writer.deleteUnusedFiles();
     }
     assertEquals(1, DirectoryReader.listCommits(dir).size());
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
 
@@ -326,7 +326,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
     SnapshotDeletionPolicy sdp = getDeletionPolicy();
     IndexWriter writer = new IndexWriter(dir, getConfig(random(), sdp));
     prepareIndexAndSnapshots(sdp, writer, numSnapshots);
-    writer.shutdown();
+    writer.close();
 
     // now open the writer on "snapshot0" - make sure it succeeds
     writer = new IndexWriter(dir, getConfig(random(), sdp).setIndexCommit(snapshots.get(0)));
@@ -334,7 +334,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
     writer.commit();
     writer.deleteUnusedFiles();
     assertSnapshotExists(dir, sdp, numSnapshots - 1, false);
-    writer.shutdown();
+    writer.close();
 
     // but 'snapshot1' files will still exist (need to release snapshot before they can be deleted).
     String segFileName = snapshots.get(1).getSegmentsFileName();
@@ -359,7 +359,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
     String segFileName = snapshots.get(0).getSegmentsFileName();
     sdp.release(snapshots.get(0));
     writer.deleteUnusedFiles();
-    writer.shutdown();
+    writer.close();
     assertFalse("segments file should not be found in dirctory: " + segFileName, slowFileExists(dir, segFileName));
     dir.close();
   }
@@ -386,7 +386,7 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
     writer.deleteUnusedFiles();
     checkSnapshotExists(dir, s2);
     
-    writer.shutdown();
+    writer.close();
     dir.close();
   }
   
@@ -403,11 +403,11 @@ public class TestSnapshotDeletionPolicy extends LuceneTestCase {
 
     // create another commit, not snapshotted.
     writer.addDocument(new Document());
-    writer.shutdown();
+    writer.close();
 
     // open a new writer w/ KeepOnlyLastCommit policy, so it will delete "s1"
     // commit.
-    new IndexWriter(dir, getConfig(random(), null)).shutdown();
+    new IndexWriter(dir, getConfig(random(), null)).close();
     
     assertFalse("snapshotted commit should not exist", slowFileExists(dir, s1.getSegmentsFileName()));
     dir.close();

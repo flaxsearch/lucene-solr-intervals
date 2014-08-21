@@ -62,7 +62,7 @@ public class SnapShooter {
     solrCore = core;
     if (location == null) snapDir = core.getDataDir();
     else  {
-      File base = new File(core.getCoreDescriptor().getRawInstanceDir());
+      File base = new File(core.getCoreDescriptor().getInstanceDir());
       snapDir = org.apache.solr.util.FileUtils.resolvePath(base, location).getAbsolutePath();
       File dir = new File(snapDir);
       if (!dir.exists())  dir.mkdirs();
@@ -118,13 +118,12 @@ public class SnapShooter {
   }
 
   void validateCreateSnapshot() throws IOException {
-
     Lock lock = lockFactory.makeLock(directoryName + ".lock");
+    snapShotDir = new File(snapDir, directoryName);
     if (lock.isLocked()) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
           "Unable to acquire lock for snapshot directory: " + snapShotDir.getAbsolutePath());
     }
-    snapShotDir = new File(snapDir, directoryName);
     if (snapShotDir.exists()) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
           "Snapshot directory already exists: " + snapShotDir.getAbsolutePath());
@@ -155,6 +154,8 @@ public class SnapShooter {
       details.add("fileCount", files.size());
       details.add("status", "success");
       details.add("snapshotCompletedAt", new Date().toString());
+      details.add("snapshotName", snapshotName);
+      LOG.info("Done creating backup snapshot: " + (snapshotName == null ? "<not named>" : snapshotName));
     } catch (Exception e) {
       SnapPuller.delTree(snapShotDir);
       LOG.error("Exception while creating snapshot", e);
@@ -198,12 +199,13 @@ public class SnapShooter {
     LOG.info("Deleting snapshot: " + snapshotName);
 
     NamedList<Object> details = new NamedList<>();
-    boolean isSuccess = false;
+    boolean isSuccess;
     File f = new File(snapDir, "snapshot." + snapshotName);
     isSuccess = SnapPuller.delTree(f);
 
     if(isSuccess) {
       details.add("status", "success");
+      details.add("snapshotDeletedAt", new Date().toString());
     } else {
       details.add("status", "Unable to delete snapshot: " + snapshotName);
       LOG.warn("Unable to delete snapshot: " + snapshotName);
@@ -236,7 +238,6 @@ public class SnapShooter {
     }
   }
 
-  public static final String SNAP_DIR = "snapDir";
   public static final String DATE_FMT = "yyyyMMddHHmmssSSS";
   
 
@@ -271,6 +272,4 @@ public class SnapShooter {
       sourceDir.copy(destDir, indexFile, indexFile, DirectoryFactory.IOCONTEXT_NO_CACHE);
     }
   }
-  
-
 }

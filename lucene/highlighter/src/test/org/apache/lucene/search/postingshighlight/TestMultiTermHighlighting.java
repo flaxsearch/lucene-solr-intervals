@@ -29,9 +29,12 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.queries.TermFilter;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.DisjunctionMaxQuery;
+import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
@@ -62,7 +65,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -78,7 +81,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -114,7 +117,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -130,7 +133,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -166,7 +169,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -182,7 +185,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -218,7 +221,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -234,7 +237,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -279,7 +282,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -295,7 +298,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -389,7 +392,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -405,7 +408,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -437,12 +440,96 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     ir.close();
     dir.close();
   }
+
+  public void testWildcardInFiltered() throws Exception {
+    Directory dir = newDirectory();
+    // use simpleanalyzer for more natural tokenization (else "test." is a token)
+    final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
+    iwc.setMergePolicy(newLogMergePolicy());
+    RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
+
+    FieldType offsetsType = new FieldType(TextField.TYPE_STORED);
+    offsetsType.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
+    Field body = new Field("body", "", offsetsType);
+    Document doc = new Document();
+    doc.add(body);
+
+    body.setStringValue("This is a test.");
+    iw.addDocument(doc);
+    body.setStringValue("Test a one sentence document.");
+    iw.addDocument(doc);
+
+    IndexReader ir = iw.getReader();
+    iw.close();
+
+    IndexSearcher searcher = newSearcher(ir);
+    PostingsHighlighter highlighter = new PostingsHighlighter() {
+      @Override
+      protected Analyzer getIndexAnalyzer(String field) {
+        return analyzer;
+      }
+    };
+    FilteredQuery query = new FilteredQuery(
+        new WildcardQuery(new Term("body", "te*")),
+        new TermFilter(new Term("body", "test")));
+    TopDocs topDocs = searcher.search(query, null, 10, Sort.INDEXORDER);
+    assertEquals(2, topDocs.totalHits);
+    String snippets[] = highlighter.highlight("body", query, searcher, topDocs);
+    assertEquals(2, snippets.length);
+    assertEquals("This is a <b>test</b>.", snippets[0]);
+    assertEquals("<b>Test</b> a one sentence document.", snippets[1]);
+
+    ir.close();
+    dir.close();
+  }
+
+  public void testWildcardInConstantScore() throws Exception {
+    Directory dir = newDirectory();
+    // use simpleanalyzer for more natural tokenization (else "test." is a token)
+    final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
+    iwc.setMergePolicy(newLogMergePolicy());
+    RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
+
+    FieldType offsetsType = new FieldType(TextField.TYPE_STORED);
+    offsetsType.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
+    Field body = new Field("body", "", offsetsType);
+    Document doc = new Document();
+    doc.add(body);
+
+    body.setStringValue("This is a test.");
+    iw.addDocument(doc);
+    body.setStringValue("Test a one sentence document.");
+    iw.addDocument(doc);
+
+    IndexReader ir = iw.getReader();
+    iw.close();
+
+    IndexSearcher searcher = newSearcher(ir);
+    PostingsHighlighter highlighter = new PostingsHighlighter() {
+      @Override
+      protected Analyzer getIndexAnalyzer(String field) {
+        return analyzer;
+      }
+    };
+    ConstantScoreQuery query = new ConstantScoreQuery(new WildcardQuery(new Term("body", "te*")));
+    TopDocs topDocs = searcher.search(query, null, 10, Sort.INDEXORDER);
+    assertEquals(2, topDocs.totalHits);
+    String snippets[] = highlighter.highlight("body", query, searcher, topDocs);
+    assertEquals(2, snippets.length);
+    assertEquals("This is a <b>test</b>.", snippets[0]);
+    assertEquals("<b>Test</b> a one sentence document.", snippets[1]);
+
+    ir.close();
+    dir.close();
+  }
   
   public void testWildcardInDisjunctionMax() throws Exception {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -458,7 +545,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -484,7 +571,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -500,7 +587,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -525,7 +612,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -541,7 +628,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -567,7 +654,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -583,7 +670,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -609,7 +696,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -625,7 +712,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -652,7 +739,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -668,7 +755,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {
@@ -696,7 +783,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     Directory dir = newDirectory();
     // use simpleanalyzer for more natural tokenization (else "test." is a token)
     final Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig iwc = newIndexWriterConfig(analyzer);
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -710,7 +797,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter() {

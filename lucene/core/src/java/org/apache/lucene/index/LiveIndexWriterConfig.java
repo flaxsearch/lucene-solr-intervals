@@ -25,7 +25,6 @@ import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.InfoStream;
-import org.apache.lucene.util.Version;
 
 /**
  * Holds all the configuration used by {@link IndexWriter} with few setters for
@@ -92,19 +91,18 @@ public class LiveIndexWriterConfig {
    *  segment, after which the segment is forced to flush. */
   protected volatile int perThreadHardLimitMB;
 
-  /** {@link Version} that {@link IndexWriter} should emulate. */
-  protected final Version matchVersion;
-
   /** True if segment flushes should use compound file format */
   protected volatile boolean useCompoundFile = IndexWriterConfig.DEFAULT_USE_COMPOUND_FILE_SYSTEM;
   
   /** True if merging should check integrity of segments before merge */
   protected volatile boolean checkIntegrityAtMerge = IndexWriterConfig.DEFAULT_CHECK_INTEGRITY_AT_MERGE;
 
+  /** True if calls to {@link IndexWriter#close()} should first do a commit. */
+  protected boolean commitOnClose = IndexWriterConfig.DEFAULT_COMMIT_ON_CLOSE;
+
   // used by IndexWriterConfig
-  LiveIndexWriterConfig(Analyzer analyzer, Version matchVersion) {
+  LiveIndexWriterConfig(Analyzer analyzer) {
     this.analyzer = analyzer;
-    this.matchVersion = matchVersion;
     ramBufferSizeMB = IndexWriterConfig.DEFAULT_RAM_BUFFER_SIZE_MB;
     maxBufferedDocs = IndexWriterConfig.DEFAULT_MAX_BUFFERED_DOCS;
     maxBufferedDeleteTerms = IndexWriterConfig.DEFAULT_MAX_BUFFERED_DELETE_TERMS;
@@ -129,35 +127,6 @@ public class LiveIndexWriterConfig {
     perThreadHardLimitMB = IndexWriterConfig.DEFAULT_RAM_PER_THREAD_HARD_LIMIT_MB;
   }
   
-  /**
-   * Creates a new config that that handles the live {@link IndexWriter}
-   * settings.
-   */
-  LiveIndexWriterConfig(IndexWriterConfig config) {
-    maxBufferedDeleteTerms = config.getMaxBufferedDeleteTerms();
-    maxBufferedDocs = config.getMaxBufferedDocs();
-    mergedSegmentWarmer = config.getMergedSegmentWarmer();
-    ramBufferSizeMB = config.getRAMBufferSizeMB();
-    matchVersion = config.matchVersion;
-    analyzer = config.getAnalyzer();
-    delPolicy = config.getIndexDeletionPolicy();
-    commit = config.getIndexCommit();
-    openMode = config.getOpenMode();
-    similarity = config.getSimilarity();
-    mergeScheduler = config.getMergeScheduler();
-    writeLockTimeout = config.getWriteLockTimeout();
-    indexingChain = config.getIndexingChain();
-    codec = config.getCodec();
-    infoStream = config.getInfoStream();
-    mergePolicy = config.getMergePolicy();
-    indexerThreadPool = config.getIndexerThreadPool();
-    readerPooling = config.getReaderPooling();
-    flushPolicy = config.getFlushPolicy();
-    perThreadHardLimitMB = config.getRAMPerThreadHardLimitMB();
-    useCompoundFile = config.getUseCompoundFile();
-    checkIntegrityAtMerge = config.getCheckIntegrityAtMerge();
-  }
-
   /** Returns the default analyzer to use for indexing documents. */
   public Analyzer getAnalyzer() {
     return analyzer;
@@ -309,6 +278,25 @@ public class LiveIndexWriterConfig {
    */
   public int getMaxBufferedDocs() {
     return maxBufferedDocs;
+  }
+
+  /**
+   * Expert: {@link MergePolicy} is invoked whenever there are changes to the
+   * segments in the index. Its role is to select which merges to do, if any,
+   * and return a {@link MergePolicy.MergeSpecification} describing the merges.
+   * It also selects merges to do for forceMerge.
+   * 
+   * <p>
+   * Takes effect on subsequent merge selections. Any merges in flight or any
+   * merges already registered by the previous {@link MergePolicy} are not
+   * affected.
+   */
+  public LiveIndexWriterConfig setMergePolicy(MergePolicy mergePolicy) {
+    if (mergePolicy == null) {
+      throw new IllegalArgumentException("mergePolicy must not be null");
+    }
+    this.mergePolicy = mergePolicy;
+    return this;
   }
 
   /**
@@ -494,11 +482,17 @@ public class LiveIndexWriterConfig {
   public boolean getCheckIntegrityAtMerge() {
     return checkIntegrityAtMerge;
   }
-  
+
+  /**
+   * Returns <code>true</code> if {@link IndexWriter#close()} should first commit before closing.
+   */
+  public boolean getCommitOnClose() {
+    return commitOnClose;
+  }
+
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("matchVersion=").append(matchVersion).append("\n");
     sb.append("analyzer=").append(analyzer == null ? "null" : analyzer.getClass().getName()).append("\n");
     sb.append("ramBufferSizeMB=").append(getRAMBufferSizeMB()).append("\n");
     sb.append("maxBufferedDocs=").append(getMaxBufferedDocs()).append("\n");
@@ -520,12 +514,7 @@ public class LiveIndexWriterConfig {
     sb.append("perThreadHardLimitMB=").append(getRAMPerThreadHardLimitMB()).append("\n");
     sb.append("useCompoundFile=").append(getUseCompoundFile()).append("\n");
     sb.append("checkIntegrityAtMerge=").append(getCheckIntegrityAtMerge()).append("\n");
+    sb.append("commitOnClose=").append(getCommitOnClose()).append("\n");
     return sb.toString();
-  }
-
-  /** Returns the {@code matchVersion} that was provided to
-   *  the constructor. */
-  public Version getMatchVersion() {
-    return matchVersion;
   }
 }

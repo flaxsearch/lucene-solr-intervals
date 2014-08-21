@@ -26,8 +26,8 @@ import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.DataInput;
-import org.apache.lucene.util.packed.MonotonicAppendingLongBuffer;
 import org.apache.lucene.util.packed.PackedInts;
+import org.apache.lucene.util.packed.PackedLongValues;
 
 /**
  * {@link DocIdSet} implementation based on word-aligned hybrid encoding on
@@ -74,7 +74,9 @@ import org.apache.lucene.util.packed.PackedInts;
  * the next doc ID by reading at most 2 dirty words.</p>
  * @lucene.experimental
  */
-public final class WAH8DocIdSet extends DocIdSet {
+public final class WAH8DocIdSet extends DocIdSet implements Accountable {
+
+  private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(WAH8DocIdSet.class);
 
   // Minimum index interval, intervals below this value can't guarantee anymore
   // that this set implementation won't be significantly larger than a FixedBitSet
@@ -86,13 +88,8 @@ public final class WAH8DocIdSet extends DocIdSet {
   /** Default index interval. */
   public static final int DEFAULT_INDEX_INTERVAL = 24;
 
-  private static final MonotonicAppendingLongBuffer SINGLE_ZERO_BUFFER = new MonotonicAppendingLongBuffer(1, 64, PackedInts.COMPACT);
-  private static WAH8DocIdSet EMPTY = new WAH8DocIdSet(new byte[0], 0, 1, SINGLE_ZERO_BUFFER, SINGLE_ZERO_BUFFER);
-
-  static {
-    SINGLE_ZERO_BUFFER.add(0L);
-    SINGLE_ZERO_BUFFER.freeze();
-  }
+  private static final PackedLongValues SINGLE_ZERO = PackedLongValues.packedBuilder(PackedInts.COMPACT).add(0L).build();
+  private static WAH8DocIdSet EMPTY = new WAH8DocIdSet(new byte[0], 0, 1, SINGLE_ZERO, SINGLE_ZERO);
 
   private static final Comparator<Iterator> SERIALIZED_LENGTH_COMPARATOR = new Comparator<Iterator>() {
     @Override
@@ -375,18 +372,17 @@ public final class WAH8DocIdSet extends DocIdSet {
 
       // Now build the index
       final int valueCount = (numSequences - 1) / indexInterval + 1;
-      final MonotonicAppendingLongBuffer indexPositions, indexWordNums;
+      final PackedLongValues indexPositions, indexWordNums;
       if (valueCount <= 1) {
-        indexPositions = indexWordNums = SINGLE_ZERO_BUFFER;
+        indexPositions = indexWordNums = SINGLE_ZERO;
       } else {
         final int pageSize = 128;
-        final int initialPageCount = (valueCount + pageSize - 1) / pageSize;
-        final MonotonicAppendingLongBuffer positions = new MonotonicAppendingLongBuffer(initialPageCount, pageSize, PackedInts.COMPACT);
-        final MonotonicAppendingLongBuffer wordNums = new MonotonicAppendingLongBuffer(initialPageCount, pageSize, PackedInts.COMPACT);
+        final PackedLongValues.Builder positions = PackedLongValues.monotonicBuilder(pageSize, PackedInts.COMPACT);
+        final PackedLongValues.Builder wordNums = PackedLongValues.monotonicBuilder(pageSize, PackedInts.COMPACT);
 
         positions.add(0L);
         wordNums.add(0L);
-        final Iterator it = new Iterator(data, cardinality, Integer.MAX_VALUE, SINGLE_ZERO_BUFFER, SINGLE_ZERO_BUFFER);
+        final Iterator it = new Iterator(data, cardinality, Integer.MAX_VALUE, SINGLE_ZERO, SINGLE_ZERO);
         assert it.in.getPosition() == 0;
         assert it.wordNum == -1;
         for (int i = 1; i < valueCount; ++i) {
@@ -401,10 +397,8 @@ public final class WAH8DocIdSet extends DocIdSet {
           positions.add(position);
           wordNums.add(wordNum + 1);
         }
-        positions.freeze();
-        wordNums.freeze();
-        indexPositions = positions;
-        indexWordNums = wordNums;
+        indexPositions = positions.build();
+        indexWordNums = wordNums.build();
       }
 
       return new WAH8DocIdSet(data, cardinality, indexInterval, indexPositions, indexWordNums);
@@ -474,9 +468,9 @@ public final class WAH8DocIdSet extends DocIdSet {
   private final int cardinality;
   private final int indexInterval;
   // index for advance(int)
-  private final MonotonicAppendingLongBuffer positions, wordNums; // wordNums[i] starts at the sequence at positions[i]
+  private final PackedLongValues positions, wordNums; // wordNums[i] starts at the sequence at positions[i]
 
-  WAH8DocIdSet(byte[] data, int cardinality, int indexInterval, MonotonicAppendingLongBuffer positions, MonotonicAppendingLongBuffer wordNums) {
+  WAH8DocIdSet(byte[] data, int cardinality, int indexInterval, PackedLongValues positions, PackedLongValues wordNums) {
     this.data = data;
     this.cardinality = cardinality;
     this.indexInterval = indexInterval;
@@ -528,7 +522,7 @@ public final class WAH8DocIdSet extends DocIdSet {
     final ByteArrayDataInput in;
     final int cardinality;
     final int indexInterval;
-    final MonotonicAppendingLongBuffer positions, wordNums;
+    final PackedLongValues positions, wordNums;
     final int indexThreshold;
     int allOnesLength;
     int dirtyLength;
@@ -540,7 +534,7 @@ public final class WAH8DocIdSet extends DocIdSet {
 
     int docID;
 
-    Iterator(byte[] data, int cardinality, int indexInterval, MonotonicAppendingLongBuffer positions, MonotonicAppendingLongBuffer wordNums) {
+    Iterator(byte[] data, int cardinality, int indexInterval, PackedLongValues positions, PackedLongValues wordNums) {
       this.in = new ByteArrayDataInput(data);
       this.cardinality = cardinality;
       this.indexInterval = indexInterval;
@@ -736,12 +730,19 @@ public final class WAH8DocIdSet extends DocIdSet {
     return cardinality;
   }
 
-  /** Return the memory usage of this class in bytes. */
+  @Override
   public long ramBytesUsed() {
-    return RamUsageEstimator.alignObjectSize(3 * RamUsageEstimator.NUM_BYTES_OBJECT_REF + 2 * RamUsageEstimator.NUM_BYTES_INT)
-        + RamUsageEstimator.sizeOf(data)
-        + positions.ramBytesUsed()
-        + wordNums.ramBytesUsed();
+    if (this == EMPTY) {
+      return 0L;
+    }
+    long ramBytesUsed = BASE_RAM_BYTES_USED + RamUsageEstimator.sizeOf(data);
+    if (positions != SINGLE_ZERO) {
+      ramBytesUsed += positions.ramBytesUsed();
+    }
+    if (wordNums != SINGLE_ZERO) {
+      ramBytesUsed += wordNums.ramBytesUsed();
+    }
+    return ramBytesUsed;
   }
 
 }

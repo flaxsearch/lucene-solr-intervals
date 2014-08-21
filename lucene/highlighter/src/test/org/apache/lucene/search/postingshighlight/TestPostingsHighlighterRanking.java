@@ -87,7 +87,7 @@ public class TestPostingsHighlighterRanking extends LuceneTestCase {
     for (int i = 0; i < numDocs; i++) {
       checkDocument(searcher, i, maxTopN);
     }
-    iw.shutdown();
+    iw.close();
     ir.close();
     dir.close();
   }
@@ -247,7 +247,7 @@ public class TestPostingsHighlighterRanking extends LuceneTestCase {
   /** sets b=0 to disable passage length normalization */
   public void testCustomB() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.SIMPLE, true));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.SIMPLE, true));
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -262,7 +262,7 @@ public class TestPostingsHighlighterRanking extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter(10000) {
@@ -285,7 +285,7 @@ public class TestPostingsHighlighterRanking extends LuceneTestCase {
   /** sets k1=0 for simple coordinate-level match (# of query terms present) */
   public void testCustomK1() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.SIMPLE, true));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.SIMPLE, true));
     iwc.setMergePolicy(newLogMergePolicy());
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
     
@@ -301,7 +301,7 @@ public class TestPostingsHighlighterRanking extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.shutdown();
+    iw.close();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter(10000) {

@@ -50,7 +50,7 @@ public class LocalReplicatorTest extends ReplicatorTestCase {
   public void setUp() throws Exception {
     super.setUp();
     sourceDir = newDirectory();
-    IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, null);
+    IndexWriterConfig conf = newIndexWriterConfig(null);
     conf.setIndexDeletionPolicy(new SnapshotDeletionPolicy(conf.getIndexDeletionPolicy()));
     sourceWriter = new IndexWriter(sourceDir, conf);
     replicator = new LocalReplicator();
@@ -59,7 +59,7 @@ public class LocalReplicatorTest extends ReplicatorTestCase {
   @After
   @Override
   public void tearDown() throws Exception {
-    sourceWriter.shutdown();
+    sourceWriter.close();
     IOUtils.close(replicator, sourceDir);
     super.tearDown();
   }

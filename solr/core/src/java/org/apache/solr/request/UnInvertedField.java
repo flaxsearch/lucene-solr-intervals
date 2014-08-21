@@ -30,7 +30,9 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.uninverting.DocTermOrds;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.common.SolrException;
@@ -104,13 +106,11 @@ public class UnInvertedField extends DocTermOrds {
 
   private SolrIndexSearcher.DocsEnumState deState;
   private final SolrIndexSearcher searcher;
-  private final boolean isPlaceholder;
 
   private static UnInvertedField uifPlaceholder = new UnInvertedField();
 
   private UnInvertedField() { // Dummy for synchronization.
     super("fake", 0, 0); // cheapest initialization I can find.
-    isPlaceholder = true;
     searcher = null;
    }
 
@@ -156,7 +156,7 @@ public class UnInvertedField extends DocTermOrds {
   public long memSize() {
     // can cache the mem size since it shouldn't change
     if (memsz!=0) return memsz;
-    long sz = super.ramUsedInBytes();
+    long sz = super.ramBytesUsed();
     sz += 8*8 + 32; // local fields
     sz += bigTerms.size() * 64;
     for (TopTerm tt : bigTerms.values()) {
@@ -183,7 +183,6 @@ public class UnInvertedField extends DocTermOrds {
           DEFAULT_INDEX_INTERVAL_BITS);
     //System.out.println("maxTermDocFreq=" + maxTermDocFreq + " maxDoc=" + searcher.maxDoc());
 
-    isPlaceholder = false;
     final String prefix = TrieField.getMainValuePrefix(searcher.getSchema().getFieldType(field));
     this.searcher = searcher;
     try {
@@ -242,14 +241,15 @@ public class UnInvertedField extends DocTermOrds {
 
       TermsEnum te = getOrdTermsEnum(searcher.getAtomicReader());
       if (te != null && prefix != null && prefix.length() > 0) {
-        final BytesRef prefixBr = new BytesRef(prefix);
-        if (te.seekCeil(prefixBr) == TermsEnum.SeekStatus.END) {
+        final BytesRefBuilder prefixBr = new BytesRefBuilder();
+        prefixBr.copyChars(prefix);
+        if (te.seekCeil(prefixBr.get()) == TermsEnum.SeekStatus.END) {
           startTerm = numTermsInField;
         } else {
           startTerm = (int) te.ord();
         }
         prefixBr.append(UnicodeUtil.BIG_TERM);
-        if (te.seekCeil(prefixBr) == TermsEnum.SeekStatus.END) {
+        if (te.seekCeil(prefixBr.get()) == TermsEnum.SeekStatus.END) {
           endTerm = numTermsInField;
         } else {
           endTerm = (int) te.ord();
@@ -346,7 +346,7 @@ public class UnInvertedField extends DocTermOrds {
           }
         }
       }
-      final CharsRef charsRef = new CharsRef();
+      final CharsRefBuilder charsRef = new CharsRefBuilder();
 
       int off=offset;
       int lim=limit>=0 ? limit : Integer.MAX_VALUE;
@@ -626,7 +626,7 @@ public class UnInvertedField extends DocTermOrds {
 
   }
 
-  String getReadableValue(BytesRef termval, FieldType ft, CharsRef charsRef) {
+  String getReadableValue(BytesRef termval, FieldType ft, CharsRefBuilder charsRef) {
     return ft.indexedToReadable(termval, charsRef).toString();
   }
 
@@ -674,9 +674,14 @@ public class UnInvertedField extends DocTermOrds {
     synchronized (cache) {
       uif = cache.get(field);
       if (uif == null) {
-        cache.put(field, uifPlaceholder); // This thread will load this field, don't let other threads try.
+        /**
+         * We use this place holder object to pull the UninvertedField construction out of the sync
+         * so that if many fields are accessed in a short time, the UninvertedField can be
+         * built for these fields in parallel rather than sequentially.
+         */
+        cache.put(field, uifPlaceholder);
       } else {
-        if (uif.isPlaceholder == false) {
+        if (uif != uifPlaceholder) {
           return uif;
         }
         doWait = true; // Someone else has put the place holder in, wait for that to complete.
@@ -686,7 +691,7 @@ public class UnInvertedField extends DocTermOrds {
       try {
         synchronized (cache) {
           uif = cache.get(field); // Should at least return the placeholder, NPE if not is OK.
-          if (uif.isPlaceholder == false) { // OK, another thread put this in the cache we should be good.
+          if (uif != uifPlaceholder) { // OK, another thread put this in the cache we should be good.
             return uif;
           }
           cache.wait();
