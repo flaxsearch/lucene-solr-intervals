@@ -1,9 +1,5 @@
 package org.apache.solr.cloud;
 
-import java.net.ConnectException;
-import java.net.SocketException;
-import java.util.List;
-
 import org.apache.http.NoHttpResponseException;
 import org.apache.http.conn.ConnectTimeoutException;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
@@ -17,6 +13,10 @@ import org.apache.solr.common.params.CoreAdminParams.CoreAdminAction;
 import org.apache.solr.core.CoreContainer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.net.ConnectException;
+import java.net.SocketException;
+import java.util.List;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -103,7 +103,7 @@ public class LeaderInitiatedRecoveryThread extends Thread {
     recoverRequestCmd.setAction(CoreAdminAction.REQUESTRECOVERY);
     recoverRequestCmd.setCoreName(coreNeedingRecovery);
     
-    while (continueTrying && ++tries < maxTries) {
+    while (continueTrying && ++tries <= maxTries) {
       if (tries > 1) {
         log.warn("Asking core={} coreNodeName={} on " + recoveryUrl +
             " to recover; unsuccessful after "+tries+" of "+maxTries+" attempts so far ...", coreNeedingRecovery, replicaCoreNodeName);
