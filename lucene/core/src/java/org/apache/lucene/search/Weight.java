@@ -21,6 +21,7 @@ import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.TermsEnum; // javadocs
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Bits;
 
@@ -36,7 +37,7 @@ import java.io.IOException;
  * {@link org.apache.lucene.index.LeafReader} dependent state should reside in the {@link Scorer}.
  * <p>
  * Since {@link Weight} creates {@link Scorer} instances for a given
- * {@link org.apache.lucene.index.LeafReaderContext} ({@link #scorer(org.apache.lucene.index.LeafReaderContext, Bits)})
+ * {@link org.apache.lucene.index.LeafReaderContext} ({@link #scorer(org.apache.lucene.index.LeafReaderContext, org.apache.lucene.search.Weight.PostingFeatures, Bits)})
  * callers must maintain the relationship between the searcher's top-level
  * {@link IndexReaderContext} and the context used to create a {@link Scorer}. 
  * <p>
@@ -51,7 +52,7 @@ import java.io.IOException;
  * <li>The query normalization factor is passed to {@link #normalize(float, float)}. At
  * this point the weighting is complete.
  * <li>A <code>Scorer</code> is constructed by
- * {@link #scorer(org.apache.lucene.index.LeafReaderContext, Bits)}.
+ * {@link #scorer(org.apache.lucene.index.LeafReaderContext, org.apache.lucene.search.Weight.PostingFeatures, Bits)}.
  * </ol>
  * 
  * @since 2.9
