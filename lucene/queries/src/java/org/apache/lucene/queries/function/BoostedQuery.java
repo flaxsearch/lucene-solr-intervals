@@ -17,18 +17,24 @@ package org.apache.lucene.queries.function;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.search.*;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.ComplexExplanation;
+import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.Weight;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Set;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Query that is boosted by a ValueSource
@@ -97,8 +103,8 @@ public class BoostedQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
-      Scorer subQueryScorer = qWeight.scorer(context, acceptDocs);
+    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
+      Scorer subQueryScorer = qWeight.scorer(context, flags, acceptDocs);
       if (subQueryScorer == null) {
         return null;
       }
@@ -188,6 +194,10 @@ public class BoostedQuery extends Query {
     }
 
     @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      return scorer.intervals(collectIntervals);
+    }
+
     public long cost() {
       return scorer.cost();
     }

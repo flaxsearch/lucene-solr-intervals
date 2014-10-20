@@ -17,15 +17,21 @@ package org.apache.lucene.queries.function;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.*;
+import org.apache.lucene.search.ComplexExplanation;
+import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.Weight;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
 
 import java.io.IOException;
-import java.util.Set;
 import java.util.Map;
+import java.util.Set;
 
 
 /**
@@ -89,13 +95,13 @@ public class FunctionQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
       return new AllScorer(context, acceptDocs, this, queryWeight);
     }
 
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      return ((AllScorer)scorer(context, context.reader().getLiveDocs())).explain(doc);
+      return ((AllScorer)scorer(context, PostingFeatures.DOCS_ONLY, context.reader().getLiveDocs())).explain(doc);
     }
   }
 
@@ -176,6 +182,11 @@ public class FunctionQuery extends Query {
       result.addDetail(new Explanation(getBoost(), "boost"));
       result.addDetail(new Explanation(weight.queryNorm,"queryNorm"));
       return result;
+    }
+
+    @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      throw new UnsupportedOperationException("AllScorer doesn't support interval iterators.");
     }
   }
 

@@ -16,14 +16,10 @@ package org.apache.solr.schema;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
+import com.spatial4j.core.context.SpatialContext;
+import com.spatial4j.core.distance.DistanceUtils;
 import com.spatial4j.core.shape.Point;
-
+import com.spatial4j.core.shape.Rectangle;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
@@ -40,6 +36,7 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.Weight;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.lucene.util.Bits;
 import org.apache.solr.common.SolrException;
@@ -49,12 +46,13 @@ import org.apache.solr.search.ExtendedQueryBase;
 import org.apache.solr.search.PostFilter;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.SpatialOptions;
-
-import com.spatial4j.core.context.SpatialContext;
-import com.spatial4j.core.distance.DistanceUtils;
-import com.spatial4j.core.shape.Rectangle;
-
 import org.apache.solr.util.SpatialUtils;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 
 /**
@@ -341,13 +339,13 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
       return new SpatialScorer(context, acceptDocs, this, queryWeight);
     }
 
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      return ((SpatialScorer)scorer(context, context.reader().getLiveDocs())).explain(doc);
+      return ((SpatialScorer)scorer(context, PostingFeatures.DOCS_ONLY, context.reader().getLiveDocs())).explain(doc);
     }
   }
 
@@ -505,6 +503,11 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
       result.addDetail(new Explanation(getBoost(), "boost"));
       result.addDetail(new Explanation(weight.queryNorm,"queryNorm"));
       return result;
+    }
+
+    @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      throw new UnsupportedOperationException();
     }
   }
 

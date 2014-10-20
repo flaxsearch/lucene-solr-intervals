@@ -17,10 +17,11 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.search.intervals.IntervalIterator;
+import org.apache.lucene.util.AttributeSource;
+
 import java.io.IOException;
 import java.util.Collection;
-
-import org.apache.lucene.util.AttributeSource;
 
 /** 
  * A {@code FilterScorer} contains another {@code Scorer}, which it
@@ -73,5 +74,10 @@ abstract class FilterScorer extends Scorer {
   @Override
   public AttributeSource attributes() {
     return in.attributes();
+  }
+
+  @Override
+  public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+    return in.intervals(collectIntervals);
   }
 }

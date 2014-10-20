@@ -54,6 +54,7 @@ public class SpanOrQuery extends SpanQuery implements Cloneable {
   public final void addClause(SpanQuery clause) {
     if (field == null) {
       field = clause.getField();
+      fieldset.add(field);
     } else if (clause.getField() != null && !clause.getField().equals(field)) {
       throw new IllegalArgumentException("Clauses must have same field.");
     }

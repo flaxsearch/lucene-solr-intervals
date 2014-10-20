@@ -16,6 +16,9 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.search.intervals.DisjunctionIntervalIterator;
+import org.apache.lucene.search.intervals.IntervalIterator;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -83,6 +86,11 @@ class ReqOptSumScorer extends Scorer {
     }
     
     return optScorerDoc == curDoc ? reqScore + optScorer.score() : reqScore;
+  }
+
+  @Override
+  public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+    return new DisjunctionIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, reqScorer, optScorer));
   }
 
   @Override

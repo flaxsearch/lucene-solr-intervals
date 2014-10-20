@@ -17,12 +17,12 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
-import java.util.Set;
-
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+
+import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 
 /** The abstract base class for queries.
     <p>Instantiable subclasses are:
@@ -68,6 +68,12 @@ public abstract class Query implements Cloneable {
   @Override
   public String toString() {
     return toString("");
+  }
+
+  protected final Set<String> fieldset = new HashSet<>();
+
+  public Set<String> getFields() {
+    return fieldset;
   }
 
   /**

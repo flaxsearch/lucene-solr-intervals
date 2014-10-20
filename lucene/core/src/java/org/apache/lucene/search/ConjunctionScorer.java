@@ -17,15 +17,19 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.search.intervals.CombinedIntervalIterator;
+import org.apache.lucene.search.intervals.IntervalIterator;
+import org.apache.lucene.util.ArrayUtil;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 
-import org.apache.lucene.util.ArrayUtil;
-
 /** Scorer for conjunctions, sets of queries, all of which are required. */
 class ConjunctionScorer extends Scorer {
+  
+  private final Scorer[] scorersOrdered;
   protected int lastDoc = -1;
   protected final DocsAndFreqs[] docsAndFreqs;
   private final DocsAndFreqs lead;
@@ -42,7 +46,10 @@ class ConjunctionScorer extends Scorer {
     for (int i = 0; i < scorers.length; i++) {
       docsAndFreqs[i] = new DocsAndFreqs(scorers[i]);
     }
-    // Sort the array the first time to allow the least frequent DocsEnum to
+    scorersOrdered = new Scorer[scorers.length];
+    System.arraycopy(scorers, 0, scorersOrdered, 0, scorers.length);
+
+      // Sort the array the first time to allow the least frequent DocsEnum to
     // lead the matching.
     ArrayUtil.timSort(docsAndFreqs, new Comparator<DocsAndFreqs>() {
       @Override
@@ -114,6 +121,16 @@ class ConjunctionScorer extends Scorer {
   public int freq() {
     return docsAndFreqs.length;
   }
+  
+  @Override
+  public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+    if (scorersOrdered == null) {
+      throw new IllegalStateException("no positions requested for this scorer");
+    }
+      // only created if needed for this scorer - no penalty for non-positional queries
+    return new CombinedIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, scorersOrdered));
+  }
+
 
   @Override
   public long cost() {

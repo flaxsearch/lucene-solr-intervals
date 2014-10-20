@@ -17,11 +17,12 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.search.intervals.IntervalIterator;
+
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
-
-import org.apache.lucene.index.DocsEnum;
 
 /**
  * Expert: Common scoring functionality for different types of queries.
@@ -52,6 +53,50 @@ public abstract class Scorer extends DocsEnum {
    */
   protected Scorer(Weight weight) {
     this.weight = weight;
+  }
+  
+  /**
+   * Expert: Retrieves an {@link IntervalIterator} for this scorer allowing
+   * access to position and offset intervals for each
+   * matching document.  Call this up-front and use it as
+   * long as you are still using this scorer.  The
+   * returned iterator is bound to scorer that created it;
+   * after {@link #nextDoc} or {@link #advance} you must
+   * call {@link IntervalIterator#scorerAdvanced} before
+   * iterating over that document's intervals.
+   * 
+   * @param collectIntervals
+   *          if <code>true</code> the {@link IntervalIterator} can be used to
+   *          collect all individual sub-intervals this {@link IntervalIterator}
+   *          is composed of via
+   *          {@link IntervalIterator#collect(org.apache.lucene.search.intervals.IntervalCollector)}
+   * @return an {@link IntervalIterator} over matching intervals
+   * @throws IOException
+   *           if a low-level I/O error is encountered
+   *
+   * @lucene.experimental
+   */
+  public abstract IntervalIterator intervals(boolean collectIntervals) throws IOException;
+
+  /**
+   * Get the IntervalIterators from a list of scorers
+   * @param collectIntervals true if positions will be collected
+   * @param scorers the list of scorers to retrieve IntervalIterators from
+   * @return a list of IntervalIterators pulled from the passed in Scorers
+   * @throws java.io.IOException if a low-evel I/O error is encountered
+   */
+  public static IntervalIterator[] pullIterators(boolean collectIntervals, Scorer... scorers)
+      throws IOException {
+    IntervalIterator[] iterators = new IntervalIterator[scorers.length];
+    for (int i = 0; i < scorers.length; i++) {
+      if (scorers[i] == null) {
+        iterators[i] = IntervalIterator.NO_MORE_INTERVALS;
+      }
+      else {
+        iterators[i] = scorers[i].intervals(collectIntervals);
+      }
+    }
+    return iterators;
   }
 
   /** Returns the score of the current document matching the query.

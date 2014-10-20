@@ -3,6 +3,7 @@ package org.apache.solr.search;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.*;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.index.IndexReader;
 import org.apache.solr.common.SolrException;
@@ -119,7 +120,7 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
       return new ConstantScorer(context, this, queryWeight, acceptDocs);
     }
 
@@ -197,6 +198,13 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
     }
 
     @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      if (docIdSetIterator instanceof Scorer) {
+        return ((Scorer) docIdSetIterator).intervals(collectIntervals);
+      }
+      throw new UnsupportedOperationException("Positions are only supported for Scorers");
+    }
+
     public long cost() {
       return docIdSetIterator.cost();
     }

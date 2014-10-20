@@ -134,6 +134,16 @@ public class MultiCollector implements Collector {
       return true;
     }
 
+    @Override
+    public Weight.PostingFeatures postingFeatures() {
+      Weight.PostingFeatures features = Weight.PostingFeatures.DOCS_ONLY;
+      for (LeafCollector c : collectors) {
+        if (c.postingFeatures().compareTo(features) > 0)
+          features = c.postingFeatures();
+      }
+      return features;
+    }
+
   }
 
 }

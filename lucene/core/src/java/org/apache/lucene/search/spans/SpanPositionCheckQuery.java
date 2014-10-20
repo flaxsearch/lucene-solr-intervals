@@ -40,6 +40,7 @@ public abstract class SpanPositionCheckQuery extends SpanQuery implements Clonea
 
   public SpanPositionCheckQuery(SpanQuery match) {
     this.match = match;
+    this.fieldset.add(match.getField());
   }
 
   /**

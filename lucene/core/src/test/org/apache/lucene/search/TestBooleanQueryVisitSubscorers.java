@@ -17,14 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -39,6 +31,14 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.Scorer.ChildScorer;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 // TODO: refactor to a base class, that collects freqs from the scorer tree
 // and test all queries with it
@@ -250,6 +250,11 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
         @Override
         public boolean acceptsDocsOutOfOrder() {
           return false;
+        }
+
+        @Override
+        public Weight.PostingFeatures postingFeatures() {
+          return Weight.PostingFeatures.DOCS_AND_FREQS;
         }
       };
     }

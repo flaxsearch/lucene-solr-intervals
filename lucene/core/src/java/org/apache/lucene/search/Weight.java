@@ -17,12 +17,14 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
+import org.apache.lucene.index.DocsAndPositionsEnum;
+import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.IndexReaderContext; // javadocs
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Bits;
+
+import java.io.IOException;
 
 /**
  * Expert: Calculate query weights and build query scorers.
@@ -96,7 +98,7 @@ public abstract class Weight {
    * @return a {@link Scorer} which scores documents in/out-of order.
    * @throws IOException if there is a low-level I/O error
    */
-  public abstract Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException;
+  public abstract Scorer scorer(LeafReaderContext context, Weight.PostingFeatures flags, Bits acceptDocs) throws IOException;
 
   /**
    * Optional method, to return a {@link BulkScorer} to
@@ -125,9 +127,9 @@ public abstract class Weight {
    * passes them to a collector.
    * @throws IOException if there is a low-level I/O error
    */
-  public BulkScorer bulkScorer(LeafReaderContext context, boolean scoreDocsInOrder, Bits acceptDocs) throws IOException {
+  public BulkScorer bulkScorer(LeafReaderContext context, boolean scoreDocsInOrder, Weight.PostingFeatures flags, Bits acceptDocs) throws IOException {
 
-    Scorer scorer = scorer(context, acceptDocs);
+    Scorer scorer = scorer(context, flags, acceptDocs);
     if (scorer == null) {
       // No docs match
       return null;
@@ -205,6 +207,58 @@ public abstract class Weight {
    * <b>NOTE:</b> the default implementation returns <code>false</code>, i.e.
    * the <code>Scorer</code> scores documents in-order.
    */
+
+  /**
+   * Feature flags used to control low-level posting list features. These flags
+   * all Collectors and scorers to specify their requirements for document
+   * collection and scoring ahead of time for best performance.
+   */
+  public static enum PostingFeatures {
+    /**Only document IDs are required for document collection and scoring*/
+    DOCS_ONLY(0, 0), 
+    /**Document IDs and Term Frequencies are required for document collection and scoring*/
+    DOCS_AND_FREQS(DocsEnum.FLAG_FREQS, 0),
+    /**Document IDs, Term Frequencies and Positions are required for document collection and scoring*/
+    POSITIONS(DocsEnum.FLAG_FREQS, 0),
+    /**Document IDs, Term Frequencies, Positions and Payloads are required for document collection and scoring*/
+    POSITIONS_AND_PAYLOADS(DocsEnum.FLAG_FREQS, DocsAndPositionsEnum.FLAG_PAYLOADS),
+    /**Document IDs, Term Frequencies, Positions and Offsets are required for document collection and scoring*/
+    OFFSETS(DocsEnum.FLAG_FREQS, DocsAndPositionsEnum.FLAG_OFFSETS),
+    /**Document IDs, Term Frequencies, Positions, Offsets and Payloads are required for document collection and scoring*/
+    OFFSETS_AND_PAYLOADS(DocsEnum.FLAG_FREQS, DocsAndPositionsEnum.FLAG_OFFSETS
+            | DocsAndPositionsEnum.FLAG_PAYLOADS);
+    
+    private final int docsAndPositionsFlags;
+    private final int docFlags;
+    
+    private PostingFeatures(int docFlags, int docsAndPositionsFlags) {
+      this.docsAndPositionsFlags = docsAndPositionsFlags;
+      this.docFlags = docFlags;
+    }
+    
+    /**
+     * Returns the flags for {@link DocsAndPositionsEnum}. This value should be
+     * passed to
+     * {@link TermsEnum#docsAndPositions(Bits, DocsAndPositionsEnum, int)}
+     * 
+     * @return {@link DocsAndPositionsEnum} flags
+     */
+    public int docsAndPositionsFlags() {
+      return docsAndPositionsFlags;
+    }
+    
+    /**
+     * Returns the flags for {@link DocsEnum}. This value should be
+     * passed to
+     * {@link TermsEnum#docs(Bits, DocsEnum, int)}
+     * 
+     * @return {@link DocsEnum} flags
+     */
+    public int docFlags() {
+      return docFlags;
+    }
+  }
+
   public boolean scoresDocsOutOfOrder() {
     return false;
   }

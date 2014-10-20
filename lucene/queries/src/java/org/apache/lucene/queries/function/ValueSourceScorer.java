@@ -20,6 +20,7 @@ package org.apache.lucene.queries.function;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
 
 import java.io.IOException;
@@ -85,6 +86,11 @@ public class ValueSourceScorer extends Scorer {
   @Override
   public float score() throws IOException {
     return values.floatVal(doc);
+  }
+
+  @Override
+  public IntervalIterator intervals(boolean collectIntervals) throws IOException {    
+    throw new UnsupportedOperationException("ValueSourceScorer doesn't support interval iterators.");
   }
 
   @Override

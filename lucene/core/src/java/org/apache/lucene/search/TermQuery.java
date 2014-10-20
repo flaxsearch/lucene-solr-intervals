@@ -17,22 +17,22 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.Set;
-
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.similarities.Similarity.SimScorer;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.Similarity.SimScorer;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
+
+import java.io.IOException;
+import java.util.Set;
 
 /** A Query that matches documents containing a term.
   This may be combined with other terms with a {@link BooleanQuery}.
@@ -75,13 +75,18 @@ public class TermQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
       assert termStates.topReaderContext == ReaderUtil.getTopLevelContext(context) : "The top-reader used to create Weight (" + termStates.topReaderContext + ") is not the same as the current reader's top-reader (" + ReaderUtil.getTopLevelContext(context);
       final TermsEnum termsEnum = getTermsEnum(context);
       if (termsEnum == null) {
         return null;
       }
-      DocsEnum docs = termsEnum.docs(acceptDocs, null);
+      DocsEnum docs;
+      if (flags.compareTo(PostingFeatures.POSITIONS) < 0) {
+        docs = termsEnum.docs(acceptDocs, null, flags.docFlags());
+      } else {
+        docs =  termsEnum.docsAndPositions(acceptDocs, null, flags.docsAndPositionsFlags());
+      }
       assert docs != null;
       return new TermScorer(this, docs, similarity.simScorer(stats, context));
     }
@@ -110,7 +115,7 @@ public class TermQuery extends Query {
     
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      Scorer scorer = scorer(context, context.reader().getLiveDocs());
+      Scorer scorer = scorer(context, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {
@@ -141,6 +146,7 @@ public class TermQuery extends Query {
     term = t;
     this.docFreq = docFreq;
     perReaderTermState = null;
+    this.fieldset.add(t.field());
   }
   
   /** Expert: constructs a TermQuery that will use the
@@ -192,21 +198,20 @@ public class TermQuery extends Query {
     buffer.append(ToStringUtils.boost(getBoost()));
     return buffer.toString();
   }
-
+  
   /** Returns true iff <code>o</code> is equal to this. */
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof TermQuery))
-      return false;
-    TermQuery other = (TermQuery)o;
+    if (!(o instanceof TermQuery)) return false;
+    TermQuery other = (TermQuery) o;
     return (this.getBoost() == other.getBoost())
-      && this.term.equals(other.term);
+        && this.term.equals(other.term);
   }
-
-  /** Returns a hash code value for this object.*/
+  
+  /** Returns a hash code value for this object. */
   @Override
   public int hashCode() {
     return Float.floatToIntBits(getBoost()) ^ term.hashCode();
   }
-
+  
 }

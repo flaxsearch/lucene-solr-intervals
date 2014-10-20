@@ -17,6 +17,9 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.AssertingLeafReader;
+import org.apache.lucene.search.intervals.IntervalIterator;
+
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.Collection;
@@ -24,8 +27,6 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Random;
 import java.util.WeakHashMap;
-
-import org.apache.lucene.index.AssertingLeafReader;
 
 /** Wraps a Scorer with additional checks */
 public class AssertingScorer extends Scorer {
@@ -93,6 +94,11 @@ public class AssertingScorer extends Scorer {
     assert !Float.isNaN(score);
     assert !Float.isNaN(score);
     return score;
+  }
+
+  @Override
+  public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+    return in.intervals(collectIntervals);
   }
 
   @Override

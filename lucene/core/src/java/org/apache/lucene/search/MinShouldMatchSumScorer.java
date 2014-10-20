@@ -17,13 +17,15 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.search.intervals.CombinedIntervalIterator;
+import org.apache.lucene.search.intervals.IntervalIterator;
+import org.apache.lucene.util.ArrayUtil;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
-
-import org.apache.lucene.util.ArrayUtil;
 
 /**
  * A Scorer for OR like queries, counterpart of <code>ConjunctionScorer</code>.
@@ -210,6 +212,11 @@ class MinShouldMatchSumScorer extends Scorer {
       countMatches((root<<1)+1);
       countMatches((root<<1)+2);
     }
+  }
+
+  @Override
+  public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+    return new CombinedIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, sortedSubScorers));
   }
 
   /**

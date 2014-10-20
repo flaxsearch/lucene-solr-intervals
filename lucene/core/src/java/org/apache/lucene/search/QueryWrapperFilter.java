@@ -17,10 +17,10 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.util.Bits;
+
+import java.io.IOException;
 
 /** 
  * Constrains search results to only match those which also match a provided
@@ -56,7 +56,7 @@ public class QueryWrapperFilter extends Filter {
     return new DocIdSet() {
       @Override
       public DocIdSetIterator iterator() throws IOException {
-        return weight.scorer(privateContext, acceptDocs);
+        return weight.scorer(privateContext, Weight.PostingFeatures.DOCS_AND_FREQS, acceptDocs);
       }
 
       @Override

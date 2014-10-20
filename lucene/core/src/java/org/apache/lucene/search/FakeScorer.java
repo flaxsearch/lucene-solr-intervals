@@ -17,6 +17,9 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.search.intervals.IntervalIterator;
+
+import java.io.IOException;
 import java.util.Collection;
 
 /** Used by {@link BulkScorer}s that need to pass a {@link
@@ -49,7 +52,12 @@ final class FakeScorer extends Scorer {
   public int nextDoc() {
     throw new UnsupportedOperationException("FakeScorer doesn't support nextDoc()");
   }
-    
+
+  @Override
+  public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+    throw new UnsupportedOperationException("FakeScorer doesn't support intervals()");
+  }
+
   @Override
   public float score() {
     return score;

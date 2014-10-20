@@ -17,9 +17,10 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.LuceneTestCase;
+
+import java.io.IOException;
 
 public class TestCachingCollector extends LuceneTestCase {
 
@@ -45,6 +46,11 @@ public class TestCachingCollector extends LuceneTestCase {
 
     @Override
     public int advance(int target) throws IOException { return 0; }
+
+    @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      return IntervalIterator.NO_MORE_INTERVALS;
+    }
     
     @Override
     public long cost() {

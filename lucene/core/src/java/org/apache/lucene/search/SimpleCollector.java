@@ -42,7 +42,12 @@ public abstract class SimpleCollector implements Collector, LeafCollector {
     // no-op by default
   }
 
-  // redeclare methods so that javadocs are inherited on sub-classes
+  @Override
+  public Weight.PostingFeatures postingFeatures() {
+    return Weight.PostingFeatures.DOCS_AND_FREQS;
+  }
+
+// redeclare methods so that javadocs are inherited on sub-classes
 
   @Override
   public abstract boolean acceptsDocsOutOfOrder();

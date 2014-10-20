@@ -92,14 +92,14 @@ final class BooleanScorer extends BulkScorer {
     public void setScorer(Scorer scorer) {
       this.scorer = scorer;
     }
-    
+
     @Override
     public boolean acceptsDocsOutOfOrder() {
       return true;
     }
 
   }
-  
+
   static final class Bucket {
     int doc = -1;            // tells if bucket is valid
     double score;             // incremental score
@@ -258,7 +258,6 @@ final class BooleanScorer extends BulkScorer {
     return false;
   }
 
-  @Override
   public String toString() {
     StringBuilder buffer = new StringBuilder();
     buffer.append("boolean(");

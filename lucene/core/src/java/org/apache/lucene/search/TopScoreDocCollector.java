@@ -308,4 +308,5 @@ public abstract class TopScoreDocCollector extends TopDocsCollector<ScoreDoc> {
   public void setScorer(Scorer scorer) throws IOException {
     this.scorer = scorer;
   }
+
 }

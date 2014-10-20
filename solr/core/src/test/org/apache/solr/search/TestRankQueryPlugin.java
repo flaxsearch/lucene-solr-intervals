@@ -32,6 +32,7 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.InPlaceMergeSorter;
 import org.apache.lucene.util.PriorityQueue;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -466,7 +467,12 @@ public class TestRankQueryPlugin extends QParserPlugin {
           return docid;
         }
 
-        @Override
+     @Override
+     public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+       throw new UnsupportedOperationException();
+     }
+
+     @Override
         public float score() throws IOException {
           return score;
         }

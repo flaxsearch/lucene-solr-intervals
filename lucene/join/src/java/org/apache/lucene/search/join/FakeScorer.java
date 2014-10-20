@@ -17,11 +17,13 @@ package org.apache.lucene.search.join;
  * limitations under the License.
  */
 
-import java.util.Collection;
-
 import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
+import org.apache.lucene.search.intervals.IntervalIterator;
+
+import java.io.IOException;
+import java.util.Collection;
 
 /** Passed to {@link LeafCollector#setScorer} during join collection. */
 final class FakeScorer extends Scorer {
@@ -52,7 +54,12 @@ final class FakeScorer extends Scorer {
   public int nextDoc() {
     throw new UnsupportedOperationException("FakeScorer doesn't support nextDoc()");
   }
-    
+
+  @Override
+  public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+    throw new UnsupportedOperationException("FakeScorer doesn't support intervals()");
+  }
+
   @Override
   public float score() {
     return score;

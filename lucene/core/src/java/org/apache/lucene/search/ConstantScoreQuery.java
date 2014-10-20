@@ -20,6 +20,7 @@ package org.apache.lucene.search;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
 
@@ -36,14 +37,20 @@ import java.util.Set;
 public class ConstantScoreQuery extends Query {
   protected final Filter filter;
   protected final Query query;
+  protected final String field;
 
   /** Strips off scores from the passed in Query. The hits will get a constant score
    * dependent on the boost factor of this query. */
   public ConstantScoreQuery(Query query) {
+    this(null, query);
+  }
+
+  public ConstantScoreQuery(String field, Query query) {
     if (query == null)
       throw new NullPointerException("Query may not be null");
     this.filter = null;
     this.query = query;
+    this.field = field;
   }
 
   /** Wraps a Filter as a Query. The hits will get a constant score
@@ -57,6 +64,7 @@ public class ConstantScoreQuery extends Query {
       throw new NullPointerException("Filter may not be null");
     this.filter = filter;
     this.query = null;
+    this.field = null;
   }
 
   /** Returns the encapsulated filter, returns {@code null} if a query is wrapped. */
@@ -134,14 +142,14 @@ public class ConstantScoreQuery extends Query {
     }
 
     @Override
-    public BulkScorer bulkScorer(LeafReaderContext context, boolean scoreDocsInOrder, Bits acceptDocs) throws IOException {
+    public BulkScorer bulkScorer(LeafReaderContext context, boolean scoreDocsInOrder, PostingFeatures flags, Bits acceptDocs) throws IOException {
       final DocIdSetIterator disi;
       if (filter != null) {
         assert query == null;
-        return super.bulkScorer(context, scoreDocsInOrder, acceptDocs);
+        return super.bulkScorer(context, scoreDocsInOrder, flags, acceptDocs);
       } else {
         assert query != null && innerWeight != null;
-        BulkScorer bulkScorer = innerWeight.bulkScorer(context, scoreDocsInOrder, acceptDocs);
+        BulkScorer bulkScorer = innerWeight.bulkScorer(context, scoreDocsInOrder, flags, acceptDocs);
         if (bulkScorer == null) {
           return null;
         }
@@ -150,7 +158,7 @@ public class ConstantScoreQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
       final DocIdSetIterator disi;
       if (filter != null) {
         assert query == null;
@@ -161,7 +169,7 @@ public class ConstantScoreQuery extends Query {
         disi = dis.iterator();
       } else {
         assert query != null && innerWeight != null;
-        disi = innerWeight.scorer(context, acceptDocs);
+        disi = innerWeight.scorer(context, flags, acceptDocs);
       }
 
       if (disi == null) {
@@ -177,7 +185,7 @@ public class ConstantScoreQuery extends Query {
 
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      final Scorer cs = scorer(context, context.reader().getLiveDocs());
+      final Scorer cs = scorer(context, PostingFeatures.DOCS_ONLY, context.reader().getLiveDocs());
       final boolean exists = (cs != null && cs.advance(doc) == doc);
 
       final ComplexExplanation result = new ComplexExplanation();
@@ -266,6 +274,15 @@ public class ConstantScoreQuery extends Query {
     @Override
     public long cost() {
       return docIdSetIterator.cost();
+    }
+        
+    @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      if (docIdSetIterator instanceof Scorer) {
+        return ((Scorer) docIdSetIterator).intervals(collectIntervals);
+      } else {
+        throw new UnsupportedOperationException("positions are only supported on Scorer subclasses");
+      }
     }
 
     @Override

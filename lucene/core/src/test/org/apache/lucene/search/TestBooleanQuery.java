@@ -17,14 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -38,6 +30,9 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.Weight.PostingFeatures;
+import org.apache.lucene.search.intervals.IntervalFilterQuery;
+import org.apache.lucene.search.intervals.WithinIntervalFilter;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
@@ -45,6 +40,14 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.NamedThreadFactory;
 import org.apache.lucene.util.TestUtil;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class TestBooleanQuery extends LuceneTestCase {
   
@@ -235,7 +238,7 @@ public class TestBooleanQuery extends LuceneTestCase {
 
       Weight weight = s.createNormalizedWeight(q);
 
-      Scorer scorer = weight.scorer(s.leafContexts.get(0), null);
+      Scorer scorer = weight.scorer(s.leafContexts.get(0), PostingFeatures.DOCS_AND_FREQS, null);
 
       // First pass: just use .nextDoc() to gather all hits
       final List<ScoreDoc> hits = new ArrayList<>();
@@ -252,7 +255,7 @@ public class TestBooleanQuery extends LuceneTestCase {
       for(int iter2=0;iter2<10;iter2++) {
 
         weight = s.createNormalizedWeight(q);
-        scorer = weight.scorer(s.leafContexts.get(0), null);
+        scorer = weight.scorer(s.leafContexts.get(0), PostingFeatures.DOCS_AND_FREQS, null);
 
         if (VERBOSE) {
           System.out.println("  iter2=" + iter2);
@@ -290,6 +293,50 @@ public class TestBooleanQuery extends LuceneTestCase {
     r.close();
     d.close();
   }
+  
+ public void testConjunctionPositions() throws IOException {
+     Directory directory = newDirectory();
+     RandomIndexWriter writer = new RandomIndexWriter(random(), directory);
+     {
+       Document doc = new Document();
+       doc.add(newField(
+           "field",
+           "Pease porridge hot! Pease porridge cold! Pease porridge in the pot nine days old! Some like it hot, some"
+               + " like it cold, Some like it in the pot nine days old! Pease porridge hot! Pease porridge cold!",
+           TextField.TYPE_STORED));
+       writer.addDocument(doc);
+     }
+     
+     {
+       Document doc = new Document();
+       doc.add(newField(
+           "field",
+           "Pease porridge cold! Pease porridge hot! Pease porridge in the pot nine days old! Some like it cold, some"
+               + " like it hot, Some like it in the pot nine days old! Pease porridge cold! Pease porridge hot!",
+               TextField.TYPE_STORED));
+       writer.addDocument(doc);
+     }
+     
+     IndexReader reader = writer.getReader();
+     IndexSearcher searcher = new IndexSearcher(reader);
+     writer.close();
+
+     BooleanQuery bq = new BooleanQuery();
+     bq.add(new TermQuery(new Term("field", "porridge")), BooleanClause.Occur.MUST);
+     bq.add(new TermQuery(new Term("field", "pease")),BooleanClause.Occur.MUST);
+     bq.add(new TermQuery(new Term("field", "hot!")), BooleanClause.Occur.MUST);
+
+     {
+       IntervalFilterQuery filter = new IntervalFilterQuery(bq, new WithinIntervalFilter(3));
+       TopDocs search = searcher.search(filter, 10);
+       ScoreDoc[] scoreDocs = search.scoreDocs;
+       assertEquals(2, search.totalHits);
+       assertEquals(0, scoreDocs[0].doc);
+       assertEquals(1, scoreDocs[1].doc);
+     }
+     reader.close();
+     directory.close();
+   }
 
   // LUCENE-4477 / LUCENE-4401:
   public void testBooleanSpanQuery() throws Exception {

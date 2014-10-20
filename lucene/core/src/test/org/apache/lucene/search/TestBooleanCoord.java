@@ -17,9 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.StringField;
@@ -35,6 +32,9 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** 
  * Tests coord() computation by BooleanQuery
@@ -707,7 +707,7 @@ public class TestBooleanCoord extends LuceneTestCase {
   private void assertScore(final float expected, Query query) throws Exception {
     // test in-order
     Weight weight = searcher.createNormalizedWeight(query);
-    Scorer scorer = weight.scorer(reader.leaves().get(0), null);
+    Scorer scorer = weight.scorer(reader.leaves().get(0), Weight.PostingFeatures.DOCS_AND_FREQS, null);
     assertTrue(scorer.docID() == -1 || scorer.docID() == DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(0, scorer.nextDoc());
     assertEquals(expected, scorer.score(), 0.0001f);
@@ -715,7 +715,7 @@ public class TestBooleanCoord extends LuceneTestCase {
     // test out-of-order (if supported)
     if (weight.scoresDocsOutOfOrder()) {
       final AtomicBoolean seen = new AtomicBoolean(false);
-      BulkScorer bulkScorer = weight.bulkScorer(reader.leaves().get(0), false, null);
+      BulkScorer bulkScorer = weight.bulkScorer(reader.leaves().get(0), false, Weight.PostingFeatures.DOCS_AND_FREQS, null);
       assertNotNull(bulkScorer);
       bulkScorer.score(new LeafCollector() {
         Scorer scorer;
@@ -736,6 +736,11 @@ public class TestBooleanCoord extends LuceneTestCase {
         @Override
         public boolean acceptsDocsOutOfOrder() {
           return true;
+        }
+
+        @Override
+        public Weight.PostingFeatures postingFeatures() {
+          return Weight.PostingFeatures.DOCS_AND_FREQS;
         }
       }, 1);
       assertTrue(seen.get());

@@ -18,14 +18,26 @@ package org.apache.lucene.search.grouping;
  */
 
 
-import java.io.IOException;
-import java.util.Collection;
-
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.search.*;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.FieldComparator;
+import org.apache.lucene.search.Filter;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.TopDocsCollector;
+import org.apache.lucene.search.TopFieldCollector;
+import org.apache.lucene.search.TopScoreDocCollector;
+import org.apache.lucene.search.Weight;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.PriorityQueue;
+
+import java.io.IOException;
+import java.util.Collection;
 
 // TODO: this sentence is too long for the class summary.
 /** BlockGroupingCollector performs grouping with a
@@ -120,6 +132,10 @@ public class BlockGroupingCollector extends SimpleCollector {
     }
 
     @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
     public long cost() {
       return 1;
     }

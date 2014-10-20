@@ -25,7 +25,7 @@ import java.util.Collection;
  * Base class for Scorers that score disjunctions.
  */
 abstract class DisjunctionScorer extends Scorer {
-  private final Scorer subScorers[];
+  protected final Scorer subScorers[];
   private int numScorers;
 
   /** The document number of the current match. */

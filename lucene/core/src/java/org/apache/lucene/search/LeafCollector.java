@@ -116,4 +116,9 @@ public interface LeafCollector {
    */
   boolean acceptsDocsOutOfOrder();
 
+  /**
+   * Returns the posting features required by this collector.
+   */
+  public Weight.PostingFeatures postingFeatures();
+
 }

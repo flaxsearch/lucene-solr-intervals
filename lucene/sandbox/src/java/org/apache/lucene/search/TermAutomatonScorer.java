@@ -17,11 +17,9 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.Map;
-
 import org.apache.lucene.search.TermAutomatonQuery.EnumAndScorer;
 import org.apache.lucene.search.TermAutomatonQuery.TermAutomatonWeight;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
@@ -29,6 +27,9 @@ import org.apache.lucene.util.PriorityQueue;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.RunAutomaton;
+
+import java.io.IOException;
+import java.util.Map;
 
 class TermAutomatonScorer extends Scorer {
   private final EnumAndScorer[] subs;
@@ -328,6 +329,11 @@ class TermAutomatonScorer extends Scorer {
   @Override
   public int docID() {
     return docID;
+  }
+
+  @Override
+  public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+    throw new UnsupportedOperationException("TermAutomatonScorer doesn't support positions"); // TODO - can it?
   }
 
   @Override

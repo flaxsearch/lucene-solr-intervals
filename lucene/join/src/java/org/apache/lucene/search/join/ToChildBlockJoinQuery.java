@@ -17,13 +17,8 @@ package org.apache.lucene.search.join;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Set;
-
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.Explanation;
@@ -32,8 +27,14 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Set;
 
 /**
  * Just like {@link ToParentBlockJoinQuery}, except this
@@ -124,9 +125,9 @@ public class ToChildBlockJoinQuery extends Query {
     // NOTE: acceptDocs applies (and is checked) only in the
     // child document space
     @Override
-    public Scorer scorer(LeafReaderContext readerContext, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext readerContext, PostingFeatures flags, Bits acceptDocs) throws IOException {
 
-      final Scorer parentScorer = parentWeight.scorer(readerContext, null);
+      final Scorer parentScorer = parentWeight.scorer(readerContext, flags, null);
 
       if (parentScorer == null) {
         // No matches
@@ -323,6 +324,10 @@ public class ToChildBlockJoinQuery extends Query {
     }
 
     @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      return parentScorer.intervals(collectIntervals);
+    }
+
     public long cost() {
       return parentScorer.cost();
     }

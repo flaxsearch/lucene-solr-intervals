@@ -17,14 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.SortedSetDocValuesField;
@@ -36,6 +28,7 @@ import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.search.BooleanQuery.BooleanWeight;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.Similarity.SimScorer;
 import org.apache.lucene.search.similarities.Similarity.SimWeight;
@@ -45,6 +38,14 @@ import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /** tests BooleanScorer2's minShouldMatch */
 public class TestMinShouldMatch2 extends LuceneTestCase {
@@ -124,7 +125,7 @@ public class TestMinShouldMatch2 extends LuceneTestCase {
     if (slow) {
       return new SlowMinShouldMatchScorer(weight, reader, searcher);
     } else {
-      return weight.scorer(reader.getContext(), null);
+      return weight.scorer(reader.getContext(), Weight.PostingFeatures.DOCS_ONLY, null);
     }
   }
   
@@ -301,6 +302,11 @@ public class TestMinShouldMatch2 extends LuceneTestCase {
           sims[(int)ord] = weight.similarity.simScorer(w, reader.getContext());
         }
       }
+    }
+
+    @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      throw new UnsupportedOperationException();
     }
 
     @Override

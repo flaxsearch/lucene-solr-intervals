@@ -17,13 +17,14 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
+
+import java.io.IOException;
 
 public class TestScoreCachingWrappingScorer extends LuceneTestCase {
 
@@ -57,7 +58,12 @@ public class TestScoreCachingWrappingScorer extends LuceneTestCase {
       doc = target;
       return doc < scores.length ? doc : NO_MORE_DOCS;
     }
-    
+
+    @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      throw new UnsupportedOperationException(); 
+    }
+
     @Override
     public long cost() {
       return scores.length;

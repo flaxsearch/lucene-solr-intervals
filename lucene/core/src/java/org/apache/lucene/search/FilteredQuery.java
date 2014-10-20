@@ -20,6 +20,8 @@ package org.apache.lucene.search;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.Weight.PostingFeatures;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
 
@@ -124,7 +126,7 @@ public class FilteredQuery extends Query {
 
       // return a filtering scorer
       @Override
-      public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+      public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
         assert filter != null;
 
         DocIdSet filterDocIdSet = filter.getDocIdSet(context, acceptDocs);
@@ -133,12 +135,12 @@ public class FilteredQuery extends Query {
           return null;
         }
 
-        return strategy.filteredScorer(context, weight, filterDocIdSet);
+        return strategy.filteredScorer(context, weight, filterDocIdSet, flags);
       }
 
       // return a filtering top scorer
       @Override
-      public BulkScorer bulkScorer(LeafReaderContext context, boolean scoreDocsInOrder, Bits acceptDocs) throws IOException {
+      public BulkScorer bulkScorer(LeafReaderContext context, boolean scoreDocsInOrder, PostingFeatures flags, Bits acceptDocs) throws IOException {
         assert filter != null;
 
         DocIdSet filterDocIdSet = filter.getDocIdSet(context, acceptDocs);
@@ -147,7 +149,9 @@ public class FilteredQuery extends Query {
           return null;
         }
 
-        return strategy.filteredBulkScorer(context, weight, scoreDocsInOrder, filterDocIdSet);
+
+        return strategy.filteredBulkScorer(context, weight, scoreDocsInOrder, filterDocIdSet, flags);
+
       }
     };
   }
@@ -189,7 +193,6 @@ public class FilteredQuery extends Query {
         return scorerDoc = doc;
       }
     }
-
     @Override
     public int docID() {
       return scorerDoc;
@@ -209,6 +212,11 @@ public class FilteredQuery extends Query {
     }
 
     @Override
+    public IntervalIterator intervals(boolean collectIntervals)
+        throws IOException {
+      return scorer.intervals(collectIntervals);
+    }
+
     public long cost() {
       return scorer.cost();
     }
@@ -319,6 +327,11 @@ public class FilteredQuery extends Query {
     }
 
     @Override
+    public IntervalIterator intervals(boolean collectIntervals)
+        throws IOException {
+      return scorer.intervals(collectIntervals);
+    }
+
     public long cost() {
       return Math.min(primary.cost(), secondary.cost());
     }
@@ -465,7 +478,7 @@ public class FilteredQuery extends Query {
      * @throws IOException if an {@link IOException} occurs
      */
     public abstract Scorer filteredScorer(LeafReaderContext context,
-        Weight weight, DocIdSet docIdSet) throws IOException;
+        Weight weight, DocIdSet docIdSet, PostingFeatures flags) throws IOException;
 
     /**
      * Returns a filtered {@link BulkScorer} based on this
@@ -480,8 +493,8 @@ public class FilteredQuery extends Query {
      * @return a filtered top scorer
      */
     public BulkScorer filteredBulkScorer(LeafReaderContext context,
-        Weight weight, boolean scoreDocsInOrder, DocIdSet docIdSet) throws IOException {
-      Scorer scorer = filteredScorer(context, weight, docIdSet);
+        Weight weight, boolean scoreDocsInOrder, DocIdSet docIdSet, PostingFeatures flags) throws IOException {
+      Scorer scorer = filteredScorer(context, weight, docIdSet, flags);
       if (scorer == null) {
         return null;
       }
@@ -489,6 +502,7 @@ public class FilteredQuery extends Query {
       // ignore scoreDocsInOrder:
       return new Weight.DefaultBulkScorer(scorer);
     }
+
   }
   
   /**
@@ -502,7 +516,7 @@ public class FilteredQuery extends Query {
   public static class RandomAccessFilterStrategy extends FilterStrategy {
 
     @Override
-    public Scorer filteredScorer(LeafReaderContext context, Weight weight, DocIdSet docIdSet) throws IOException {
+    public Scorer filteredScorer(LeafReaderContext context, Weight weight, DocIdSet docIdSet, PostingFeatures flags) throws IOException {
       final DocIdSetIterator filterIter = docIdSet.iterator();
       if (filterIter == null) {
         // this means the filter does not accept any documents.
@@ -514,11 +528,11 @@ public class FilteredQuery extends Query {
       final boolean useRandomAccess = filterAcceptDocs != null && useRandomAccess(filterAcceptDocs, filterIter.cost());
       if (useRandomAccess) {
         // if we are using random access, we return the inner scorer, just with other acceptDocs
-        return weight.scorer(context, filterAcceptDocs);
+        return weight.scorer(context, flags, filterAcceptDocs);
       } else {
         // we are gonna advance() this scorer, so we set inorder=true/toplevel=false
         // we pass null as acceptDocs, as our filter has already respected acceptDocs, no need to do twice
-        final Scorer scorer = weight.scorer(context, null);
+        final Scorer scorer = weight.scorer(context, flags, null);
         return (scorer == null) ? null : new LeapFrogScorer(weight, filterIter, scorer, scorer);
       }
     }
@@ -551,14 +565,14 @@ public class FilteredQuery extends Query {
 
     @Override
     public Scorer filteredScorer(LeafReaderContext context,
-        Weight weight, DocIdSet docIdSet) throws IOException {
+        Weight weight, DocIdSet docIdSet, PostingFeatures flags) throws IOException {
       final DocIdSetIterator filterIter = docIdSet.iterator();
       if (filterIter == null) {
         // this means the filter does not accept any documents.
         return null;
       }
       // we pass null as acceptDocs, as our filter has already respected acceptDocs, no need to do twice
-      final Scorer scorer = weight.scorer(context, null);
+      final Scorer scorer = weight.scorer(context, flags, null);
       if (scorer == null) {
         return null;
       }
@@ -588,14 +602,14 @@ public class FilteredQuery extends Query {
     @Override
     public Scorer filteredScorer(final LeafReaderContext context,
         Weight weight,
-        DocIdSet docIdSet) throws IOException {
+        DocIdSet docIdSet, PostingFeatures flags) throws IOException {
       Bits filterAcceptDocs = docIdSet.bits();
       if (filterAcceptDocs == null) {
         // Filter does not provide random-access Bits; we
         // must fallback to leapfrog:
-        return LEAP_FROG_QUERY_FIRST_STRATEGY.filteredScorer(context, weight, docIdSet);
+        return LEAP_FROG_QUERY_FIRST_STRATEGY.filteredScorer(context, weight, docIdSet, flags);
       }
-      final Scorer scorer = weight.scorer(context, null);
+      final Scorer scorer = weight.scorer(context, flags, null);
       return scorer == null ? null : new QueryFirstScorer(weight,
           filterAcceptDocs, scorer);
     }
@@ -604,14 +618,14 @@ public class FilteredQuery extends Query {
     public BulkScorer filteredBulkScorer(final LeafReaderContext context,
         Weight weight,
         boolean scoreDocsInOrder, // ignored (we always top-score in order)
-        DocIdSet docIdSet) throws IOException {
+        DocIdSet docIdSet, PostingFeatures flags) throws IOException {
       Bits filterAcceptDocs = docIdSet.bits();
       if (filterAcceptDocs == null) {
         // Filter does not provide random-access Bits; we
         // must fallback to leapfrog:
-        return LEAP_FROG_QUERY_FIRST_STRATEGY.filteredBulkScorer(context, weight, scoreDocsInOrder, docIdSet);
+        return LEAP_FROG_QUERY_FIRST_STRATEGY.filteredBulkScorer(context, weight, scoreDocsInOrder, docIdSet, flags);
       }
-      final Scorer scorer = weight.scorer(context, null);
+      final Scorer scorer = weight.scorer(context, flags, null);
       return scorer == null ? null : new QueryFirstBulkScorer(scorer, filterAcceptDocs);
     }
   }

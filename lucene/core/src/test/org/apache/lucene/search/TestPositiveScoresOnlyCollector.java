@@ -20,9 +20,12 @@ package org.apache.lucene.search;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.document.Document;
+
+import java.io.IOException;
 
 public class TestPositiveScoresOnlyCollector extends LuceneTestCase {
 
@@ -51,7 +54,12 @@ public class TestPositiveScoresOnlyCollector extends LuceneTestCase {
       idx = target;
       return idx < scores.length ? idx : NO_MORE_DOCS;
     }
-    
+
+    @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
     @Override
     public long cost() {
       return scores.length;

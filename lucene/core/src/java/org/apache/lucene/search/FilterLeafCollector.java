@@ -49,6 +49,11 @@ public class FilterLeafCollector implements LeafCollector {
   }
 
   @Override
+  public Weight.PostingFeatures postingFeatures() {
+    return in.postingFeatures();
+  }
+
+  @Override
   public String toString() {
     return getClass().getSimpleName() + "(" + in + ")";
   }

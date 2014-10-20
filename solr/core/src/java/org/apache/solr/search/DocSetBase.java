@@ -27,6 +27,8 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.solr.common.SolrException;
 
+import java.io.IOException;
+
 /** A base class that may be usefull for implementing DocSets */
 abstract class DocSetBase implements DocSet {
 
@@ -159,6 +161,38 @@ abstract class DocSetBase implements DocSet {
     return this.size() - this.intersectionSize(other);
   }
 
+  public static DocIdSet EMPTY_DOCIDSET = new DocIdSet() {
+    @Override
+    public DocIdSetIterator iterator() throws IOException {
+      return new DocIdSetIterator() {
+        @Override
+        public int docID() {
+          return -1;
+        }
+
+        @Override
+        public int nextDoc() throws IOException {
+          return NO_MORE_DOCS;
+        }
+
+        @Override
+        public int advance(int target) throws IOException {
+          return NO_MORE_DOCS;
+        }
+
+        @Override
+        public long cost() {
+          return 0;
+        }
+      };
+    }
+
+    @Override
+    public long ramBytesUsed() {
+      return 0;
+    }
+  };
+
   @Override
   public Filter getTopFilter() {
     final FixedBitSet bs = getBits();
@@ -177,6 +211,9 @@ abstract class DocSetBase implements DocSet {
         final int base = context.docBase;
         final int maxDoc = reader.maxDoc();
         final int max = base + maxDoc;   // one past the max doc in this segment.
+
+        if (base > bs.length())
+          return EMPTY_DOCIDSET;
 
         return BitsFilteredDocIdSet.wrap(new DocIdSet() {
           @Override

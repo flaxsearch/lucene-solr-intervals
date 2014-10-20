@@ -121,6 +121,12 @@ public final class StemmerOverrideFilter extends TokenFilter {
 
     /**
      * Returns the value mapped to the given key or <code>null</code> if the key is not in the FST dictionary.
+     * @param buffer a char[] buffer containing the key
+     * @param bufferLen the length of the char[] buffer
+     * @param scratchArc a scratch Arc
+     * @param fstReader an fstReader
+     * @return a {@link BytesRef} pointing to the value or null
+     * @throws IOException
      */
     public BytesRef get(char[] buffer, int bufferLen, Arc<BytesRef> scratchArc, BytesReader fstReader) throws IOException {
       BytesRef pendingOutput = fst.outputs.getNoOutput();

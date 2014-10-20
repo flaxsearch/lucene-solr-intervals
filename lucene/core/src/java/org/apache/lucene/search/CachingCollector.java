@@ -18,6 +18,7 @@ package org.apache.lucene.search;
  */
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.RamUsageEstimator;
 
@@ -77,9 +78,14 @@ public abstract class CachingCollector extends FilterCollector {
     public final int nextDoc() { throw new UnsupportedOperationException(); }
 
     @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException { throw new UnsupportedOperationException(); }
+    
+    @Override
     public long cost() { return 1; }
+
   }
 
+  // A CachingCollector which caches scores
   private static class NoScoreCachingCollector extends CachingCollector {
 
     List<Boolean> acceptDocsOutOfOrders;

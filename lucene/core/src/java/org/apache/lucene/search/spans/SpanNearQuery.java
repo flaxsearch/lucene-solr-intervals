@@ -35,6 +35,13 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 /** Matches spans which are near one another.  One can specify <i>slop</i>, the
  * maximum number of intervening unmatched positions, as well as whether
  * matches are required to be in-order. */
@@ -66,6 +73,7 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
       SpanQuery clause = clauses[i];
       if (field == null) {                               // check field
         field = clause.getField();
+        fieldset.add(field);
       } else if (clause.getField() != null && !clause.getField().equals(field)) {
         throw new IllegalArgumentException("Clauses must have same field.");
       }

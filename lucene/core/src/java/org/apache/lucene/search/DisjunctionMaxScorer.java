@@ -16,6 +16,9 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.search.intervals.DisjunctionIntervalIterator;
+import org.apache.lucene.search.intervals.IntervalIterator;
+
 import java.io.IOException;
 
 /**
@@ -46,6 +49,7 @@ final class DisjunctionMaxScorer extends DisjunctionScorer {
   DisjunctionMaxScorer(Weight weight, float tieBreakerMultiplier, Scorer[] subScorers) {
     super(weight, subScorers);
     this.tieBreakerMultiplier = tieBreakerMultiplier;
+        
   }
   
   @Override
@@ -66,4 +70,10 @@ final class DisjunctionMaxScorer extends DisjunctionScorer {
   protected float getFinal() {
     return scoreMax + (scoreSum - scoreMax) * tieBreakerMultiplier; 
   }
+  
+  @Override
+  public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+    return new DisjunctionIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, subScorers));
+  }
+
 }
