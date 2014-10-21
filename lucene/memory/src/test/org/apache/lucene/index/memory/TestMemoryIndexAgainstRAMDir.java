@@ -17,14 +17,6 @@ package org.apache.lucene.index.memory;
  * limitations under the License.
  */
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
-import java.util.Set;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.CannedTokenStream;
@@ -40,7 +32,6 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.CompositeReader;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.DocsAndPositionsEnum;
@@ -50,6 +41,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.Term;
@@ -67,13 +59,21 @@ import org.apache.lucene.search.spans.SpanOrQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
-import org.apache.lucene.util.ByteBlockPool.Allocator;
 import org.apache.lucene.util.ByteBlockPool;
+import org.apache.lucene.util.ByteBlockPool.Allocator;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.RecyclingByteBlockAllocator;
 import org.apache.lucene.util.TestUtil;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 
@@ -432,7 +432,7 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
       Document nextDoc = lineFileDocs.nextDoc();
       Document doc = new Document();
       for (IndexableField field : nextDoc.getFields()) {
-        if (field.fieldType().indexed()) {
+        if (field.fieldType().indexOptions() != null) {
           doc.add(field);
           if (random().nextInt(3) == 0) {
             doc.add(field);  // randomly add the same field twice
@@ -443,7 +443,7 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
       writer.addDocument(doc);
       writer.close();
       for (IndexableField field : doc.getFields()) {
-          memory.addField(field.name(), ((Field)field).stringValue(), mockAnalyzer);  
+        memory.addField(field.name(), ((Field)field).stringValue(), mockAnalyzer);  
       }
       DirectoryReader competitor = DirectoryReader.open(dir);
       LeafReader memIndexReader= (LeafReader) memory.createSearcher().getIndexReader();

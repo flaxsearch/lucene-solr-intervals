@@ -57,7 +57,7 @@ New Features
   Robert Muir)
 
 * LUCENE-5911: Add MemoryIndex.freeze() to allow thread-safe searching over a 
-  MemoryIndex. (Alan Woodward)
+  MemoryIndex. (Alan Woodward, David Smiley, Robert Muir)
 
 * LUCENE-5969: Lucene 5.0 has a new index format with mismatched file detection,
   improved exception handling, and indirect norms encoding for sparse fields.
@@ -146,6 +146,10 @@ API Changes
 * LUCENE-6006: Removed FieldInfo.normType since it's redundant: it
   will be DocValuesType.NUMERIC if the field indexed and does not omit
   norms, else null.  (Robert Muir, Mike McCandless)
+
+* LUCENE-6013: Removed indexed boolean from IndexableFieldType and
+  FieldInfo, since it's redundant with IndexOptions != null. (Robert
+  Muir, Mike McCandless)
 
 Bug Fixes
 

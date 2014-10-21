@@ -97,7 +97,6 @@ public class IntervalHighlighterTest extends LuceneTestCase {
       throws Exception {
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(analyzer));
     FieldType type = new FieldType();
-    type.setIndexed(true);
     type.setTokenized(true);
     type.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
     type.setStored(true);
