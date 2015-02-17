@@ -15,15 +15,14 @@
  * limitations under the License.
  */
 
-/**
- */
-
 package org.apache.solr.update;
 
 import org.apache.lucene.document.Document;
+import org.apache.lucene.index.CodecReader;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.SlowCodecReaderWrapper;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.BooleanClause;
@@ -136,7 +135,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
 
     UpdateLog existingLog = updateHandler.getUpdateLog();
     if (this.ulog != null && this.ulog == existingLog) {
-      // If we are reusing the existing update log, inform the log that it's update handler has changed.
+      // If we are reusing the existing update log, inform the log that its update handler has changed.
       // We do this as late as possible.
       this.ulog.init(this, core);
     }
@@ -233,11 +232,11 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
             }
 
             if (cmd.isBlock()) {
-              writer.updateDocuments(updateTerm, cmd, schema.getIndexAnalyzer());
+              writer.updateDocuments(updateTerm, cmd);
             } else {
               Document luceneDocument = cmd.getLuceneDocument();
               // SolrCore.verbose("updateDocument",updateTerm,luceneDocument,writer);
-              writer.updateDocument(updateTerm, luceneDocument, schema.getIndexAnalyzer());
+              writer.updateDocument(updateTerm, luceneDocument);
             }
             // SolrCore.verbose("updateDocument",updateTerm,"DONE");
             
@@ -262,9 +261,9 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
         } else {
           // allow duplicates
           if (cmd.isBlock()) {
-            writer.addDocuments(cmd, schema.getIndexAnalyzer());
+            writer.addDocuments(cmd);
           } else {
-            writer.addDocument(cmd.getLuceneDocument(), schema.getIndexAnalyzer());
+            writer.addDocument(cmd.getLuceneDocument());
           }
 
           if (ulog != null) ulog.add(cmd);
@@ -440,8 +439,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
       RefCounted<IndexWriter> iw = solrCoreState.getIndexWriter(core);
       try {
         IndexWriter writer = iw.get();
-        writer.updateDocument(idTerm, luceneDocument, cmd.getReq().getSchema()
-            .getIndexAnalyzer());
+        writer.updateDocument(idTerm, luceneDocument);
         
         for (Query q : dbqList) {
           writer.deleteDocuments(new DeleteByQueryWrapper(q, core.getLatestSchema()));
@@ -467,9 +465,15 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
     
     List<DirectoryReader> readers = cmd.readers;
     if (readers != null && readers.size() > 0) {
+      List<CodecReader> mergeReaders = new ArrayList<>();
+      for (DirectoryReader reader : readers) {
+        for (LeafReaderContext leaf : reader.leaves()) {
+          mergeReaders.add(SlowCodecReaderWrapper.wrap(leaf.reader()));
+        }
+      }
       RefCounted<IndexWriter> iw = solrCoreState.getIndexWriter(core);
       try {
-        iw.get().addIndexes(readers.toArray(new IndexReader[readers.size()]));
+        iw.get().addIndexes(mergeReaders.toArray(new CodecReader[mergeReaders.size()]));
       } finally {
         iw.decref();
       }
@@ -587,8 +591,6 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
           // SolrCore.verbose("writer.commit() end");
           numDocsPending.set(0);
           callPostCommitCallbacks();
-        } else {
-          callPostSoftCommitCallbacks();
         }
       } finally {
         iw.decref();
@@ -607,7 +609,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
           core.getSearcher(true, false, waitSearcher, true);
           if (ulog != null) ulog.postSoftCommit(cmd);
         }
-        // ulog.postSoftCommit();
+        callPostSoftCommitCallbacks();
       } else {
         synchronized (solrCoreState.getUpdateLock()) {
           if (ulog != null) ulog.preSoftCommit(cmd);
@@ -652,9 +654,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
     if (waitSearcher!=null && waitSearcher[0] != null) {
        try {
         waitSearcher[0].get();
-      } catch (InterruptedException e) {
-        SolrException.log(log,e);
-      } catch (ExecutionException e) {
+      } catch (InterruptedException | ExecutionException e) {
         SolrException.log(log,e);
       }
     }
@@ -795,11 +795,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
       }
 
       if (writer != null) {
-        try {
-          if (indexWriterCloseWaitsForMerges) writer.waitForMerges();
-        } finally {
-          writer.close();
-        }
+        writer.close();
       }
 
     } finally {

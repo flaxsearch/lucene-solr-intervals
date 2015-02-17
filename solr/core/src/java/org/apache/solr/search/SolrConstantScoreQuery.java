@@ -1,16 +1,26 @@
 package org.apache.solr.search;
 
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.search.*;
+import org.apache.lucene.search.ComplexExplanation;
+import org.apache.lucene.search.ConstantScoreQuery;
+import org.apache.lucene.search.DocIdSet;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.Filter;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.SolrException;
 
 import java.io.IOException;
-import java.util.Set;
 import java.util.Map;
+import java.util.Set;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -37,15 +47,16 @@ import java.util.Map;
  * Experimental and subject to change.
  */
 public class SolrConstantScoreQuery extends ConstantScoreQuery implements ExtendedQuery {
+  private final Filter filter;
   boolean cache = true;  // cache by default
   int cost;
 
   public SolrConstantScoreQuery(Filter filter) {
     super(filter);
+    this.filter = filter;
   }
 
   /** Returns the encapsulated filter */
-  @Override
   public Filter getFilter() {
     return filter;
   }
@@ -97,14 +108,10 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
     private Map context;
 
     public ConstantWeight(IndexSearcher searcher) throws IOException {
+      super(SolrConstantScoreQuery.this);
       this.context = ValueSource.newContext(searcher);
       if (filter instanceof SolrFilter)
         ((SolrFilter)filter).createWeight(context, searcher);
-    }
-
-    @Override
-    public Query getQuery() {
-      return SolrConstantScoreQuery.this;
     }
 
     @Override
@@ -120,7 +127,7 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
       return new ConstantScorer(context, this, queryWeight, acceptDocs);
     }
 
@@ -193,6 +200,26 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
     }
 
     @Override
+    public int nextPosition() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return null;
+    }
+
+    @Override
     public int advance(int target) throws IOException {
       return docIdSetIterator.advance(target);
     }
@@ -211,7 +238,7 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) {
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) {
     try {
       return new SolrConstantScoreQuery.ConstantWeight(searcher);
     } catch (IOException e) {

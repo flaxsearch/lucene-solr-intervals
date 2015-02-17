@@ -17,15 +17,11 @@ package org.apache.lucene.spatial.bbox;
  * limitations under the License.
  */
 
-import com.spatial4j.core.context.SpatialContext;
-import com.spatial4j.core.shape.Point;
-import com.spatial4j.core.shape.Rectangle;
-import com.spatial4j.core.shape.Shape;
-
 import org.apache.lucene.document.DoubleField;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
+import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.ValueSource;
@@ -44,6 +40,10 @@ import org.apache.lucene.spatial.query.UnsupportedSpatialOperation;
 import org.apache.lucene.spatial.util.DistanceToShapeValueSource;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.NumericUtils;
+import com.spatial4j.core.context.SpatialContext;
+import com.spatial4j.core.shape.Point;
+import com.spatial4j.core.shape.Rectangle;
+import com.spatial4j.core.shape.Shape;
 
 
 /**
@@ -51,8 +51,9 @@ import org.apache.lucene.util.NumericUtils;
  * coordinates in numeric fields. It supports all {@link SpatialOperation}s and
  * has a custom overlap relevancy. It is based on GeoPortal's <a
  * href="http://geoportal.svn.sourceforge.net/svnroot/geoportal/Geoportal/trunk/src/com/esri/gpt/catalog/lucene/SpatialClauseAdapter.java">SpatialClauseAdapter</a>.
- *
- * <h4>Characteristics:</h4>
+ * <p>
+ * <b>Characteristics:</b>
+ * <br>
  * <ul>
  * <li>Only indexes Rectangles; just one per field value. Other shapes can be provided
  * and the bounding box will be used.</li>
@@ -60,8 +61,9 @@ import org.apache.lucene.util.NumericUtils;
  * <li>Supports most {@link SpatialOperation}s but not Overlaps.</li>
  * <li>Uses the DocValues API for any sorting / relevancy.</li>
  * </ul>
- *
- * <h4>Implementation:</h4>
+ * <p>
+ * <b>Implementation:</b>
+ * <p>
  * This uses 4 double fields for minX, maxX, minY, maxY
  * and a boolean to mark a dateline cross. Depending on the particular {@link
  * SpatialOperation}s, there are a variety of {@link NumericRangeQuery}s to be
@@ -106,7 +108,7 @@ public class BBoxStrategy extends SpatialStrategy {
 
     FieldType fieldType = new FieldType(DoubleField.TYPE_NOT_STORED);
     fieldType.setNumericPrecisionStep(8);//Solr's default
-    fieldType.setDocValueType(FieldInfo.DocValuesType.NUMERIC);
+    fieldType.setDocValuesType(DocValuesType.NUMERIC);
     setFieldType(fieldType);
   }
 

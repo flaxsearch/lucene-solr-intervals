@@ -43,17 +43,6 @@ public class FilterLeafCollector implements LeafCollector {
     in.collect(doc);
   }
 
-  @Override
-  public boolean acceptsDocsOutOfOrder() {
-    return in.acceptsDocsOutOfOrder();
-  }
-
-  @Override
-  public Weight.PostingFeatures postingFeatures() {
-    return in.postingFeatures();
-  }
-
-  @Override
   public String toString() {
     return getClass().getSimpleName() + "(" + in + ")";
   }

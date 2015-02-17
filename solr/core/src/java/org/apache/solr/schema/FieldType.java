@@ -25,7 +25,7 @@ import org.apache.lucene.analysis.util.CharFilterFactory;
 import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.analysis.util.TokenizerFactory;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.ValueSource;
@@ -231,7 +231,7 @@ public abstract class FieldType extends FieldProperties {
    * (taken from toInternal()).   Having a different representation for
    * external, internal, and indexed would present quite a few problems
    * given the current Lucene architecture.  An analyzer for adding docs
-   * would need to translate internal->indexed while an analyzer for
+   * would need to translate internal-&gt;indexed while an analyzer for
    * querying would need to translate external-&gt;indexed.
    * </p>
    * <p>
@@ -268,7 +268,7 @@ public abstract class FieldType extends FieldProperties {
     newType.setTokenized(field.isTokenized());
     newType.setStored(field.stored());
     newType.setOmitNorms(field.omitNorms());
-    newType.setIndexOptions(field.indexed() ? getIndexOptions(field, val) : null);
+    newType.setIndexOptions(field.indexed() ? getIndexOptions(field, val) : IndexOptions.NONE);
     newType.setStoreTermVectors(field.storeTermVector());
     newType.setStoreTermVectorOffsets(field.storeTermOffsets());
     newType.setStoreTermVectorPositions(field.storeTermPositions());
@@ -303,7 +303,7 @@ public abstract class FieldType extends FieldProperties {
    */
   public List<IndexableField> createFields(SchemaField field, Object value, float boost) {
     IndexableField f = createField( field, value, boost);
-    if (field.hasDocValues() && f.fieldType().docValueType() == null) {
+    if (field.hasDocValues() && f.fieldType().docValuesType() == null) {
       // field types that support doc values should either override createField
       // to return a field with doc values or extend createFields if this can't
       // be done in a single field instance (see StrField for example)
@@ -316,7 +316,7 @@ public abstract class FieldType extends FieldProperties {
 
     IndexOptions options = IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
     if (field.omitTermFreqAndPositions()) {
-      options = IndexOptions.DOCS_ONLY;
+      options = IndexOptions.DOCS;
     } else if (field.omitPositions()) {
       options = IndexOptions.DOCS_AND_FREQS;
     } else if (field.storeOffsetsWithPositions()) {
@@ -434,7 +434,7 @@ public abstract class FieldType extends FieldProperties {
   /**
    * Returns a Query instance for doing prefix searches on this field type.
    * Also, other QueryParser implementations may have different semantics.
-   * <p/>
+   * <p>
    * Sub-classes should override this method to provide their own range query implementation.
    *
    * @param parser       the {@link org.apache.solr.search.QParser} calling the method
@@ -450,7 +450,7 @@ public abstract class FieldType extends FieldProperties {
   }
   
   /**
-   * DocValues is not enabled for a field, but its indexed, docvalues can be constructed 
+   * DocValues is not enabled for a field, but it's indexed, docvalues can be constructed 
    * on the fly (uninverted, aka fieldcache) on the first request to sort, facet, etc. 
    * This specifies the structure to use.
    * 
@@ -676,7 +676,7 @@ public abstract class FieldType extends FieldProperties {
    * currently passes part1 and part2 as null if they are '*' respectively. minInclusive and maxInclusive are both true
    * currently by SolrQueryParser but that may change in the future. Also, other QueryParser implementations may have
    * different semantics.
-   * <p/>
+   * <p>
    * Sub-classes should override this method to provide their own range query implementation. They should strive to
    * handle nulls in part1 and/or part2 as well as unequal minInclusive and maxInclusive parameters gracefully.
    *
@@ -755,7 +755,7 @@ public abstract class FieldType extends FieldProperties {
    *
    * <p>
    * This method is called by the <code>SchemaField</code> constructor to 
-   * check that it's initialization does not violate any fundemental 
+   * check that its initialization does not violate any fundemental 
    * requirements of the <code>FieldType</code>.  The default implementation 
    * does nothing, but subclasses may chose to throw a {@link SolrException}  
    * if invariants are violated by the <code>SchemaField.</code>
@@ -792,7 +792,7 @@ public abstract class FieldType extends FieldProperties {
   private static final String POSITION_INCREMENT_GAP = "positionIncrementGap";
 
   /**
-   * Get a map of property name -> value for this field type. 
+   * Get a map of property name -&gt; value for this field type. 
    * @param showDefaults if true, include default properties.
    */
   public SimpleOrderedMap<Object> getNamedPropertyValues(boolean showDefaults) {

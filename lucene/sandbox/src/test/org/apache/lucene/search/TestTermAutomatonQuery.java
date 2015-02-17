@@ -46,6 +46,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
@@ -289,19 +290,22 @@ public class TestTermAutomatonQuery extends LuceneTestCase {
         private Scorer scorer;
 
         @Override
-        public boolean acceptsDocsOutOfOrder() {
-          return false;
-        }
-
-        @Override
         public void setScorer(Scorer scorer) {
-          assert scorer instanceof TermAutomatonScorer;
           this.scorer = scorer;
+          while (scorer instanceof AssertingScorer) {
+            scorer = ((AssertingScorer) scorer).getIn();
+          }
+          assert scorer instanceof TermAutomatonScorer;
         }
 
         @Override
         public void collect(int docID) throws IOException {
           assertEquals(3, scorer.freq());
+        }
+        
+        @Override
+        public boolean needsScores() {
+          return true;
         }
       });
 
@@ -637,7 +641,12 @@ public class TestTermAutomatonQuery extends LuceneTestCase {
         }
       }
 
-      return bits;
+      return new BitDocIdSet(bits);
+    }
+
+    @Override
+    public String toString(String field) {
+      return "RandomFilter(seed=" + seed + ",density=" + density + ")";
     }
   }
 }

@@ -35,7 +35,6 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.apache.lucene.util.LuceneTestCase.AwaitsFix;
 
-@AwaitsFix(bugUrl="https://issues.apache.org/jira/browse/SOLR-6489")
 public class SolrCellMorphlineTest extends AbstractSolrMorphlineTestBase {
 
   private Map<String,Integer> expectedRecords = new HashMap<>();
@@ -43,8 +42,6 @@ public class SolrCellMorphlineTest extends AbstractSolrMorphlineTestBase {
   @BeforeClass
   public static void beforeClass2() {
     assumeFalse("FIXME: Morphlines currently has issues with Windows paths", Constants.WINDOWS);
-    assumeFalse("FIXME: This test fails under Java 8 due to the Saxon dependency - see SOLR-1301", Constants.JRE_IS_MINIMUM_JAVA8);
-    assumeFalse("FIXME: This test fails under J9 due to the Saxon dependency - see SOLR-1301", System.getProperty("java.vm.info", "<?>").contains("IBM J9"));
   }
 
   @Before
@@ -142,6 +139,7 @@ public class SolrCellMorphlineTest extends AbstractSolrMorphlineTestBase {
   }
   
   @Test
+  @AwaitsFix(bugUrl="https://issues.apache.org/jira/browse/SOLR-6489")
   public void testSolrCellJPGCompressed() throws Exception {
     morphline = createMorphline("test-morphlines" + File.separator + "solrCellJPGCompressed");    
     String path = RESOURCES_DIR + File.separator + "test-documents" + File.separator;
@@ -165,6 +163,7 @@ public class SolrCellMorphlineTest extends AbstractSolrMorphlineTestBase {
   }  
 
   @Test
+  @AwaitsFix(bugUrl="https://issues.apache.org/jira/browse/SOLR-6489")
   public void testSolrCellDocumentTypes() throws Exception {
     AbstractSolrMorphlineTestBase.setupMorphline(tempDir, "test-morphlines/solrCellDocumentTypes", false);
     

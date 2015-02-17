@@ -17,8 +17,6 @@ package org.apache.lucene.util;
  * limitations under the License.
  */
 
-import org.apache.lucene.store.Directory;
-
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
@@ -30,6 +28,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileStore;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -37,8 +36,15 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.FileSwitchDirectory;
+import org.apache.lucene.store.FilterDirectory;
+import org.apache.lucene.store.RAMDirectory;
 
 /** This class emulates the new Java 7 "Try-With-Resources" statement.
  * Remove once Lucene is on Java 7.
@@ -142,7 +148,7 @@ public final class IOUtils {
    * the read charset doesn't match the expected {@link Charset}. 
    * <p>
    * Decoding readers are useful to load configuration files, stopword lists or synonym files
-   * to detect character set problems. However, its not recommended to use as a common purpose 
+   * to detect character set problems. However, it's not recommended to use as a common purpose 
    * reader.
    * 
    * @param stream the stream to wrap in a reader
@@ -162,7 +168,7 @@ public final class IOUtils {
    * the read charset doesn't match the expected {@link Charset}. 
    * <p>
    * Decoding readers are useful to load configuration files, stopword lists or synonym files
-   * to detect character set problems. However, its not recommended to use as a common purpose 
+   * to detect character set problems. However, it's not recommended to use as a common purpose 
    * reader.
    * @param clazz the class used to locate the resource
    * @param resource the resource name to load
@@ -215,7 +221,7 @@ public final class IOUtils {
    * <p>
    * Some of the files may be null, if so they are ignored.
    */
-  public static void deleteFilesIgnoringExceptions(Iterable<? extends Path> files) {
+  public static void deleteFilesIgnoringExceptions(Collection<? extends Path> files) {
     for (Path name : files) {
       if (name != null) {
         try {
@@ -249,7 +255,7 @@ public final class IOUtils {
    * 
    * @param files files to delete
    */
-  public static void deleteFilesIfExist(Iterable<? extends Path> files) throws IOException {
+  public static void deleteFilesIfExist(Collection<? extends Path> files) throws IOException {
     Throwable th = null;
 
     for (Path file : files) {
@@ -409,7 +415,8 @@ public final class IOUtils {
     }
     
     if (isDir) {
-      assert (Constants.LINUX || Constants.MAC_OS_X) == false :
+      // TODO: LUCENE-6169 - Fix this assert once Java 9 problems are solved!
+      assert (Constants.LINUX || Constants.MAC_OS_X) == false || Constants.JRE_IS_MINIMUM_JAVA9 :
         "On Linux and MacOSX fsyncing a directory should not throw IOException, "+
         "we just don't want to rely on that in production (undocumented). Got: " + exc;
       // Ignore exception if it is a directory
@@ -418,5 +425,130 @@ public final class IOUtils {
     
     // Throw original exception
     throw exc;
+  }
+
+  /** If the dir is an {@link FSDirectory} or wraps one via possibly
+   *  nested {@link FilterDirectory} or {@link FileSwitchDirectory},
+   *  this returns {@link #spins(Path)} for the wrapped directory,
+   *  else, true.
+   *
+   *  @throws IOException if {@code path} does not exist.
+   *
+   *  @lucene.internal */
+  public static boolean spins(Directory dir) throws IOException {
+    dir = FilterDirectory.unwrap(dir);
+    if (dir instanceof FileSwitchDirectory) {
+      FileSwitchDirectory fsd = (FileSwitchDirectory) dir;
+      // Spinning is contagious:
+      return spins(fsd.getPrimaryDir()) || spins(fsd.getSecondaryDir());
+    } else if (dir instanceof RAMDirectory) {
+      return false;
+    } else if (dir instanceof FSDirectory) {
+      return spins(((FSDirectory) dir).getDirectory());
+    } else {
+      return true;
+    }
+  }
+
+  /** Rough Linux-only heuristics to determine whether the provided
+   *  {@code Path} is backed by spinning storage.  For example, this
+   *  returns false if the disk is a solid-state disk.
+   *
+   *  @param path a location to check which must exist. the mount point will be determined from this location.
+   *  @return false if the storage is non-rotational (e.g. an SSD), or true if it is spinning or could not be determined
+   *  @throws IOException if {@code path} does not exist.
+   *
+   *  @lucene.internal */
+  public static boolean spins(Path path) throws IOException {
+    // resolve symlinks (this will throw exception if the path does not exist)
+    path = path.toRealPath();
+    
+    // Super cowboy approach, but seems to work!
+    if (!Constants.LINUX) {
+      return true; // no detection
+    }
+
+    try {
+      return spinsLinux(path);
+    } catch (Exception exc) {
+      // our crazy heuristics can easily trigger SecurityException, AIOOBE, etc ...
+      return true;
+    }
+  }
+  
+  // following methods are package-private for testing ONLY
+  
+  // note: requires a real or fake linux filesystem!
+  static boolean spinsLinux(Path path) throws IOException {
+    FileStore store = getFileStore(path);
+    
+    // if fs type is tmpfs, it doesn't spin.
+    // this won't have a corresponding block device
+    if ("tmpfs".equals(store.type())) {
+      return false;
+    }
+    
+    // get block device name
+    String devName = getBlockDevice(store);
+    // not a device (e.g. NFS server)
+    if (!devName.startsWith("/")) {
+      return true;
+    }
+    
+    // resolve any symlinks to real block device (e.g. LVM)
+    // /dev/sda0 -> sda0
+    // /devices/XXX -> sda0
+    devName = path.getRoot().resolve(devName).toRealPath().getFileName().toString();
+  
+    // now read:
+    Path sysinfo = path.getRoot().resolve("sys/block");
+    Path devinfo = sysinfo.resolve(devName);
+    
+    // tear away partition numbers until we find it.
+    while (!Files.exists(devinfo)) {
+      if (!devName.isEmpty() && Character.isDigit(devName.charAt(devName.length()-1))) {
+        devName = devName.substring(0, devName.length()-1);
+      } else {
+        break; // give up
+      }
+      devinfo = sysinfo.resolve(devName);
+    }
+    
+    // read first byte from rotational, it's a 1 if it spins.
+    Path info = devinfo.resolve("queue/rotational");
+    try (InputStream stream = Files.newInputStream(info)) {
+      return stream.read() == '1'; 
+    }
+  }
+  
+  // Files.getFileStore(Path) useless here!
+  // don't complain, just try it yourself
+  static FileStore getFileStore(Path path) throws IOException {
+    FileStore store = Files.getFileStore(path);
+    String mount = getMountPoint(store);
+
+    // find the "matching" FileStore from system list, it's the one we want.
+    for (FileStore fs : path.getFileSystem().getFileStores()) {
+      if (mount.equals(getMountPoint(fs))) {
+        return fs;
+      }
+    }
+
+    // fall back to crappy one we got from Files.getFileStore
+    return store;    
+  }
+  
+  // these are hacks that are not guaranteed
+  static String getMountPoint(FileStore store) {
+    String desc = store.toString();
+    return desc.substring(0, desc.lastIndexOf('(') - 1);
+  }
+  
+  // these are hacks that are not guaranteed
+  static String getBlockDevice(FileStore store) {
+    String desc = store.toString();
+    int start = desc.lastIndexOf('(');
+    int end = desc.indexOf(')', start);
+    return desc.substring(start+1, end);
   }
 }

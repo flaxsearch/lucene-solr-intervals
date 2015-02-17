@@ -64,6 +64,11 @@ public class DelegatingCollector extends SimpleCollector {
   }
 
   @Override
+  public boolean needsScores() {
+    return delegate.needsScores();
+  }
+
+  @Override
   public void collect(int doc) throws IOException {
     leafDelegate.collect(doc);
   }
@@ -73,11 +78,6 @@ public class DelegatingCollector extends SimpleCollector {
     this.context = context;
     this.docBase = context.docBase;
     leafDelegate = delegate.getLeafCollector(context);
-  }
-
-  @Override
-  public boolean acceptsDocsOutOfOrder() {
-    return leafDelegate.acceptsDocsOutOfOrder();
   }
 
   public void finish() throws IOException {

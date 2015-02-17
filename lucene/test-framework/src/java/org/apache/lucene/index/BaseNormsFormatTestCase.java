@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+import com.carrotsearch.randomizedtesting.annotations.Seed;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
@@ -153,6 +154,85 @@ public abstract class BaseNormsFormatTestCase extends BaseIndexFileFormatTestCas
     }
   }
   
+  public void testOutliers() throws Exception {
+    int iterations = atLeast(1);
+    final Random r = random();
+    for (int i = 0; i < iterations; i++) {
+      final long commonValue = TestUtil.nextLong(r, Byte.MIN_VALUE, Byte.MAX_VALUE);
+      doTestNormsVersusStoredFields(new LongProducer() {
+        @Override
+        long next() {
+          return r.nextInt(100) == 0 ? TestUtil.nextLong(r, Byte.MIN_VALUE, Byte.MAX_VALUE) : commonValue;
+        }
+      });
+    }
+  }
+  
+  public void testOutliers2() throws Exception {
+    int iterations = atLeast(1);
+    final Random r = random();
+    for (int i = 0; i < iterations; i++) {
+      final long commonValue = TestUtil.nextLong(r, Byte.MIN_VALUE, Byte.MAX_VALUE);
+      final long uncommonValue = TestUtil.nextLong(r, Byte.MIN_VALUE, Byte.MAX_VALUE);
+      doTestNormsVersusStoredFields(new LongProducer() {
+        @Override
+        long next() {
+          return r.nextInt(100) == 0 ? uncommonValue : commonValue;
+        }
+      });
+    }
+  }
+  
+  public void testNCommon() throws Exception {
+    final Random r = random();
+    final int N = TestUtil.nextInt(r, 2, 15);
+    final long[] commonValues = new long[N];
+    for (int j = 0; j < N; ++j) {
+      commonValues[j] = TestUtil.nextLong(r, Byte.MIN_VALUE, Byte.MAX_VALUE);
+    }
+    final int numOtherValues = TestUtil.nextInt(r, 2, 256 - N);
+    final long[] otherValues = new long[numOtherValues];
+    for (int j = 0; j < numOtherValues; ++j) {
+      otherValues[j] = TestUtil.nextLong(r, Byte.MIN_VALUE, Byte.MAX_VALUE);
+    }
+    doTestNormsVersusStoredFields(new LongProducer() {
+      @Override
+      long next() {
+        return r.nextInt(100) == 0 ? otherValues[r.nextInt(numOtherValues - 1)] : commonValues[r.nextInt(N - 1)];
+      }
+    });
+  }
+  
+  /**
+   * a more thorough n-common that tests all low bpv
+   */
+  @Nightly
+  public void testNCommonBig() throws Exception {
+    final int iterations = atLeast(1);
+    final Random r = random();
+    for (int i = 0; i < iterations; ++i) {
+      // 16 is 4 bpv, the max before we jump to 8bpv
+      for (int n = 2; n < 16; ++n) {
+        final int N = n;
+        final long[] commonValues = new long[N];
+        for (int j = 0; j < N; ++j) {
+          commonValues[j] = TestUtil.nextLong(r, Byte.MIN_VALUE, Byte.MAX_VALUE);
+        }
+        final int numOtherValues = TestUtil.nextInt(r, 2, 256 - N);
+        final long[] otherValues = new long[numOtherValues];
+        for (int j = 0; j < numOtherValues; ++j) {
+          otherValues[j] = TestUtil.nextLong(r, Byte.MIN_VALUE, Byte.MAX_VALUE);
+        }
+        doTestNormsVersusStoredFields(new LongProducer() {
+          @Override
+          long next() {
+            return r.nextInt(100) == 0 ? otherValues[r.nextInt(numOtherValues - 1)] : commonValues[r.nextInt(N - 1)];
+          }
+        });
+      }
+    }
+  }
+  
   private void doTestNormsVersusStoredFields(LongProducer longs) throws Exception {
     int numDocs = atLeast(500);
     long norms[] = new long[numDocs];
@@ -197,7 +277,7 @@ public abstract class BaseNormsFormatTestCase extends BaseIndexFileFormatTestCas
       NumericDocValues docValues = r.getNormValues("stored");
       for (int i = 0; i < r.maxDoc(); i++) {
         long storedValue = Long.parseLong(r.document(i).get("stored"));
-        assertEquals(storedValue, docValues.get(i));
+        assertEquals("doc " + i, storedValue, docValues.get(i));
       }
     }
     ir.close();
@@ -266,7 +346,7 @@ public abstract class BaseNormsFormatTestCase extends BaseIndexFileFormatTestCas
   
   // TODO: test thread safety (e.g. across different fields) explicitly here
 
-  /** 
+  /*
    * LUCENE-6006: Tests undead norms.
    *                                 .....            
    *                             C C  /            

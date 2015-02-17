@@ -17,9 +17,9 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.index.LeafReaderContext;
+
+import java.io.IOException;
 
 /**
  * Base {@link Collector} implementation that is used to collect all contexts.
@@ -42,15 +42,7 @@ public abstract class SimpleCollector implements Collector, LeafCollector {
     // no-op by default
   }
 
-  @Override
-  public Weight.PostingFeatures postingFeatures() {
-    return Weight.PostingFeatures.DOCS_AND_FREQS;
-  }
-
 // redeclare methods so that javadocs are inherited on sub-classes
-
-  @Override
-  public abstract boolean acceptsDocsOutOfOrder();
 
   @Override
   public abstract void collect(int doc) throws IOException;

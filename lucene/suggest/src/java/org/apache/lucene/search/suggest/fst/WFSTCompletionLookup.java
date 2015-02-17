@@ -19,6 +19,7 @@ package org.apache.lucene.search.suggest.fst;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -40,13 +41,13 @@ import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.OfflineSorter.ByteSequencesWriter;
 import org.apache.lucene.util.fst.Builder;
+import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.FST.Arc;
 import org.apache.lucene.util.fst.FST.BytesReader;
-import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.PositiveIntOutputs;
+import org.apache.lucene.util.fst.Util;
 import org.apache.lucene.util.fst.Util.Result;
 import org.apache.lucene.util.fst.Util.TopResults;
-import org.apache.lucene.util.fst.Util;
 
 /**
  * Suggester based on a weighted FST: it first traverses the prefix, 
@@ -247,12 +248,12 @@ public class WFSTCompletionLookup extends Lookup {
     }
   }
   
-  /** cost -> weight */
+  /** cost -&gt; weight */
   private static int decodeWeight(long encoded) {
     return (int)(Integer.MAX_VALUE - encoded);
   }
   
-  /** weight -> cost */
+  /** weight -&gt; cost */
   private static int encodeWeight(long value) {
     if (value < 0 || value > Integer.MAX_VALUE) {
       throw new UnsupportedOperationException("cannot encode value: " + value);
@@ -301,7 +302,7 @@ public class WFSTCompletionLookup extends Lookup {
   }
   
   @Override
-  public Iterable<? extends Accountable> getChildResources() {
+  public Collection<Accountable> getChildResources() {
     if (fst == null) {
       return Collections.emptyList();
     } else {

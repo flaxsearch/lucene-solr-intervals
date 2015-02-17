@@ -20,7 +20,7 @@ package org.apache.lucene.codecs.blocktree;
 import java.io.IOException;
 
 import org.apache.lucene.codecs.BlockTermState;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
@@ -145,7 +145,7 @@ final class IntersectTermsEnumFrame {
       // Skip first long -- has redundant fp, hasTerms
       // flag, isFloor flag
       final long code = floorDataReader.readVLong();
-      if ((code & BlockTreeTermsWriter.OUTPUT_FLAG_IS_FLOOR) != 0) {
+      if ((code & BlockTreeTermsReader.OUTPUT_FLAG_IS_FLOOR) != 0) {
         numFollowFloorBlocks = floorDataReader.readVInt();
         nextFloorLabel = floorDataReader.readByte() & 0xff;
         // if (DEBUG) System.out.println("    numFollowFloorBlocks=" + numFollowFloorBlocks + " nextFloorLabel=" + nextFloorLabel);
@@ -278,7 +278,7 @@ final class IntersectTermsEnumFrame {
       // stats
       termState.docFreq = statsReader.readVInt();
       //if (DEBUG) System.out.println("    dF=" + state.docFreq);
-      if (ite.fr.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+      if (ite.fr.fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
         termState.totalTermFreq = termState.docFreq + statsReader.readVLong();
         //if (DEBUG) System.out.println("    totTF=" + state.totalTermFreq);
       }

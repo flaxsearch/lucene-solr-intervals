@@ -36,7 +36,7 @@ import org.apache.lucene.util.IOUtils;
  *  created by {@link #longToBytes} during indexing.  At search time,
  *  the TermsEnum implementation {@link IDVersionSegmentTermsEnum}
  *  enables fast (using only the terms index when possible) lookup for
- *  whether a given ID was previously indexed with version > N (see
+ *  whether a given ID was previously indexed with version &gt; N (see
  *  {@link IDVersionSegmentTermsEnum#seekExact(BytesRef,long)}.
  *
  *  <p>This is most effective if the app assigns monotonically
@@ -58,12 +58,12 @@ import org.apache.lucene.util.IOUtils;
 
 public class IDVersionPostingsFormat extends PostingsFormat {
 
-  /** version must be >= this. */
+  /** version must be &gt;= this. */
   public static final long MIN_VERSION = 0;
 
   // TODO: we could delta encode instead, and keep the last bit:
 
-  /** version must be <= this, because we encode with ZigZag. */
+  /** version must be &lt;= this, because we encode with ZigZag. */
   public static final long MAX_VERSION = 0x3fffffffffffffffL;
 
   private final int minTermsInBlock;
@@ -77,11 +77,12 @@ public class IDVersionPostingsFormat extends PostingsFormat {
     super("IDVersion");
     this.minTermsInBlock = minTermsInBlock;
     this.maxTermsInBlock = maxTermsInBlock;
+    BlockTreeTermsWriter.validateSettings(minTermsInBlock, maxTermsInBlock);
   }
 
   @Override
   public FieldsConsumer fieldsConsumer(SegmentWriteState state) throws IOException {
-    PostingsWriterBase postingsWriter = new IDVersionPostingsWriter(state);
+    PostingsWriterBase postingsWriter = new IDVersionPostingsWriter(state.liveDocs);
     boolean success = false;
     try {
       FieldsConsumer ret = new VersionBlockTreeTermsWriter(state, 
@@ -99,7 +100,7 @@ public class IDVersionPostingsFormat extends PostingsFormat {
 
   @Override
   public FieldsProducer fieldsProducer(SegmentReadState state) throws IOException {
-    PostingsReaderBase postingsReader = new IDVersionPostingsReader(state);
+    PostingsReaderBase postingsReader = new IDVersionPostingsReader();
     boolean success = false;
      try {
        FieldsProducer ret = new VersionBlockTreeTermsReader(postingsReader, state);

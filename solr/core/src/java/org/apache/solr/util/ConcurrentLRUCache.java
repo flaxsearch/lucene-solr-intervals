@@ -34,7 +34,7 @@ import java.lang.ref.WeakReference;
 /**
  * A LRU cache implementation based upon ConcurrentHashMap and other techniques to reduce
  * contention and synchronization overhead to utilize multiple CPU cores more effectively.
- * <p/>
+ * <p>
  * Note that the implementation does not follow a true LRU (least-recently-used) eviction
  * strategy. Instead it strives to remove least recently used items but when the initial
  * cleanup does not remove enough items to reach the 'acceptableWaterMark' limit, it can
@@ -245,7 +245,7 @@ public class ConcurrentLRUCache<K,V> {
             // this entry is guaranteed not to be in the bottom
             // group, so do nothing but remove it from the eset.
             numKept++;
-            // remove the entry by moving the last element to it's position
+            // remove the entry by moving the last element to its position
             eset[i] = eset[eSize-1];
             eSize--;
 
@@ -258,7 +258,7 @@ public class ConcurrentLRUCache<K,V> {
             evictEntry(ce.key);
             numRemoved++;
 
-            // remove the entry by moving the last element to it's position
+            // remove the entry by moving the last element to its position
             eset[i] = eset[eSize-1];
             eSize--;
           } else {

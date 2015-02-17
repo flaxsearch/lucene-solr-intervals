@@ -62,10 +62,14 @@
   </target>
 
   <target name="pitest" description="Run PITest on both Lucene and Solr">
-    <subant target="pitest" inheritall="false" failonerror="false">
+    <subant target="pitest" inheritall="false" failonerror="true">
       <fileset dir="lucene" includes="build.xml" />
       <fileset dir="solr" includes="build.xml" />
     </subant>
+  </target>
+
+  <target name="beast">
+    <fail message="The Beast only works inside of individual modules"/>
   </target>
 
   <target name="documentation" description="Generate Lucene and Solr Documentation">
@@ -100,6 +104,7 @@
         <or>
           <containsregexp expression="@author\b" casesensitive="yes"/>
           <containsregexp expression="\bno(n|)commit\b" casesensitive="no"/>
+          <containsregexp expression="\bTOOD:" casesensitive="yes"/>
           <containsregexp expression="\t" casesensitive="no"/>
           <containsregexp expression="\$(?:LastChanged)?Date\b" casesensitive="yes"/>
           <containsregexp expression="\$(?:(?:LastChanged)?Revision|Rev)\b" casesensitive="yes"/>
@@ -112,7 +117,7 @@
       </fileset>
       <map from="${validate.currDir}${file.separator}" to="* "/>
     </pathconvert>
-    <fail if="validate.patternsFound">The following files contain @author tags, tabs, svn keywords or nocommits:${line.separator}${validate.patternsFound}</fail>
+    <fail if="validate.patternsFound">The following files contain @author tags, tabs, TOODs, svn keywords or nocommits:${line.separator}${validate.patternsFound}</fail>
   </target>
 	
   <target name="rat-sources" description="Runs rat across all sources and tests">
@@ -486,7 +491,7 @@ File | Project Structure | Platform Settings | SDKs):
   </target>
 
   <target name="regenerate" description="Runs all code regenerators">
-    <subant target="regenerate" inheritall="false" failonerror="false">
+    <subant target="regenerate" inheritall="false" failonerror="true">
       <fileset dir="lucene" includes="build.xml" />
       <!-- todo:
       <fileset dir="solr" includes="build.xml" />-->

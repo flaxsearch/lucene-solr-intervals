@@ -23,7 +23,6 @@ import java.util.Collection;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.CompoundFormat;
 import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.MergeState.CheckAbort;
 import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.Directory;
@@ -46,7 +45,7 @@ import org.apache.lucene.store.IndexOutput;
  *   <li>Compound (.cfs) --&gt; Header, FileData <sup>FileCount</sup>, Footer</li>
  *   <li>Compound Entry Table (.cfe) --&gt; Header, FileCount, &lt;FileName,
  *       DataOffset, DataLength&gt; <sup>FileCount</sup></li>
- *   <li>Header --&gt; {@link CodecUtil#writeSegmentHeader SegmentHeader}</li>
+ *   <li>Header --&gt; {@link CodecUtil#writeIndexHeader IndexHeader}</li>
  *   <li>FileCount --&gt; {@link DataOutput#writeVInt VInt}</li>
  *   <li>DataOffset,DataLength,Checksum --&gt; {@link DataOutput#writeLong UInt64}</li>
  *   <li>FileName --&gt; {@link DataOutput#writeString String}</li>
@@ -73,18 +72,18 @@ public final class Lucene50CompoundFormat extends CompoundFormat {
   }
 
   @Override
-  public void write(Directory dir, SegmentInfo si, Collection<String> files, CheckAbort checkAbort, IOContext context) throws IOException {
+  public void write(Directory dir, SegmentInfo si, IOContext context) throws IOException {
     String dataFile = IndexFileNames.segmentFileName(si.name, "", DATA_EXTENSION);
     String entriesFile = IndexFileNames.segmentFileName(si.name, "", ENTRIES_EXTENSION);
     
     try (IndexOutput data =    dir.createOutput(dataFile, context);
          IndexOutput entries = dir.createOutput(entriesFile, context)) {
-      CodecUtil.writeSegmentHeader(data,    DATA_CODEC, VERSION_CURRENT, si.getId(), "");
-      CodecUtil.writeSegmentHeader(entries, ENTRY_CODEC, VERSION_CURRENT, si.getId(), "");
+      CodecUtil.writeIndexHeader(data,    DATA_CODEC, VERSION_CURRENT, si.getId(), "");
+      CodecUtil.writeIndexHeader(entries, ENTRY_CODEC, VERSION_CURRENT, si.getId(), "");
       
       // write number of files
-      entries.writeVInt(files.size());
-      for (String file : files) {
+      entries.writeVInt(si.files().size());
+      for (String file : si.files()) {
         
         // write bytes for file
         long startOffset = data.getFilePointer();
@@ -99,21 +98,11 @@ public final class Lucene50CompoundFormat extends CompoundFormat {
         entries.writeString(IndexFileNames.stripSegmentName(file));
         entries.writeLong(startOffset);
         entries.writeLong(length);
-        
-        checkAbort.work(length);
       }
       
       CodecUtil.writeFooter(data);
       CodecUtil.writeFooter(entries);
     }
-  }
-
-  @Override
-  public String[] files(SegmentInfo si) {
-    return new String[] {
-      IndexFileNames.segmentFileName(si.name, "", DATA_EXTENSION),
-      IndexFileNames.segmentFileName(si.name, "", ENTRIES_EXTENSION)
-    };
   }
 
   /** Extension of compound file */

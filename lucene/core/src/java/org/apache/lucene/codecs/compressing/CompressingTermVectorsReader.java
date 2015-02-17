@@ -17,20 +17,9 @@ package org.apache.lucene.codecs.compressing;
  * limitations under the License.
  */
 
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.BLOCK_SIZE;
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.CODEC_SFX_DAT;
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.CODEC_SFX_IDX;
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.FLAGS_BITS;
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.OFFSETS;
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.PAYLOADS;
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.POSITIONS;
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.VECTORS_EXTENSION;
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.VECTORS_INDEX_EXTENSION;
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.VERSION_CURRENT;
-import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.VERSION_START;
-
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
@@ -38,8 +27,7 @@ import java.util.NoSuchElementException;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.TermVectorsReader;
 import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
@@ -63,6 +51,18 @@ import org.apache.lucene.util.LongsRef;
 import org.apache.lucene.util.packed.BlockPackedReaderIterator;
 import org.apache.lucene.util.packed.PackedInts;
 
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.CODEC_SFX_DAT;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.CODEC_SFX_IDX;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.FLAGS_BITS;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.OFFSETS;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.PACKED_BLOCK_SIZE;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.PAYLOADS;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.POSITIONS;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.VECTORS_EXTENSION;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.VECTORS_INDEX_EXTENSION;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.VERSION_CHUNK_STATS;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.VERSION_CURRENT;
+import static org.apache.lucene.codecs.compressing.CompressingTermVectorsWriter.VERSION_START;
 
 /**
  * {@link TermVectorsReader} for {@link CompressingTermVectorsFormat}.
@@ -81,6 +81,9 @@ public final class CompressingTermVectorsReader extends TermVectorsReader implem
   private final int numDocs;
   private boolean closed;
   private final BlockPackedReaderIterator reader;
+  private final long numChunks; // number of compressed blocks written
+  private final long numDirtyChunks; // number of incomplete compressed blocks written
+  private final long maxPointer; // end of the data section
 
   // used by clone
   private CompressingTermVectorsReader(CompressingTermVectorsReader reader) {
@@ -92,8 +95,11 @@ public final class CompressingTermVectorsReader extends TermVectorsReader implem
     this.decompressor = reader.decompressor.clone();
     this.chunkSize = reader.chunkSize;
     this.numDocs = reader.numDocs;
-    this.reader = new BlockPackedReaderIterator(vectorsStream, packedIntsVersion, BLOCK_SIZE, 0);
+    this.reader = new BlockPackedReaderIterator(vectorsStream, packedIntsVersion, PACKED_BLOCK_SIZE, 0);
     this.version = reader.version;
+    this.numChunks = reader.numChunks;
+    this.numDirtyChunks = reader.numDirtyChunks;
+    this.maxPointer = reader.maxPointer;
     this.closed = false;
   }
 
@@ -108,16 +114,18 @@ public final class CompressingTermVectorsReader extends TermVectorsReader implem
     int version = -1;
     CompressingStoredFieldsIndexReader indexReader = null;
     
+    long maxPointer = -1;
+    
     // Load the index into memory
     final String indexName = IndexFileNames.segmentFileName(segment, segmentSuffix, VECTORS_INDEX_EXTENSION);
     try (ChecksumIndexInput input = d.openChecksumInput(indexName, context)) {
       Throwable priorE = null;
       try {
         final String codecNameIdx = formatName + CODEC_SFX_IDX;
-        version = CodecUtil.checkSegmentHeader(input, codecNameIdx, VERSION_START, VERSION_CURRENT, si.getId(), segmentSuffix);
-        assert CodecUtil.segmentHeaderLength(codecNameIdx, segmentSuffix) == input.getFilePointer();
+        version = CodecUtil.checkIndexHeader(input, codecNameIdx, VERSION_START, VERSION_CURRENT, si.getId(), segmentSuffix);
+        assert CodecUtil.indexHeaderLength(codecNameIdx, segmentSuffix) == input.getFilePointer();
         indexReader = new CompressingStoredFieldsIndexReader(input, si);
-        input.readVLong(); // the end of the data file
+        maxPointer = input.readVLong(); // the end of the data section
       } catch (Throwable exception) {
         priorE = exception;
       } finally {
@@ -127,19 +135,32 @@ public final class CompressingTermVectorsReader extends TermVectorsReader implem
     
     this.version = version;
     this.indexReader = indexReader;
+    this.maxPointer = maxPointer;
 
     try {
       // Open the data file and read metadata
       final String vectorsStreamFN = IndexFileNames.segmentFileName(segment, segmentSuffix, VECTORS_EXTENSION);
       vectorsStream = d.openInput(vectorsStreamFN, context);
       final String codecNameDat = formatName + CODEC_SFX_DAT;
-      int version2 = CodecUtil.checkSegmentHeader(vectorsStream, codecNameDat, VERSION_START, VERSION_CURRENT, si.getId(), segmentSuffix);
+      int version2 = CodecUtil.checkIndexHeader(vectorsStream, codecNameDat, VERSION_START, VERSION_CURRENT, si.getId(), segmentSuffix);
       if (version != version2) {
         throw new CorruptIndexException("Version mismatch between stored fields index and data: " + version + " != " + version2, vectorsStream);
       }
-      assert CodecUtil.segmentHeaderLength(codecNameDat, segmentSuffix) == vectorsStream.getFilePointer();
+      assert CodecUtil.indexHeaderLength(codecNameDat, segmentSuffix) == vectorsStream.getFilePointer();
       
       long pos = vectorsStream.getFilePointer();
+      
+      if (version >= VERSION_CHUNK_STATS) {
+        vectorsStream.seek(maxPointer);
+        numChunks = vectorsStream.readVLong();
+        numDirtyChunks = vectorsStream.readVLong();
+        if (numDirtyChunks > numChunks) {
+          throw new CorruptIndexException("invalid chunk counts: dirty=" + numDirtyChunks + ", total=" + numChunks, vectorsStream);
+        }
+      } else {
+        numChunks = numDirtyChunks = -1;
+      }
+      
       // NOTE: data file is too costly to verify checksum against all the bytes on open,
       // but for now we at least verify proper structure of the checksum footer: which looks
       // for FOOTER_MAGIC + algorithmID. This is cheap and can detect some forms of corruption
@@ -150,7 +171,7 @@ public final class CompressingTermVectorsReader extends TermVectorsReader implem
       packedIntsVersion = vectorsStream.readVInt();
       chunkSize = vectorsStream.readVInt();
       decompressor = compressionMode.newDecompressor();
-      this.reader = new BlockPackedReaderIterator(vectorsStream, packedIntsVersion, BLOCK_SIZE, 0);
+      this.reader = new BlockPackedReaderIterator(vectorsStream, packedIntsVersion, PACKED_BLOCK_SIZE, 0);
 
       success = true;
     } finally {
@@ -176,12 +197,24 @@ public final class CompressingTermVectorsReader extends TermVectorsReader implem
     return version;
   }
 
-  CompressingStoredFieldsIndexReader getIndex() {
+  CompressingStoredFieldsIndexReader getIndexReader() {
     return indexReader;
   }
 
   IndexInput getVectorsStream() {
     return vectorsStream;
+  }
+  
+  long getMaxPointer() {
+    return maxPointer;
+  }
+  
+  long getNumChunks() {
+    return numChunks;
+  }
+  
+  long getNumDirtyChunks() {
+    return numDirtyChunks;
   }
 
   /**
@@ -902,30 +935,27 @@ public final class CompressingTermVectorsReader extends TermVectorsReader implem
     }
 
     @Override
-    public final DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
-      final TVDocsEnum docsEnum;
-      if (reuse != null && reuse instanceof TVDocsEnum) {
-        docsEnum = (TVDocsEnum) reuse;
+    public final PostingsEnum postings(Bits liveDocs, PostingsEnum reuse, int flags) throws IOException {
+
+      if ((flags & PostingsEnum.FLAG_POSITIONS) >= PostingsEnum.FLAG_POSITIONS) {
+        if (positions == null && startOffsets == null)
+          return null;
+      }
+
+      final TVPostingsEnum docsEnum;
+      if (reuse != null && reuse instanceof TVPostingsEnum) {
+        docsEnum = (TVPostingsEnum) reuse;
       } else {
-        docsEnum = new TVDocsEnum();
+        docsEnum = new TVPostingsEnum();
       }
 
       docsEnum.reset(liveDocs, termFreqs[ord], positionIndex[ord], positions, startOffsets, lengths, payloads, payloadIndex);
       return docsEnum;
     }
 
-    @Override
-    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException {
-      if (positions == null && startOffsets == null) {
-        return null;
-      }
-      // TODO: slightly sheisty
-      return (DocsAndPositionsEnum) docs(liveDocs, reuse, flags);
-    }
-
   }
 
-  private static class TVDocsEnum extends DocsAndPositionsEnum {
+  private static class TVPostingsEnum extends PostingsEnum {
 
     private Bits liveDocs;
     private int doc = -1;
@@ -939,7 +969,7 @@ public final class CompressingTermVectorsReader extends TermVectorsReader implem
     private int basePayloadOffset;
     private int i;
 
-    TVDocsEnum() {
+    TVPostingsEnum() {
       payload = new BytesRef();
     }
 
@@ -1074,7 +1104,7 @@ public final class CompressingTermVectorsReader extends TermVectorsReader implem
   }
   
   @Override
-  public Iterable<? extends Accountable> getChildResources() {
+  public Collection<Accountable> getChildResources() {
     return Collections.singleton(Accountables.namedAccountable("term vector index", indexReader));
   }
   

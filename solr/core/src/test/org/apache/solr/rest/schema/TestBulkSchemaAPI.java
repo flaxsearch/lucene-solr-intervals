@@ -72,7 +72,10 @@ public class TestBulkSchemaAPI extends RestTestBase {
       jetty.stop();
       jetty = null;
     }
-    server = null;
+    client = null;
+    if (restTestHarness != null) {
+      restTestHarness.close();
+    }
     restTestHarness = null;
   }
 
@@ -215,7 +218,11 @@ public class TestBulkSchemaAPI extends RestTestBase {
   }
 
   public static Map getRespMap(RestTestHarness restHarness) throws Exception {
-    String response = restHarness.query("/schema?wt=json");
+    return getAsMap("/schema?wt=json", restHarness);
+  }
+
+  public static Map getAsMap(String uri, RestTestHarness restHarness) throws Exception {
+    String response = restHarness.query(uri);
     return (Map) ObjectBuilder.getVal(new JSONParser(new StringReader(response)));
   }
 

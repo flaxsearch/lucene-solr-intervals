@@ -17,23 +17,21 @@ package org.apache.lucene.spatial.prefix;
  * limitations under the License.
  */
 
+import java.io.IOException;
+
 import com.spatial4j.core.shape.Shape;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree;
+import org.apache.lucene.util.BitSet;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.FixedBitSet;
-
-import java.io.IOException;
 
 /**
  * Base class for Lucene Filters on SpatialPrefixTree fields.
- *
  * @lucene.experimental
  */
 public abstract class AbstractPrefixTreeFilter extends Filter {
@@ -73,15 +71,16 @@ public abstract class AbstractPrefixTreeFilter extends Filter {
   }
 
   /** Holds transient state and docid collecting utility methods as part of
-   * traversing a {@link TermsEnum}. */
-  public abstract class BaseTermsEnumTraverser {
+   * traversing a {@link TermsEnum} for a {@link org.apache.lucene.index.LeafReaderContext}. */
+  public abstract class BaseTermsEnumTraverser {//TODO rename to LeafTermsEnumTraverser ?
+    //note: only 'fieldName' (accessed in constructor) keeps this from being a static inner class
 
     protected final LeafReaderContext context;
     protected Bits acceptDocs;
     protected final int maxDoc;
 
-    protected TermsEnum termsEnum;//remember to check for null in getDocIdSet
-    protected DocsEnum docsEnum;
+    protected TermsEnum termsEnum;//remember to check for null!
+    protected PostingsEnum postingsEnum;
 
     public BaseTermsEnumTraverser(LeafReaderContext context, Bits acceptDocs) throws IOException {
       this.context = context;
@@ -93,32 +92,12 @@ public abstract class AbstractPrefixTreeFilter extends Filter {
         this.termsEnum = terms.iterator(null);
     }
 
-    protected void collectDocs(FixedBitSet bitSet) throws IOException {
-      //WARN: keep this specialization in sync
+    protected void collectDocs(BitSet bitSet) throws IOException {
       assert termsEnum != null;
-      docsEnum = termsEnum.docs(acceptDocs, docsEnum, DocsEnum.FLAG_NONE);
-      int docid;
-      while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
-        bitSet.set(docid);
-      }
+      postingsEnum = termsEnum.postings(acceptDocs, postingsEnum, PostingsEnum.FLAG_NONE);
+      bitSet.or(postingsEnum);
     }
 
-    /* Eventually uncomment when needed.
-
-    protected void collectDocs(Collector collector) throws IOException {
-      //WARN: keep this specialization in sync
-      assert termsEnum != null;
-      docsEnum = termsEnum.docs(acceptDocs, docsEnum, DocsEnum.FLAG_NONE);
-      int docid;
-      while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
-        collector.collect(docid);
-      }
-    }
-
-    public abstract class Collector {
-      abstract void collect(int docid) throws IOException;
-    }
-    */
   }
 
 }

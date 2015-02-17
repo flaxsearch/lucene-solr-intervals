@@ -17,22 +17,41 @@
 
 package org.apache.solr.search;
 
-import org.apache.lucene.index.LeafReaderContext;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.search.FieldComparator;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.LeafCollector;
+import org.apache.lucene.search.LeafFieldComparator;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopDocsCollector;
-import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Weight;
+<<<<<<< HEAD
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.intervals.IntervalIterator;
+=======
+import org.apache.lucene.util.BytesRef;
+>>>>>>> apache/branch_5x
 import org.apache.lucene.util.InPlaceMergeSorter;
 import org.apache.lucene.util.PriorityQueue;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -47,24 +66,12 @@ import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.handler.component.ShardDoc;
 import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.handler.component.ShardResponse;
+import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
-import org.apache.solr.request.SolrQueryRequest;
-
 import org.junit.Ignore;
-
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 
 @Ignore
@@ -113,8 +120,8 @@ public class TestRankQueryPlugin extends QParserPlugin {
       return false;
     }
 
-    public Weight createWeight(IndexSearcher indexSearcher ) throws IOException{
-      return q.createWeight(indexSearcher);
+    public Weight createWeight(IndexSearcher indexSearcher, boolean needsScores) throws IOException{
+      return q.createWeight(indexSearcher, needsScores);
     }
 
     public void setBoost(float boost) {
@@ -125,10 +132,7 @@ public class TestRankQueryPlugin extends QParserPlugin {
       return q.getBoost();
     }
 
-    public String toString() {
-      return q.toString();
-    }
-
+    @Override
     public String toString(String field) {
       return q.toString(field);
     }
@@ -411,7 +415,8 @@ public class TestRankQueryPlugin extends QParserPlugin {
           // :TODO: would be simpler to always serialize every position of SortField[]
           if (type==SortField.Type.SCORE || type==SortField.Type.DOC) continue;
 
-          FieldComparator comparator = null;
+          FieldComparator<?> comparator = null;
+          LeafFieldComparator leafComparator = null;
           Object[] vals = new Object[nDocs];
 
           int lastIdx = -1;
@@ -434,12 +439,12 @@ public class TestRankQueryPlugin extends QParserPlugin {
 
             if (comparator == null) {
               comparator = sortField.getComparator(1,0);
-              comparator = comparator.setNextReader(currentLeaf);
+              leafComparator = comparator.getLeafComparator(currentLeaf);
             }
 
             doc -= currentLeaf.docBase;  // adjust for what segment this is in
-            comparator.setScorer(new FakeScorer(doc, score));
-            comparator.copy(0, doc);
+            leafComparator.setScorer(new FakeScorer(doc, score));
+            leafComparator.copy(0, doc);
             Object val = comparator.value(0);
             if (null != ft) val = ft.marshalSortValue(val);
             vals[position] = val;
@@ -452,21 +457,18 @@ public class TestRankQueryPlugin extends QParserPlugin {
       }
     }
 
-   private class FakeScorer extends Scorer {
-        final int docid;
-        final float score;
+    private class FakeScorer extends Scorer {
 
-        FakeScorer(int docid, float score) {
-          super(null);
-          this.docid = docid;
-          this.score = score;
-        }
+      final int docid;
+      final float score;
 
-        @Override
-        public int docID() {
-          return docid;
-        }
+      FakeScorer(int docid, float score) {
+        super(null);
+        this.docid = docid;
+        this.score = score;
+      }
 
+<<<<<<< HEAD
      @Override
      public IntervalIterator intervals(boolean collectIntervals) throws IOException {
        throw new UnsupportedOperationException();
@@ -476,37 +478,68 @@ public class TestRankQueryPlugin extends QParserPlugin {
         public float score() throws IOException {
           return score;
         }
-
-        @Override
-        public int freq() throws IOException {
-          throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public int nextDoc() throws IOException {
-          throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public int advance(int target) throws IOException {
-          throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public long cost() {
-          return 1;
-        }
-
-        @Override
-        public Weight getWeight() {
-          throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Collection<ChildScorer> getChildren() {
-          throw new UnsupportedOperationException();
-        }
+=======
+      @Override
+      public int docID() {
+        return docid;
       }
+>>>>>>> apache/branch_5x
+
+      @Override
+      public float score() throws IOException {
+        return score;
+      }
+
+      @Override
+      public int freq() throws IOException {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public int nextPosition() throws IOException {
+        return -1;
+      }
+
+      @Override
+      public int startOffset() throws IOException {
+        return -1;
+      }
+
+      @Override
+      public int endOffset() throws IOException {
+        return -1;
+      }
+
+      @Override
+      public BytesRef getPayload() throws IOException {
+        return null;
+      }
+
+      @Override
+      public int nextDoc() throws IOException {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public int advance(int target) throws IOException {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public long cost() {
+        return 1;
+      }
+
+      @Override
+      public Weight getWeight() {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public Collection<ChildScorer> getChildren() {
+        throw new UnsupportedOperationException();
+      }
+    }
 
     public void merge(ResponseBuilder rb, ShardRequest sreq) {
 
@@ -711,24 +744,28 @@ public class TestRankQueryPlugin extends QParserPlugin {
   class TestCollector extends TopDocsCollector {
 
     private List<ScoreDoc> list = new ArrayList();
-    private NumericDocValues values;
-    private int base;
 
     public TestCollector(PriorityQueue pq) {
       super(pq);
     }
 
-    public boolean acceptsDocsOutOfOrder() {
-      return false;
-    }
+    @Override
+    public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+      final int base = context.docBase;
+      final NumericDocValues values = DocValues.getNumeric(context.reader(), "sort_i");
+      return new LeafCollector() {
+        
+        @Override
+        public void setScorer(Scorer scorer) throws IOException {}
+        
+        public boolean acceptsDocsOutOfOrder() {
+          return false;
+        }
 
-    public void doSetNextReader(LeafReaderContext context) throws IOException {
-      values = DocValues.getNumeric(context.reader(), "sort_i");
-      base = context.docBase;
-    }
-
-    public void collect(int doc) {
-      list.add(new ScoreDoc(doc+base, (float)values.get(doc)));
+        public void collect(int doc) {
+          list.add(new ScoreDoc(doc+base, (float)values.get(doc)));
+        }
+      };
     }
 
     public int topDocsSize() {
@@ -760,32 +797,37 @@ public class TestRankQueryPlugin extends QParserPlugin {
     public int getTotalHits() {
       return list.size();
     }
+    
+    @Override
+    public boolean needsScores() {
+      return true;
+    }
   }
 
   class TestCollector1 extends TopDocsCollector {
 
     private List<ScoreDoc> list = new ArrayList();
-    private int base;
-    private Scorer scorer;
 
     public TestCollector1(PriorityQueue pq) {
       super(pq);
     }
 
-    public boolean acceptsDocsOutOfOrder() {
-      return false;
-    }
-
-    public void doSetNextReader(LeafReaderContext context) throws IOException {
-      base = context.docBase;
-    }
-
-    public void setScorer(Scorer scorer) {
-      this.scorer = scorer;
-    }
-
-    public void collect(int doc) throws IOException {
-      list.add(new ScoreDoc(doc+base, scorer.score()));
+    @Override
+    public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+      final int base = context.docBase;
+      return new LeafCollector() {
+        
+        Scorer scorer;
+        
+        @Override
+        public void setScorer(Scorer scorer) throws IOException {
+          this.scorer = scorer;
+        }
+        
+        public void collect(int doc) throws IOException {
+          list.add(new ScoreDoc(doc+base, scorer.score()));
+        }
+      };
     }
 
     public int topDocsSize() {
@@ -817,9 +859,11 @@ public class TestRankQueryPlugin extends QParserPlugin {
     public int getTotalHits() {
       return list.size();
     }
+    
+    @Override
+    public boolean needsScores() {
+      return true;
+    }
   }
-
-
-
 
 }

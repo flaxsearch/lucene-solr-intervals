@@ -22,7 +22,7 @@ import org.apache.lucene.search.IndexSearcher;
 /** The PostFilter interface provides a mechanism to further filter documents
  * after they have already gone through the main query and other filters.
  * This is appropriate for filters with a very high cost.
- * <p/>
+ * <p>
  * The filtering mechanism used is a {@link DelegatingCollector}
  * that allows the filter to not call the delegate for certain documents,
  * thus effectively filtering them out.  This also avoids the normal
@@ -42,6 +42,6 @@ import org.apache.lucene.search.IndexSearcher;
  */
 public interface PostFilter extends ExtendedQuery {
 
-  /** Returns a DelegatingCollector to be run after the main query and all of it's filters, but before any sorting or grouping collectors */
+  /** Returns a DelegatingCollector to be run after the main query and all of its filters, but before any sorting or grouping collectors */
   public DelegatingCollector getFilterCollector(IndexSearcher searcher);
 }

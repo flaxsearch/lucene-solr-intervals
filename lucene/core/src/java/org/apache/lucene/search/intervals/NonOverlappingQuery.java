@@ -25,8 +25,8 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.search.Weight.PostingFeatures;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
 import java.util.Set;
@@ -104,8 +104,9 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return new BrouwerianQueryWeight(minuend.createWeight(searcher), subtrahend.createWeight(searcher));
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+    return new BrouwerianQueryWeight(minuend.createWeight(searcher, needsScores, flags),
+                                     subtrahend.createWeight(searcher, needsScores, flags));
   }
 
   class BrouwerianQueryWeight extends Weight {
@@ -114,6 +115,7 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
     private final Weight subtracted;
 
     public BrouwerianQueryWeight(Weight minuted, Weight subtracted) {
+      super(NonOverlappingQuery.this);
       this.minuted = minuted;
       this.subtracted = subtracted;
     }
@@ -125,9 +127,8 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
-      flags = flags == PostingFeatures.DOCS_AND_FREQS ? PostingFeatures.POSITIONS : flags;
-      ScorerFactory factory = new ScorerFactory(minuted, subtracted, context, flags, acceptDocs);
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+      ScorerFactory factory = new ScorerFactory(minuted, subtracted, context, acceptDocs);
       final Scorer scorer = factory.minutedScorer();
       final Scorer subScorer = factory.subtractedScorer();
       if (subScorer == null) {
@@ -135,12 +136,7 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
       }
       return scorer == null ? null : new BrouwerianScorer(this, scorer, subScorer, factory);
     }
-    
-    @Override
-    public Query getQuery() {
-      return NonOverlappingQuery.this;
-    }
-    
+
     @Override
     public float getValueForNormalization() throws IOException {
       return minuted.getValueForNormalization();
@@ -156,24 +152,21 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
     final Weight minuted;
     final Weight subtracted;
     final LeafReaderContext context;
-    final PostingFeatures flags;
     final Bits acceptDocs;
     ScorerFactory(Weight minuted, Weight subtracted,
-                  LeafReaderContext context, PostingFeatures flags,
-        Bits acceptDocs) {
+                  LeafReaderContext context, Bits acceptDocs) {
       this.minuted = minuted;
       this.subtracted = subtracted;
       this.context = context;
-      this.flags = flags;
       this.acceptDocs = acceptDocs;
     }
     
     public Scorer minutedScorer() throws IOException {
-      return minuted.scorer(context, flags, acceptDocs);
+      return minuted.scorer(context, acceptDocs);
     }
     
     public Scorer subtractedScorer() throws IOException {
-      return subtracted.scorer(context, flags, acceptDocs);
+      return subtracted.scorer(context, acceptDocs);
     }
     
   }
@@ -328,6 +321,26 @@ public final class NonOverlappingQuery extends Query implements Cloneable {
     @Override
     public int freq() throws IOException {
       return minuend.freq();
+    }
+
+    @Override
+    public int nextPosition() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return null;
     }
 
   }

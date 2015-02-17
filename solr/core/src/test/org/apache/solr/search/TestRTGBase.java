@@ -17,8 +17,7 @@
 package org.apache.solr.search;
 
 
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.Fields;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Term;
@@ -126,16 +125,14 @@ public class TestRTGBase extends SolrTestCaseJ4 {
 
 
   protected int getFirstMatch(IndexReader r, Term t) throws IOException {
-    Fields fields = MultiFields.getFields(r);
-    if (fields == null) return -1;
-    Terms terms = fields.terms(t.field());
+    Terms terms = MultiFields.getTerms(r, t.field());
     if (terms == null) return -1;
     BytesRef termBytes = t.bytes();
     final TermsEnum termsEnum = terms.iterator(null);
     if (!termsEnum.seekExact(termBytes)) {
       return -1;
     }
-    DocsEnum docs = termsEnum.docs(MultiFields.getLiveDocs(r), null, DocsEnum.FLAG_NONE);
+    PostingsEnum docs = termsEnum.postings(MultiFields.getLiveDocs(r), null, PostingsEnum.FLAG_NONE);
     int id = docs.nextDoc();
     if (id != DocIdSetIterator.NO_MORE_DOCS) {
       int next = docs.nextDoc();

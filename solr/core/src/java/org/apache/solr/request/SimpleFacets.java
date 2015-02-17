@@ -37,11 +37,11 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.Fields;
-import org.apache.lucene.index.MultiDocsEnum;
+import org.apache.lucene.index.MultiPostingsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -72,8 +72,10 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.handler.component.ResponseBuilder;
+import org.apache.solr.handler.component.SpatialHeatmapFacets;
 import org.apache.solr.request.IntervalFacets.FacetInterval;
 import org.apache.solr.schema.BoolField;
+import org.apache.solr.schema.DateRangeField;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
@@ -98,7 +100,7 @@ import org.apache.solr.util.DefaultSolrThreadFactory;
  * A class that generates simple Facet information for a request.
  *
  * More advanced facet implementations may compose or subclass this class 
- * to leverage any of it's functionality.
+ * to leverage any of its functionality.
  */
 public class SimpleFacets {
 
@@ -258,7 +260,7 @@ public class SimpleFacets {
       facetResponse.add("facet_dates", getFacetDateCounts());
       facetResponse.add("facet_ranges", getFacetRangeCounts());
       facetResponse.add("facet_intervals", getFacetIntervalCounts());
-
+      facetResponse.add(SpatialHeatmapFacets.RESPONSE_KEY, getHeatmapCounts());
     } catch (IOException e) {
       throw new SolrException(ErrorCode.SERVER_ERROR, e);
     } catch (SyntaxError e) {
@@ -491,8 +493,8 @@ public class SimpleFacets {
     SchemaField sf = searcher.getSchema().getFieldOrNull(groupField);
     
     if (sf != null && sf.hasDocValues() == false && sf.multiValued() == false && sf.getType().getNumericType() != null) {
-      // its a single-valued numeric field: we must currently create insanity :(
-      // there isnt a GroupedFacetCollector that works on numerics right now...
+      // it's a single-valued numeric field: we must currently create insanity :(
+      // there isn't a GroupedFacetCollector that works on numerics right now...
       searcher.search(new MatchAllDocsQuery(), base.getTopFilter(), new FilterCollector(collector) {
         @Override
         public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
@@ -741,7 +743,7 @@ public class SimpleFacets {
       }
     }
 
-    DocsEnum docsEnum = null;
+    PostingsEnum postingsEnum = null;
     CharsRefBuilder charsRef = new CharsRefBuilder();
 
     if (docs.size() >= mincount) {
@@ -766,36 +768,36 @@ public class SimpleFacets {
               deState.fieldName = field;
               deState.liveDocs = r.getLiveDocs();
               deState.termsEnum = termsEnum;
-              deState.docsEnum = docsEnum;
+              deState.postingsEnum = postingsEnum;
             }
 
             c = searcher.numDocs(docs, deState);
 
-            docsEnum = deState.docsEnum;
+            postingsEnum = deState.postingsEnum;
           } else {
             // iterate over TermDocs to calculate the intersection
 
             // TODO: specialize when base docset is a bitset or hash set (skipDocs)?  or does it matter for this?
             // TODO: do this per-segment for better efficiency (MultiDocsEnum just uses base class impl)
             // TODO: would passing deleted docs lead to better efficiency over checking the fastForRandomSet?
-            docsEnum = termsEnum.docs(null, docsEnum, DocsEnum.FLAG_NONE);
+            postingsEnum = termsEnum.postings(null, postingsEnum, PostingsEnum.FLAG_NONE);
             c=0;
 
-            if (docsEnum instanceof MultiDocsEnum) {
-              MultiDocsEnum.EnumWithSlice[] subs = ((MultiDocsEnum)docsEnum).getSubs();
-              int numSubs = ((MultiDocsEnum)docsEnum).getNumSubs();
+            if (postingsEnum instanceof MultiPostingsEnum) {
+              MultiPostingsEnum.EnumWithSlice[] subs = ((MultiPostingsEnum) postingsEnum).getSubs();
+              int numSubs = ((MultiPostingsEnum) postingsEnum).getNumSubs();
               for (int subindex = 0; subindex<numSubs; subindex++) {
-                MultiDocsEnum.EnumWithSlice sub = subs[subindex];
-                if (sub.docsEnum == null) continue;
+                MultiPostingsEnum.EnumWithSlice sub = subs[subindex];
+                if (sub.postingsEnum == null) continue;
                 int base = sub.slice.start;
                 int docid;
-                while ((docid = sub.docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+                while ((docid = sub.postingsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
                   if (fastForRandomSet.exists(docid+base)) c++;
                 }
               }
             } else {
               int docid;
-              while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+              while ((docid = postingsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
                 if (fastForRandomSet.exists(docid)) c++;
               }
             }
@@ -1080,6 +1082,8 @@ public class SimpleFacets {
               (SolrException.ErrorCode.BAD_REQUEST,
                   "Unable to range facet on tried field of unexpected type:" + f);
       }
+    } else if (ft instanceof DateRangeField) {
+      calc = new DateRangeFieldEndpointCalculator(sf, null);
     } else {
       throw new SolrException
           (SolrException.ErrorCode.BAD_REQUEST,
@@ -1242,7 +1246,7 @@ public class SimpleFacets {
   }
   
   /**
-   * A simple key=>val pair whose natural order is such that 
+   * A simple key=&gt;val pair whose natural order is such that 
    * <b>higher</b> vals come before lower vals.
    * In case of tie vals, then <b>lower</b> keys come before higher keys.
    */
@@ -1420,6 +1424,7 @@ public class SimpleFacets {
   }
   private static class DateRangeEndpointCalculator 
     extends RangeEndpointCalculator<Date> {
+    private static final String TYPE_ERR_MSG = "SchemaField must use field type extending TrieDateField or DateRangeField";
     private final Date now;
     public DateRangeEndpointCalculator(final SchemaField f, 
                                        final Date now) { 
@@ -1427,7 +1432,7 @@ public class SimpleFacets {
       this.now = now;
       if (! (field.getType() instanceof TrieDateField) ) {
         throw new IllegalArgumentException
-          ("SchemaField must use field type extending TrieDateField");
+          (TYPE_ERR_MSG);
       }
     }
     @Override
@@ -1437,6 +1442,36 @@ public class SimpleFacets {
     @Override
     protected Date parseVal(String rawval) {
       return ((TrieDateField)field.getType()).parseMath(now, rawval);
+    }
+    @Override
+    protected Object parseGap(final String rawval) {
+      return rawval;
+    }
+    @Override
+    public Date parseAndAddGap(Date value, String gap) throws java.text.ParseException {
+      final DateMathParser dmp = new DateMathParser();
+      dmp.setNow(value);
+      return dmp.parseMath(gap);
+    }
+  }
+  private static class DateRangeFieldEndpointCalculator
+      extends RangeEndpointCalculator<Date> {
+    private final Date now;
+    public DateRangeFieldEndpointCalculator(final SchemaField f,
+                                       final Date now) {
+      super(f);
+      this.now = now;
+      if (! (field.getType() instanceof DateRangeField) ) {
+        throw new IllegalArgumentException(DateRangeEndpointCalculator.TYPE_ERR_MSG);
+      }
+    }
+    @Override
+    public String formatValue(Date val) {
+      return TrieDateField.formatExternal(val);
+    }
+    @Override
+    protected Date parseVal(String rawval) {
+      return ((DateRangeField)field.getType()).parseMath(now, rawval);
     }
     @Override
     protected Object parseGap(final String rawval) {
@@ -1465,8 +1500,8 @@ public class SimpleFacets {
 
     for (String field : fields) {
       parseParams(FacetParams.FACET_INTERVAL, field);
-      String[] intervalStrs = required.getFieldParams(field, FacetParams.FACET_INTERVAL_SET);
-      SchemaField schemaField = searcher.getCore().getLatestSchema().getField(field);
+      String[] intervalStrs = required.getFieldParams(facetValue, FacetParams.FACET_INTERVAL_SET);
+      SchemaField schemaField = searcher.getCore().getLatestSchema().getField(facetValue);
       if (!schemaField.hasDocValues()) {
         throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Interval Faceting only on fields with doc values");
       }
@@ -1475,7 +1510,7 @@ public class SimpleFacets {
       }
       
       SimpleOrderedMap<Integer> fieldResults = new SimpleOrderedMap<Integer>();
-      res.add(field, fieldResults);
+      res.add(key, fieldResults);
       IntervalFacets intervalFacets = new IntervalFacets(schemaField, searcher, docs, intervalStrs, params);
       for (FacetInterval interval : intervalFacets) {
         fieldResults.add(interval.getKey(), interval.getCount());
@@ -1485,5 +1520,22 @@ public class SimpleFacets {
     return res;
   }
 
+  private NamedList getHeatmapCounts() throws IOException, SyntaxError {
+    final NamedList<Object> resOuter = new SimpleOrderedMap<>();
+    String[] unparsedFields = rb.req.getParams().getParams(FacetParams.FACET_HEATMAP);
+    if (unparsedFields == null || unparsedFields.length == 0) {
+      return resOuter;
+    }
+    if (params.getBool(GroupParams.GROUP_FACET, false)) {
+      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+          "Heatmaps can't be used with " + GroupParams.GROUP_FACET);
+    }
+    for (String unparsedField : unparsedFields) {
+      parseParams(FacetParams.FACET_HEATMAP, unparsedField); // populates facetValue, rb, params, docs
+
+      resOuter.add(key, SpatialHeatmapFacets.getHeatmapForField(key, facetValue, rb, params, docs));
+    }
+    return resOuter;
+  }
 }
 

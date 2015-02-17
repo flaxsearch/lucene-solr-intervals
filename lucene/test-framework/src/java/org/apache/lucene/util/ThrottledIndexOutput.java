@@ -53,12 +53,13 @@ public class ThrottledIndexOutput extends IndexOutput {
   }
 
   public static final int mBitsToBytes(int mbits) {
-    return mbits * 125000;
+    return mbits * 125000000;
   }
 
   public ThrottledIndexOutput(int bytesPerSecond, long flushDelayMillis,
       long closeDelayMillis, long seekDelayMillis, long minBytesWritten,
       IndexOutput delegate) {
+    super("ThrottledIndexOutput(" + delegate + ")");
     assert bytesPerSecond > 0;
     this.delegate = delegate;
     this.bytesPerSecond = bytesPerSecond;

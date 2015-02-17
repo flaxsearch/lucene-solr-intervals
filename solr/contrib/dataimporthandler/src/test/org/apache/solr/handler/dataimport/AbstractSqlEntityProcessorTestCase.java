@@ -1,5 +1,9 @@
 package org.apache.solr.handler.dataimport;
 
+import junit.framework.Assert;
+import org.junit.After;
+import org.junit.Before;
+
 import java.io.File;
 import java.nio.file.Files;
 import java.sql.Connection;
@@ -16,11 +20,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-
-import junit.framework.Assert;
-
-import org.junit.After;
-import org.junit.Before;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -45,8 +44,15 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
   protected boolean useSimpleCaches;
   protected boolean countryEntity;
   protected boolean countryCached;
+  protected boolean countryZipper;
   protected boolean sportsEntity;
   protected boolean sportsCached;
+  protected boolean sportsZipper;
+  
+  protected boolean wrongPeopleOrder ;
+  protected boolean wrongSportsOrder ;
+  protected boolean wrongCountryOrder;
+    
   protected String rootTransformerName;
   protected boolean countryTransformer;
   protected boolean sportsTransformer;    
@@ -65,8 +71,15 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
     useSimpleCaches = false;
     countryEntity = false;
     countryCached = false;
+    countryZipper = false;
     sportsEntity = false;
     sportsCached = false;
+    sportsZipper = false;
+    
+    wrongPeopleOrder = false;
+    wrongSportsOrder = false;
+    wrongCountryOrder= false;
+    
     rootTransformerName = null;
     countryTransformer = false;
     sportsTransformer = false;
@@ -177,9 +190,14 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
     } else {
       countryEntity = true;
       sportsEntity = true;
-      if (numChildren == 1) {
-        countryEntity = random().nextBoolean();
-        sportsEntity = !countryEntity;
+      if(countryZipper||sportsZipper){// zipper tests fully cover nums of children
+        countryEntity = countryZipper;
+        sportsEntity = sportsZipper;
+      }else{// apply default randomization on cached cases
+        if (numChildren == 1) {
+          countryEntity = random().nextBoolean();
+          sportsEntity = !countryEntity;
+        }
       }
       if (countryEntity) {
         countryTransformer = random().nextBoolean();
@@ -212,18 +230,29 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
               + (totalPeople()) + "']");
     }
     if (countryEntity) {
-      if (personNameExists("Jayden")) {
-        String nrName = countryNameByCode("NP");
-        if (nrName != null && nrName.length() > 0) {
-          assertQ(req("NAME_mult_s:Jayden"), "//*[@numFound='1']",
-              "//doc/str[@name='COUNTRY_NAME_s']='" + nrName + "'");
-        }
+      {
+        String[] people = getStringsFromQuery("SELECT NAME FROM PEOPLE WHERE DELETED != 'Y'");
+        String man = people[random().nextInt(people.length)];
+        String[] countryNames = getStringsFromQuery("SELECT C.COUNTRY_NAME FROM PEOPLE P "
+            + "INNER JOIN COUNTRIES C ON P.COUNTRY_CODE=C.CODE "
+            + "WHERE P.DELETED!='Y' AND C.DELETED!='Y' AND P.NAME='" + man + "'");
+
+        assertQ(req("{!term f=NAME_mult_s}"+ man), "//*[@numFound='1']",
+            countryNames.length>0?
+             "//doc/str[@name='COUNTRY_NAME_s']='" + countryNames[random().nextInt(countryNames.length)] + "'"
+            :"//doc[count(*[@name='COUNTRY_NAME_s'])=0]");
       }
-      String nrName = countryNameByCode("NR");
-      int num = numberPeopleByCountryCode("NR");
-      if (nrName != null && num > 0) {
-        assertQ(req("COUNTRY_CODES_mult_s:NR"), "//*[@numFound='" + num + "']",
-            "//doc/str[@name='COUNTRY_NAME_s']='" + nrName + "'");
+      {
+        String[] countryCodes = getStringsFromQuery("SELECT CODE FROM COUNTRIES WHERE DELETED != 'Y'");
+        String theCode = countryCodes[random().nextInt(countryCodes.length)];
+        int num = numberPeopleByCountryCode(theCode);
+        if(num>0){
+          String nrName = countryNameByCode(theCode);
+          assertQ(req("COUNTRY_CODES_mult_s:"+theCode), "//*[@numFound='" + num + "']",
+              "//doc/str[@name='COUNTRY_NAME_s']='" + nrName + "'");
+        }else{ // no one lives there anyway
+          assertQ(req("COUNTRY_CODES_mult_s:"+theCode), "//*[@numFound='" + num + "']");
+        }
       }
       if (countryTransformer && !underlyingDataModified) {
         assertQ(req("countryAdded_s:country_added"), "//*[@numFound='"
@@ -234,24 +263,27 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
       if (!underlyingDataModified) {
         assertQ(req("SPORT_NAME_mult_s:Sailing"), "//*[@numFound='2']");
       }
-      String michaelsName = personNameById(3);
-      String[] michaelsSports = sportNamesByPersonId(3);
-      if (michaelsName != null && michaelsSports.length > 0) {
-        String[] xpath = new String[michaelsSports.length + 1];
-        xpath[0] = "//*[@numFound='1']";
-        int i = 1;
-        for (String ms : michaelsSports) {
-          xpath[i] = "//doc/arr[@name='SPORT_NAME_mult_s']/str[" + i + "]='"
-              + ms + "'";
-          i++;
-        }
-        assertQ(req("NAME_mult_s:" + michaelsName.replaceAll("\\W", "\\\\$0")),
-            xpath);
+      String [] names = getStringsFromQuery("SELECT NAME FROM PEOPLE WHERE DELETED != 'Y'");
+      String name = names[random().nextInt(names.length)];
+      int personId = getIntFromQuery("SELECT ID FROM PEOPLE WHERE DELETED != 'Y' AND NAME='"+name+"'");
+      String[] michaelsSports = sportNamesByPersonId(personId);
+
+      String[] xpath = new String[michaelsSports.length + 1];
+      xpath[0] = "//*[@numFound='1']";
+      int i = 1;
+      for (String ms : michaelsSports) {
+        xpath[i] = "//doc/arr[@name='SPORT_NAME_mult_s']/str='"//[" + i + "]='" don't care about particular order
+            + ms + "'";
+        i++;
       }
+      assertQ(req("NAME_mult_s:" + name.replaceAll("\\W", "\\\\$0")),
+            xpath);
       if (!underlyingDataModified && sportsTransformer) {
         assertQ(req("sportsAdded_s:sport_added"), "//*[@numFound='"
-            + (totalPeople()) + "']");
+            + (totalSportsmen()) + "']");
       }
+      assertQ("checking orphan sport is absent",
+          req("{!term f=SPORT_NAME_mult_s}No Fishing"), "//*[@numFound='0']");
     }
     if (checkDatabaseRequests) {
       Assert.assertTrue("Expecting " + numDatabaseRequests
@@ -304,6 +336,7 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
     }
   }
   
+
   private int getIntFromQuery(String query) throws Exception {
     Connection conn = null;
     Statement s = null;
@@ -365,6 +398,12 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
   
   public int totalPeople() throws Exception {
     return getIntFromQuery("SELECT COUNT(1) FROM PEOPLE WHERE DELETED != 'Y' ");
+  }
+  
+  public int totalSportsmen() throws Exception {
+    return getIntFromQuery("SELECT COUNT(*) FROM PEOPLE WHERE "
+        + "EXISTS(SELECT ID FROM PEOPLE_SPORTS WHERE PERSON_ID=PEOPLE.ID AND PEOPLE_SPORTS.DELETED != 'Y')"
+        + " AND PEOPLE.DELETED != 'Y'");
   }
   
   public boolean countryCodeExists(String cc) throws Exception {
@@ -574,7 +613,11 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
     sb.append("dataSource=''" + ds + "'' ");
     sb.append(rootTransformerName != null ? "transformer=''"
         + rootTransformerName + "'' " : "");
-    sb.append("query=''SELECT ID, NAME, COUNTRY_CODE FROM PEOPLE WHERE DELETED != 'Y' '' ");
+  
+    sb.append("query=''SELECT ID, NAME, COUNTRY_CODE FROM PEOPLE WHERE DELETED != 'Y' "
+                    +((sportsZipper||countryZipper?"ORDER BY ID":"")
+                     +(wrongPeopleOrder? " DESC":""))+"'' ");
+
     sb.append(deltaQueriesPersonTable());
     sb.append("> \n");
     
@@ -590,14 +633,24 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
           + "newColumnName=''countryAdded_s'' newColumnValue=''country_added'' "
           : "");
       if (countryCached) {
-        sb.append(random().nextBoolean() ? "processor=''SqlEntityProcessor'' cacheImpl=''SortedMapBackedCache'' "
-            : "processor=''CachedSqlEntityProcessor'' ");
+        sb.append("processor=''SqlEntityProcessor'' cacheImpl=''SortedMapBackedCache'' ");
         if (useSimpleCaches) {
           sb.append("query=''SELECT CODE, COUNTRY_NAME FROM COUNTRIES WHERE DELETED != 'Y' AND CODE='${People.COUNTRY_CODE}' ''>\n");
         } else {
-          sb.append(random().nextBoolean() ? "cacheKey=''CODE'' cacheLookup=''People.COUNTRY_CODE'' "
-              : "where=''CODE=People.COUNTRY_CODE'' ");
-          sb.append("query=''SELECT CODE, COUNTRY_NAME FROM COUNTRIES'' ");
+          
+          if(countryZipper){// really odd join btw. it sends duped countries 
+            sb.append(random().nextBoolean() ? "cacheKey=''ID'' cacheLookup=''People.ID'' "
+                : "where=''ID=People.ID'' ");
+            sb.append("join=''zipper'' query=''SELECT PEOPLE.ID, CODE, COUNTRY_NAME FROM COUNTRIES"
+                + " JOIN PEOPLE ON COUNTRIES.CODE=PEOPLE.COUNTRY_CODE "
+                + "WHERE PEOPLE.DELETED != 'Y' ORDER BY PEOPLE.ID "+
+                (wrongCountryOrder ? " DESC":"")
+                + "'' ");
+          }else{
+            sb.append(random().nextBoolean() ? "cacheKey=''CODE'' cacheLookup=''People.COUNTRY_CODE'' "
+                : "where=''CODE=People.COUNTRY_CODE'' ");
+            sb.append("query=''SELECT CODE, COUNTRY_NAME FROM COUNTRIES'' ");
+          }
           sb.append("> \n");
         }
       } else {
@@ -616,14 +669,20 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
           + "newColumnName=''sportsAdded_s'' newColumnValue=''sport_added'' "
           : "");
       if (sportsCached) {
-        sb.append(random().nextBoolean() ? "processor=''SqlEntityProcessor'' cacheImpl=''SortedMapBackedCache'' "
-            : "processor=''CachedSqlEntityProcessor'' ");
+        sb.append("processor=''SqlEntityProcessor'' cacheImpl=''SortedMapBackedCache'' ");
         if (useSimpleCaches) {
           sb.append("query=''SELECT ID, SPORT_NAME FROM PEOPLE_SPORTS WHERE DELETED != 'Y' AND PERSON_ID=${People.ID} ORDER BY ID'' ");
         } else {
           sb.append(random().nextBoolean() ? "cacheKey=''PERSON_ID'' cacheLookup=''People.ID'' "
               : "where=''PERSON_ID=People.ID'' ");
-          sb.append("query=''SELECT ID, PERSON_ID, SPORT_NAME FROM PEOPLE_SPORTS ORDER BY ID'' ");
+          if(sportsZipper){
+              sb.append("join=''zipper'' query=''SELECT ID, PERSON_ID, SPORT_NAME FROM PEOPLE_SPORTS ORDER BY PERSON_ID"
+                  + (wrongSportsOrder?" DESC" : "")+
+                  "'' ");
+            }
+          else{
+            sb.append("query=''SELECT ID, PERSON_ID, SPORT_NAME FROM PEOPLE_SPORTS ORDER BY ID'' ");
+          }
         }
       } else {
         sb.append("processor=''SqlEntityProcessor'' query=''SELECT ID, SPORT_NAME FROM PEOPLE_SPORTS WHERE DELETED != 'Y' AND PERSON_ID=${People.ID} ORDER BY ID'' ");
@@ -726,7 +785,9 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
     {7,"Noah","NI"},
     {8,"Daniel","NG"},
     {9,"Aiden","NF"},
-    {10,"Anthony","NE"},
+    
+    {21,"Anthony","NE"}, // there is no ID=10 anymore
+    
     {11,"Emma","NL"},
     {12,"Grace","NI"},
     {13,"Hailey","NG"},
@@ -751,7 +812,10 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
     {700, 7, "Boating"},
     {800, 8, "Bodyboarding"},
     {900, 9, "Canoeing"},
-    {1000, 10, "Fishing"},
+    
+    {1000, 10, "No Fishing"}, // orhpaned sport
+    //
+    
     {1100, 11, "Jet Ski"},
     {1110, 11, "Rowing"},
     {1120, 11, "Sailing"},
@@ -760,10 +824,12 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
     {1300, 13, "Kite surfing"},
     {1400, 14, "Parasailing"},
     {1500, 15, "Rafting"},
-    {1600, 16, "Rowing"},
+    //{1600, 16, "Rowing"}, Madison has no sport
     {1700, 17, "Sailing"},
     {1800, 18, "White Water Rafting"},
     {1900, 19, "Water skiing"},
-    {2000, 20, "Windsurfing"}
+    {2000, 20, "Windsurfing"},
+    {2100, 21, "Concrete diving"},
+    {2110, 21, "Bubble rugby"}
   }; 
 }

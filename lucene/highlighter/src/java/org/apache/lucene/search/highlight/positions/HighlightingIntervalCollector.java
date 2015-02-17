@@ -16,10 +16,8 @@ package org.apache.lucene.search.highlight.positions;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.SimpleCollector;
-import org.apache.lucene.search.Weight.PostingFeatures;
 import org.apache.lucene.search.intervals.Interval;
 import org.apache.lucene.search.intervals.IntervalCollector;
 import org.apache.lucene.search.intervals.IntervalIterator;
@@ -87,11 +85,6 @@ public class HighlightingIntervalCollector extends SimpleCollector implements In
   }
 
   @Override
-  public PostingFeatures postingFeatures() {
-    return PostingFeatures.OFFSETS;
-  }
-
-  @Override
   public void collectLeafPosition(Scorer scorer, Interval interval,
       int docID) {
     addDoc(docID);      
@@ -103,4 +96,8 @@ public class HighlightingIntervalCollector extends SimpleCollector implements In
       int docID) {
   }
 
+  @Override
+  public boolean needsScores() {
+    return true;
+  }
 }

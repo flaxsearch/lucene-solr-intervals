@@ -19,6 +19,7 @@ package org.apache.lucene.search.intervals;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.search.BooleanClause;
@@ -30,9 +31,9 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.TermStatistics;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.search.Weight.PostingFeatures;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
 import java.util.Set;
@@ -116,8 +117,8 @@ public class IntervalFilterQuery extends Query implements Cloneable {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return new IntervalFilterWeight(inner.createWeight(searcher), searcher);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int postingsFlags) throws IOException {
+    return new IntervalFilterWeight(inner.createWeight(searcher, needsScores, postingsFlags | PostingsEnum.FLAG_POSITIONS), searcher);
   }
 
   class IntervalFilterWeight extends Weight {
@@ -127,6 +128,7 @@ public class IntervalFilterQuery extends Query implements Cloneable {
     private final Similarity.SimWeight stats;
 
     public IntervalFilterWeight(Weight other, IndexSearcher searcher) throws IOException {
+      super(IntervalFilterQuery.this);
       this.other = other;
       this.similarity = searcher.getSimilarity();
       this.stats = getSimWeight(other.getQuery(), searcher);
@@ -153,8 +155,7 @@ public class IntervalFilterQuery extends Query implements Cloneable {
     @Override
     public Explanation explain(LeafReaderContext context, int doc)
         throws IOException {
-      Scorer scorer = scorer(context, PostingFeatures.POSITIONS,
-                              context.reader().getLiveDocs());
+      Scorer scorer = scorer(context, context.reader().getLiveDocs());
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {
@@ -174,21 +175,15 @@ public class IntervalFilterQuery extends Query implements Cloneable {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
       if (stats == null)
         return null;
-      flags = flags == PostingFeatures.DOCS_AND_FREQS ? PostingFeatures.POSITIONS : flags;
-      ScorerFactory factory = new ScorerFactory(other, context, flags, acceptDocs);
+      ScorerFactory factory = new ScorerFactory(other, context, acceptDocs);
       final Scorer scorer = factory.scorer();
       Similarity.SimScorer docScorer = similarity.simScorer(stats, context);
       return scorer == null ? null : new IntervalFilterScorer(this, scorer, factory, docScorer);
     }
 
-    @Override
-    public Query getQuery() {
-      return IntervalFilterQuery.this;
-    }
-    
     @Override
     public float getValueForNormalization() throws IOException {
       return stats == null ? 1.0f : stats.getValueForNormalization();
@@ -204,19 +199,16 @@ public class IntervalFilterQuery extends Query implements Cloneable {
   static class ScorerFactory {
     final Weight weight;
     final LeafReaderContext context;
-    final PostingFeatures flags;
     final Bits acceptDocs;
-    ScorerFactory(Weight weight,
-                  LeafReaderContext context, PostingFeatures flags,
-        Bits acceptDocs) {
+
+    ScorerFactory(Weight weight, LeafReaderContext context, Bits acceptDocs) {
       this.weight = weight;
       this.context = context;
-      this.flags = flags;
       this.acceptDocs = acceptDocs;
     }
     
     public Scorer scorer() throws IOException {
-      return weight.scorer(context, flags, acceptDocs);
+      return weight.scorer(context, acceptDocs);
     }
     
   }
@@ -374,6 +366,26 @@ public class IntervalFilterQuery extends Query implements Cloneable {
     @Override
     public int freq() throws IOException {
       return 1; // nocommit how to calculate frequency?
+    }
+
+    @Override
+    public int nextPosition() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return null;
     }
 
     public float sloppyFreq() throws IOException {

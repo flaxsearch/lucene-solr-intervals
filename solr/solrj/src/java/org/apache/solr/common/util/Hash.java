@@ -118,7 +118,7 @@ public class Hash {
 
   /**
    * <p>The hash value of a character sequence is defined to be the hash of
-   * it's unicode code points, according to {@link #lookup3ycs(int[] k, int offset, int length, int initval)}
+   * its unicode code points, according to {@link #lookup3ycs(int[] k, int offset, int length, int initval)}
    * </p>
    * <p>If you know the number of code points in the {@code CharSequence}, you can
    * generate the same hash as the original lookup3
@@ -178,7 +178,7 @@ public class Hash {
 
 
   /**<p>This is the 64 bit version of lookup3ycs, corresponding to Bob Jenkin's
-   * lookup3 hashlittle2 with initval biased by -(numCodePoints<<2).  It is equivalent
+   * lookup3 hashlittle2 with initval biased by -(numCodePoints&lt;&lt;2).  It is equivalent
    * to lookup3ycs in that if the high bits of initval==0, then the low bits of the
    * result will be the same as lookup3ycs.
    * </p>

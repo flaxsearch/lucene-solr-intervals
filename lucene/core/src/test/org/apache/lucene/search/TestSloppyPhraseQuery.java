@@ -17,9 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
-import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
@@ -30,6 +27,11 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.MockDirectoryWrapper;
+import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.util.LuceneTestCase;
+
+import java.io.IOException;
 
 public class TestSloppyPhraseQuery extends LuceneTestCase {
 
@@ -53,7 +55,7 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
 
   /**
    * Test DOC_4 and QUERY_4.
-   * QUERY_4 has a fuzzy (len=1) match to DOC_4, so all slop values > 0 should succeed.
+   * QUERY_4 has a fuzzy (len=1) match to DOC_4, so all slop values &gt; 0 should succeed.
    * But only the 3rd sequence of A's in DOC_4 will do.
    */
   public void testDoc4_Query4_All_Slops_Should_match() throws Exception {
@@ -135,7 +137,7 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
   private float  checkPhraseQuery(Document doc, PhraseQuery query, int slop, int expectedNumResults) throws Exception {
     query.setSlop(slop);
 
-    Directory ramDir = newDirectory();
+    MockDirectoryWrapper ramDir = new MockDirectoryWrapper(random(), new RAMDirectory());
     RandomIndexWriter writer = new RandomIndexWriter(random(), ramDir, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false));
     writer.addDocument(doc);
 
@@ -189,10 +191,10 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
       totalHits++;
       max = Math.max(max, scorer.freq());
     }
-
+    
     @Override
-    public boolean acceptsDocsOutOfOrder() {
-      return false;
+    public boolean needsScores() {
+      return true;
     }
   }
   
@@ -213,8 +215,8 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
       }
       
       @Override
-      public boolean acceptsDocsOutOfOrder() {
-        return false;
+      public boolean needsScores() {
+        return true;
       }
     });
     QueryUtils.check(random(), pq, searcher);

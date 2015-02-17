@@ -24,9 +24,10 @@ import java.util.Random;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -34,6 +35,8 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.FilteredQuery.FilterStrategy;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BitDocIdSet;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
@@ -64,21 +67,25 @@ public class TestFilteredQuery extends LuceneTestCase {
     Document doc = new Document();
     doc.add (newTextField("field", "one two three four five", Field.Store.YES));
     doc.add (newTextField("sorter", "b", Field.Store.YES));
+    doc.add (new SortedDocValuesField("sorter", new BytesRef("b")));
     writer.addDocument (doc);
 
     doc = new Document();
     doc.add (newTextField("field", "one two three four", Field.Store.YES));
     doc.add (newTextField("sorter", "d", Field.Store.YES));
+    doc.add (new SortedDocValuesField("sorter", new BytesRef("d")));
     writer.addDocument (doc);
 
     doc = new Document();
     doc.add (newTextField("field", "one two three y", Field.Store.YES));
     doc.add (newTextField("sorter", "a", Field.Store.YES));
+    doc.add (new SortedDocValuesField("sorter", new BytesRef("a")));
     writer.addDocument (doc);
 
     doc = new Document();
     doc.add (newTextField("field", "one two x", Field.Store.YES));
     doc.add (newTextField("sorter", "c", Field.Store.YES));
+    doc.add (new SortedDocValuesField("sorter", new BytesRef("c")));
     writer.addDocument (doc);
 
     // tests here require single segment (eg try seed
@@ -104,7 +111,11 @@ public class TestFilteredQuery extends LuceneTestCase {
         FixedBitSet bitset = new FixedBitSet(context.reader().maxDoc());
         if (acceptDocs.get(1)) bitset.set(1);
         if (acceptDocs.get(3)) bitset.set(3);
-        return bitset;
+        return new BitDocIdSet(bitset);
+      }
+      @Override
+      public String toString(String field) {
+        return "staticFilterB";
       }
     };
   }
@@ -185,7 +196,11 @@ public class TestFilteredQuery extends LuceneTestCase {
         assertNull("acceptDocs should be null, as we have an index without deletions", acceptDocs);
         FixedBitSet bitset = new FixedBitSet(context.reader().maxDoc());
         bitset.set(0, Math.min(5, bitset.length()));
-        return bitset;
+        return new BitDocIdSet(bitset);
+      }
+      @Override
+      public String toString(String field) {
+        return "staticFilterA";
       }
     };
   }
@@ -425,13 +440,13 @@ public class TestFilteredQuery extends LuceneTestCase {
               Bits acceptDocs) throws IOException {
             final boolean nullBitset = random().nextInt(10) == 5;
             final LeafReader reader = context.reader();
-            DocsEnum termDocsEnum = reader.termDocsEnum(new Term("field", "0"));
-            if (termDocsEnum == null) {
+            PostingsEnum termPostingsEnum = reader.termDocsEnum(new Term("field", "0"));
+            if (termPostingsEnum == null) {
               return null; // no docs -- return null
             }
             final BitSet bitSet = new BitSet(reader.maxDoc());
             int d;
-            while ((d = termDocsEnum.nextDoc()) != DocsEnum.NO_MORE_DOCS) {
+            while ((d = termPostingsEnum.nextDoc()) != PostingsEnum.NO_MORE_DOCS) {
               bitSet.set(d, true);
             }
             return new DocIdSet() {
@@ -472,6 +487,10 @@ public class TestFilteredQuery extends LuceneTestCase {
               }
               
             };
+          }
+          @Override
+          public String toString(String field) {
+            return "filterField0";
           }
         }, FilteredQuery.QUERY_FIRST_FILTER_STRATEGY);
     
@@ -519,8 +538,8 @@ public class TestFilteredQuery extends LuceneTestCase {
           }
           @Override
           public DocIdSetIterator iterator() throws IOException {
-            final DocsEnum termDocsEnum = context.reader().termDocsEnum(new Term("field", "0"));
-            if (termDocsEnum == null) {
+            final PostingsEnum termPostingsEnum = context.reader().termDocsEnum(new Term("field", "0"));
+            if (termPostingsEnum == null) {
               return null;
             }
             return new DocIdSetIterator() {
@@ -530,29 +549,35 @@ public class TestFilteredQuery extends LuceneTestCase {
               public int nextDoc() throws IOException {
                 assertTrue("queryFirst: "+ queryFirst + " advanced: " + advanceCalled + " next: "+ nextCalled, nextCalled || advanceCalled ^ !queryFirst);  
                 nextCalled = true;
-                return termDocsEnum.nextDoc();
+                return termPostingsEnum.nextDoc();
               }
               
               @Override
               public int docID() {
-                return termDocsEnum.docID();
+                return termPostingsEnum.docID();
               }
               
               @Override
               public int advance(int target) throws IOException {
                 assertTrue("queryFirst: "+ queryFirst + " advanced: " + advanceCalled + " next: "+ nextCalled, advanceCalled || nextCalled ^ queryFirst);  
                 advanceCalled = true;
-                return termDocsEnum.advance(target);
+                return termPostingsEnum.advance(target);
               }
               
               @Override
               public long cost() {
-                return termDocsEnum.cost();
+                return termPostingsEnum.cost();
               } 
             };
           }
           
+          
         };
+        
+      }
+      @Override
+      public String toString(String field) {
+        return "filterField0";
       }
         }, queryFirst ? FilteredQuery.LEAP_FROG_QUERY_FIRST_STRATEGY : random()
             .nextBoolean() ? FilteredQuery.RANDOM_ACCESS_FILTER_STRATEGY

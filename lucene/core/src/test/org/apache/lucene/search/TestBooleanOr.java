@@ -15,19 +15,24 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import com.carrotsearch.randomizedtesting.generators.RandomInts;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.Weight.PostingFeatures;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class TestBooleanOr extends LuceneTestCase {
@@ -180,10 +185,10 @@ public class TestBooleanOr extends LuceneTestCase {
     bq.add(new TermQuery(new Term("field", "a")), BooleanClause.Occur.SHOULD);
     bq.add(new TermQuery(new Term("field", "a")), BooleanClause.Occur.SHOULD);
 
-    Weight w = s.createNormalizedWeight(bq);
+    Weight w = s.createNormalizedWeight(bq, true, PostingsEnum.FLAG_FREQS);
 
     assertEquals(1, s.getIndexReader().leaves().size());
-    BulkScorer scorer = w.bulkScorer(s.getIndexReader().leaves().get(0), false, PostingFeatures.DOCS_AND_FREQS, null);
+    BulkScorer scorer = w.bulkScorer(s.getIndexReader().leaves().get(0), null);
 
     final FixedBitSet hits = new FixedBitSet(docCount);
     final AtomicInteger end = new AtomicInteger();
@@ -194,21 +199,74 @@ public class TestBooleanOr extends LuceneTestCase {
           assertTrue("collected doc=" + doc + " beyond max=" + end, doc < end.intValue());
           hits.set(doc);
         }
-
+        
         @Override
-        public boolean acceptsDocsOutOfOrder() {
-          return true;
+        public boolean needsScores() {
+          return false;
         }
       };
 
     while (end.intValue() < docCount) {
+      final int min = end.intValue();
       final int inc = TestUtil.nextInt(random(), 1, 1000);
-      end.getAndAdd(inc);
-      scorer.score(c, end.intValue());
+      final int max = end.addAndGet(inc);
+      scorer.score(c, min, max);
     }
 
     assertEquals(docCount, hits.cardinality());
     r.close();
     dir.close();
+  }
+
+  private static BulkScorer scorer(final int... matches) {
+    return new BulkScorer() {
+      final FakeScorer scorer = new FakeScorer();
+      int i = 0;
+      @Override
+      public int score(LeafCollector collector, int min, int max) throws IOException {
+        collector.setScorer(scorer);
+        while (i < matches.length && matches[i] < min) {
+          i += 1;
+        }
+        while (i < matches.length && matches[i] < max) {
+          scorer.doc = matches[i];
+          collector.collect(scorer.doc);
+          i += 1;
+        }
+        if (i == matches.length) {
+          return DocIdSetIterator.NO_MORE_DOCS;
+        }
+        return RandomInts.randomIntBetween(random(), max, matches[i]);
+      }
+      @Override
+      public long cost() {
+        return matches.length;
+      }
+    };
+  }
+
+  // Make sure that BooleanScorer keeps working even if the sub clauses return
+  // next matching docs which are less than the actual next match
+  public void testSubScorerNextIsNotMatch() throws IOException {
+    final List<BulkScorer> optionalScorers = Arrays.asList(
+        scorer(100000, 1000001, 9999999),
+        scorer(4000, 1000051),
+        scorer(5000, 100000, 9999998, 9999999)
+    );
+    Collections.shuffle(optionalScorers, random());
+    BooleanScorer scorer = new BooleanScorer(null, true, 0, optionalScorers, 1);
+    final List<Integer> matches = new ArrayList<>();
+    scorer.score(new LeafCollector() {
+
+      @Override
+      public void setScorer(Scorer scorer) throws IOException {}
+
+      @Override
+      public void collect(int doc) throws IOException {
+        matches.add(doc);
+      }
+      
+    });
+    assertEquals(Arrays.asList(4000, 5000, 100000, 1000001, 1000051, 9999998, 9999999), matches);
   }
 }

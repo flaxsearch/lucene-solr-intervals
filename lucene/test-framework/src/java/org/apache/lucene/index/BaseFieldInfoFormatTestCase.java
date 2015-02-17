@@ -18,6 +18,7 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
@@ -27,8 +28,6 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.DocValuesType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.StringHelper;
@@ -51,15 +50,16 @@ public abstract class BaseFieldInfoFormatTestCase extends BaseIndexFileFormatTes
     Codec codec = getCodec();
     SegmentInfo segmentInfo = newSegmentInfo(dir, "_123");
     FieldInfos.Builder builder = new FieldInfos.Builder();
-    FieldInfo fi = builder.addOrUpdate("field", TextField.TYPE_STORED);
+    FieldInfo fi = builder.getOrAdd("field");
+    fi.setIndexOptions(TextField.TYPE_STORED.indexOptions());
     addAttributes(fi);
     FieldInfos infos = builder.finish();
     codec.fieldInfosFormat().write(dir, segmentInfo, "", infos, IOContext.DEFAULT);
     FieldInfos infos2 = codec.fieldInfosFormat().read(dir, segmentInfo, "", IOContext.DEFAULT);
     assertEquals(1, infos2.size());
     assertNotNull(infos2.fieldInfo("field"));
-    assertTrue(infos2.fieldInfo("field").isIndexed());
-    assertFalse(infos2.fieldInfo("field").hasDocValues());
+    assertTrue(infos2.fieldInfo("field").getIndexOptions() != IndexOptions.NONE);
+    assertFalse(infos2.fieldInfo("field").getDocValuesType() != DocValuesType.NONE);
     assertFalse(infos2.fieldInfo("field").omitsNorms());
     assertFalse(infos2.fieldInfo("field").hasPayloads());
     assertFalse(infos2.fieldInfo("field").hasVectors());
@@ -83,8 +83,16 @@ public abstract class BaseFieldInfoFormatTestCase extends BaseIndexFileFormatTes
     FieldInfos.Builder builder = new FieldInfos.Builder();
     for (String field : fieldNames) {
       IndexableFieldType fieldType = randomFieldType(random());
-      FieldInfo fi = builder.addOrUpdate(field, fieldType);
-      if (fieldType.indexOptions() != null && fieldType.indexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0) {
+      FieldInfo fi = builder.getOrAdd(field);
+      IndexOptions indexOptions = fieldType.indexOptions();
+      if (indexOptions != IndexOptions.NONE) {
+        fi.setIndexOptions(indexOptions);
+        if (fieldType.omitNorms()) {      
+          fi.setOmitsNorms();
+        }
+      }
+      fi.setDocValuesType(fieldType.docValuesType());
+      if (fieldType.indexOptions() != IndexOptions.NONE && fieldType.indexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0) {
         if (random().nextBoolean()) {
           fi.setStorePayloads();
         }
@@ -120,7 +128,7 @@ public abstract class BaseFieldInfoFormatTestCase extends BaseIndexFileFormatTes
     
     if (r.nextBoolean()) {
       DocValuesType values[] = getDocValuesTypes();
-      type.setDocValueType(values[r.nextInt(values.length)]);
+      type.setDocValuesType(values[r.nextInt(values.length)]);
     }
         
     return type;
@@ -159,18 +167,16 @@ public abstract class BaseFieldInfoFormatTestCase extends BaseIndexFileFormatTes
     assertEquals(expected.name, actual.name);
     assertEquals(expected.getDocValuesType(), actual.getDocValuesType());
     assertEquals(expected.getIndexOptions(), actual.getIndexOptions());
-    assertEquals(expected.hasDocValues(), actual.hasDocValues());
     assertEquals(expected.hasNorms(), actual.hasNorms());
     assertEquals(expected.hasPayloads(), actual.hasPayloads());
     assertEquals(expected.hasVectors(), actual.hasVectors());
-    assertEquals(expected.isIndexed(), actual.isIndexed());
     assertEquals(expected.omitsNorms(), actual.omitsNorms());
     assertEquals(expected.getDocValuesGen(), actual.getDocValuesGen());
   }
   
   /** Returns a new fake segment */
   protected static SegmentInfo newSegmentInfo(Directory dir, String name) {
-    return new SegmentInfo(dir, Version.LATEST, name, 10000, false, Codec.getDefault(), null, StringHelper.randomId());
+    return new SegmentInfo(dir, Version.LATEST, name, 10000, false, Codec.getDefault(), null, StringHelper.randomId(), new HashMap<String,String>());
   }
   
   @Override

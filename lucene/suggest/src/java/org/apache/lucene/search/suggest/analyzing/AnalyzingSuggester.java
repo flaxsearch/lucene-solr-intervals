@@ -17,11 +17,14 @@ package org.apache.lucene.search.suggest.analyzing;
  * limitations under the License.
  */
 
+import static org.apache.lucene.util.automaton.Operations.DEFAULT_MAX_DETERMINIZED_STATES;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -117,7 +120,7 @@ import org.apache.lucene.util.fst.Util.TopResults;
 public class AnalyzingSuggester extends Lookup {
  
   /**
-   * FST<Weight,Surface>: 
+   * FST&lt;Weight,Surface&gt;: 
    *  input is the analyzed form, with a null byte between terms
    *  weights are encoded as costs: (Integer.MAX_VALUE-weight)
    *  surface is the original, unanalyzed form.
@@ -260,7 +263,7 @@ public class AnalyzingSuggester extends Lookup {
   }
 
   @Override
-  public Iterable<? extends Accountable> getChildResources() {
+  public Collection<Accountable> getChildResources() {
     if (fst == null) {
       return Collections.emptyList();
     } else {
@@ -898,7 +901,7 @@ public class AnalyzingSuggester extends Lookup {
 
     // TODO: we can optimize this somewhat by determinizing
     // while we convert
-    automaton = Operations.determinize(automaton);
+    automaton = Operations.determinize(automaton, DEFAULT_MAX_DETERMINIZED_STATES);
     return automaton;
   }
 
@@ -910,12 +913,12 @@ public class AnalyzingSuggester extends Lookup {
     throw new UnsupportedOperationException();
   }
   
-  /** cost -> weight */
+  /** cost -&gt; weight */
   private static int decodeWeight(long encoded) {
     return (int)(Integer.MAX_VALUE - encoded);
   }
   
-  /** weight -> cost */
+  /** weight -&gt; cost */
   private static int encodeWeight(long value) {
     if (value < 0 || value > Integer.MAX_VALUE) {
       throw new UnsupportedOperationException("cannot encode value: " + value);

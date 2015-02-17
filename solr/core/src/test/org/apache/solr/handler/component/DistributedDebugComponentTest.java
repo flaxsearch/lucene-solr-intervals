@@ -1,22 +1,12 @@
 package org.apache.solr.handler.component;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.solr.SolrJettyTestBase;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrException;
@@ -26,6 +16,16 @@ import org.apache.solr.common.util.NamedList;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -46,8 +46,8 @@ import org.junit.Test;
 
 public class DistributedDebugComponentTest extends SolrJettyTestBase {
   
-  private static SolrServer collection1;
-  private static SolrServer collection2;
+  private static SolrClient collection1;
+  private static SolrClient collection2;
   private static String shard1;
   private static String shard2;
   private static File solrHome;
@@ -65,8 +65,9 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     solrHome = createSolrHome();
     createJetty(solrHome.getAbsolutePath(), null, null);
     String url = jetty.getBaseUrl().toString();
-    collection1 = new HttpSolrServer(url);
-    collection2 = new HttpSolrServer(url + "/collection2");
+
+    collection1 = new HttpSolrClient(url + "/collection1");
+    collection2 = new HttpSolrClient(url + "/collection2");
     
     String urlCollection1 = jetty.getBaseUrl().toString() + "/" + "collection1";
     String urlCollection2 = jetty.getBaseUrl().toString() + "/" + "collection2";
@@ -74,10 +75,13 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     shard2 = urlCollection2.replaceAll("https?://", "");
     
     //create second core
-    CoreAdminRequest.Create req = new CoreAdminRequest.Create();
-    req.setCoreName("collection2");
-    collection1.request(req);
-    
+    try (HttpSolrClient nodeClient = new HttpSolrClient(url)) {
+      CoreAdminRequest.Create req = new CoreAdminRequest.Create();
+      req.setCoreName("collection2");
+      req.setConfigSet("collection1");
+      nodeClient.request(req);
+    }
+
     SolrInputDocument doc = new SolrInputDocument();
     doc.setField("id", "1");
     doc.setField("text", "batman");
@@ -93,8 +97,8 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
   
   @AfterClass
   public static void destroyThings() throws Exception {
-    collection1.shutdown();
-    collection2.shutdown();
+    collection1.close();
+    collection2.close();
     collection1 = null;
     collection2 = null;
     jetty.stop();
@@ -155,7 +159,7 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     final int NUM_ITERS = atLeast(50);
 
     for (int i = 0; i < NUM_ITERS; i++) { 
-      SolrServer client = random().nextBoolean() ? collection1 : collection2;
+      SolrClient client = random().nextBoolean() ? collection1 : collection2;
       
       SolrQuery q = new SolrQuery();
       q.set("distrib", "true");
@@ -259,10 +263,10 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     
   }
   
-  private void verifyDebugSections(SolrQuery query, SolrServer server) throws SolrServerException {
+  private void verifyDebugSections(SolrQuery query, SolrClient client) throws SolrServerException {
     query.set("debugQuery", "true");
     query.remove("debug");
-    QueryResponse response = server.query(query);
+    QueryResponse response = client.query(query);
     assertFalse(response.getDebugMap().isEmpty());
     assertInDebug(response, "track");
     assertInDebug(response, "rawquerystring");
@@ -275,7 +279,7 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     
     query.set("debug", "true");
     query.remove("debugQuery");
-    response = server.query(query);
+    response = client.query(query);
     assertFalse(response.getDebugMap().isEmpty());
     assertInDebug(response, "track");
     assertInDebug(response, "rawquerystring");
@@ -286,8 +290,8 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     assertInDebug(response, "explain");
     assertInDebug(response, "timing");
     
-    query.set("debug",  "track");
-    response = server.query(query);
+    query.set("debug", "track");
+    response = client.query(query);
     assertFalse(response.getDebugMap().isEmpty());
     assertInDebug(response, "track");
     assertNotInDebug(response, "rawquerystring");
@@ -298,8 +302,8 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     assertNotInDebug(response, "explain");
     assertNotInDebug(response, "timing");
     
-    query.set("debug",  "query");
-    response = server.query(query);
+    query.set("debug", "query");
+    response = client.query(query);
     assertFalse(response.getDebugMap().isEmpty());
     assertNotInDebug(response, "track");
     assertInDebug(response, "rawquerystring");
@@ -310,8 +314,8 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     assertNotInDebug(response, "explain");
     assertNotInDebug(response, "timing");
     
-    query.set("debug",  "results");
-    response = server.query(query);
+    query.set("debug", "results");
+    response = client.query(query);
     assertFalse(response.getDebugMap().isEmpty());
     assertNotInDebug(response, "track");
     assertNotInDebug(response, "rawquerystring");
@@ -322,8 +326,8 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     assertInDebug(response, "explain");
     assertNotInDebug(response, "timing");
     
-    query.set("debug",  "timing");
-    response = server.query(query);
+    query.set("debug", "timing");
+    response = client.query(query);
     assertFalse(response.getDebugMap().isEmpty());
     assertNotInDebug(response, "track");
     assertNotInDebug(response, "rawquerystring");
@@ -334,8 +338,8 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     assertNotInDebug(response, "explain");
     assertInDebug(response, "timing");
     
-    query.set("debug",  "false");
-    response = server.query(query);
+    query.set("debug", "false");
+    response = client.query(query);
     assertNull(response.getDebugMap());
   }
   
@@ -364,8 +368,8 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     assertSectionEquals(distribResponse, nonDistribResponse, "parsedquery");
     assertSectionEquals(distribResponse, nonDistribResponse, "parsedquery_toString");
     assertSectionEquals(distribResponse, nonDistribResponse, "QParser");
-    assertSectionEquals(distribResponse, nonDistribResponse, "filter_qieries");
-    assertSectionEquals(distribResponse, nonDistribResponse, "parsed_filter_qieries");
+    assertSectionEquals(distribResponse, nonDistribResponse, "filter_queries");
+    assertSectionEquals(distribResponse, nonDistribResponse, "parsed_filter_queries");
     
     // timing should have the same sections:
     assertSameKeys((NamedList<?>)nonDistribResponse.getDebugMap().get("timing"), (NamedList<?>)distribResponse.getDebugMap().get("timing"));

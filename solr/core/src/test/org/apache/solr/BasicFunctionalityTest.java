@@ -37,7 +37,6 @@ import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext.Context;
 import org.apache.lucene.store.MockDirectoryWrapper;
-import org.apache.lucene.store.RateLimitedDirectoryWrapper;
 import org.apache.lucene.util.English;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
@@ -78,7 +77,7 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
   }
   // tests the performance of dynamic field creation and
   // field property testing.
-  /***
+  /*
   public void testFieldPerf() {
     IndexSchema schema = h.getCore().getSchema();
     SchemaField[] fields = schema.getDynamicFieldPrototypes();
@@ -625,7 +624,7 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
             ,"*[count(//doc)=2]"
             ,"//arr[@name='multiDefault']"
             );
-    assertQ("1 doc should have it's explicit multiDefault",
+    assertQ("1 doc should have its explicit multiDefault",
             req("multiDefault:a")
             ,"*[count(//doc)=1]"
             );
@@ -634,7 +633,7 @@ public class BasicFunctionalityTest extends SolrTestCaseJ4 {
             req("intDefault:42")
             ,"*[count(//doc)=2]"
             );
-    assertQ("1 doc should have it's explicit intDefault",
+    assertQ("1 doc should have its explicit intDefault",
             req("intDefault:[3 TO 5]")
             ,"*[count(//doc)=1]"
             );

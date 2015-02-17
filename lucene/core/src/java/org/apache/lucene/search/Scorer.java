@@ -17,7 +17,7 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.search.intervals.IntervalIterator;
 
 import java.io.IOException;
@@ -42,7 +42,7 @@ import java.util.Collections;
  * TopScoreDocCollector}) will not properly collect hits
  * with these scores.
  */
-public abstract class Scorer extends DocsEnum {
+public abstract class Scorer extends PostingsEnum {
   /** the Scorer's parent Weight. in some cases this may be null */
   // TODO can we clean this up?
   protected final Weight weight;
@@ -105,7 +105,7 @@ public abstract class Scorer extends DocsEnum {
    * {@link LeafCollector#collect}.
    */
   public abstract float score() throws IOException;
-  
+
   /** returns parent Weight
    * @lucene.experimental
    */
@@ -143,5 +143,24 @@ public abstract class Scorer extends DocsEnum {
       this.child = child;
       this.relationship = relationship;
     }
+  }
+
+  /**
+   * Optional method: Return a {@link TwoPhaseDocIdSetIterator} view of this
+   * {@link Scorer}. A return value of {@code null} indicates that
+   * two-phase iteration is not supported.
+   *
+   * Note that the returned {@link TwoPhaseDocIdSetIterator}'s
+   * {@link TwoPhaseDocIdSetIterator#approximation() approximation} must
+   * advance synchronously with this iterator: advancing the approximation must
+   * advance this iterator and vice-versa.
+   *
+   * Implementing this method is typically useful on {@link Scorer}s
+   * that have a high per-document overhead in order to confirm matches.
+   *
+   * The default implementation returns {@code null}.
+   */
+  public TwoPhaseDocIdSetIterator asTwoPhaseIterator() {
+    return null;
   }
 }

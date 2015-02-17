@@ -17,7 +17,12 @@
 
 package org.apache.solr.request;
 
-import org.noggit.ObjectBuilder;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.ModifiableSolrParams;
@@ -25,10 +30,7 @@ import org.apache.solr.schema.SchemaField;
 import org.apache.solr.util.TimeZoneUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Map;
+import org.noggit.ObjectBuilder;
 
 
 public class SimpleFacetsTest extends SolrTestCaseJ4 {
@@ -53,6 +55,20 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
   // committing randomly gives different looking segments each time
   static void add_doc(String... fieldsAndValues) {
     do {
+      //do our own copy-field:
+      List<String> fieldsAndValuesList = new ArrayList<>(Arrays.asList(fieldsAndValues));
+      int idx = fieldsAndValuesList.indexOf("a_tdt");
+      if (idx >= 0) {
+        fieldsAndValuesList.add("a_drf");
+        fieldsAndValuesList.add(fieldsAndValuesList.get(idx + 1));//copy
+      }
+      idx = fieldsAndValuesList.indexOf("bday");
+      if (idx >= 0) {
+        fieldsAndValuesList.add("bday_drf");
+        fieldsAndValuesList.add(fieldsAndValuesList.get(idx + 1));//copy
+      }
+      fieldsAndValues = fieldsAndValuesList.toArray(new String[fieldsAndValuesList.size()]);
+
       pendingDocs.add(fieldsAndValues);      
     } while (random().nextInt(100) <= random_dupe_percent);
 
@@ -124,6 +140,59 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
     add_doc("id", "2002", "hotel_s1", "b", "airport_s1", "ams", "duration_i1", "10");
     add_doc("id", "2003", "hotel_s1", "b", "airport_s1", "ams", "duration_i1", "5");
     add_doc("id", "2004", "hotel_s1", "b", "airport_s1", "ams", "duration_i1", "5");
+  }
+
+
+  public void testDefaultsAndAppends() throws Exception {
+    // all defaults
+    assertQ( req("indent","true", "q","*:*", "rows","0", "facet","true", "qt","/search-facet-def")
+             // only one default facet.field
+             ,"//lst[@name='facet_fields']/lst[@name='foo_s']"
+             ,"count(//lst[@name='facet_fields']/lst[@name='foo_s'])=1"
+             ,"count(//lst[@name='facet_fields']/lst)=1"
+             // only one default facet.query
+             ,"//lst[@name='facet_queries']/int[@name='foo_s:bar']"
+             ,"count(//lst[@name='facet_queries']/int[@name='foo_s:bar'])=1"
+             ,"count(//lst[@name='facet_queries']/int)=1"
+             );
+
+    // override default & pre-pend to appends
+    assertQ( req("indent","true", "q","*:*", "rows","0", "facet","true", "qt","/search-facet-def",
+                 "facet.field", "bar_s",
+                 "facet.query", "bar_s:yak"
+                 )
+             // override single default facet.field
+             ,"//lst[@name='facet_fields']/lst[@name='bar_s']"
+             ,"count(//lst[@name='facet_fields']/lst[@name='bar_s'])=1"
+             ,"count(//lst[@name='facet_fields']/lst)=1"
+             // add an additional facet.query
+             ,"//lst[@name='facet_queries']/int[@name='foo_s:bar']"
+             ,"//lst[@name='facet_queries']/int[@name='bar_s:yak']"
+             ,"count(//lst[@name='facet_queries']/int[@name='foo_s:bar'])=1"
+             ,"count(//lst[@name='facet_queries']/int[@name='bar_s:yak'])=1"
+             ,"count(//lst[@name='facet_queries']/int)=2"
+             );
+  }
+
+  public void testInvariants() throws Exception {
+    // no matter if we try to use facet.field or facet.query, results shouldn't change
+    for (String ff : new String[] { "facet.field", "bogus" }) {
+      for (String fq : new String[] { "facet.query", "bogus" }) {
+        assertQ( req("indent","true", "q", "*:*", "rows","0", "facet","true", 
+                     "qt","/search-facet-invariants",
+                     ff, "bar_s",
+                     fq, "bar_s:yak")
+                 // only one invariant facet.field
+                 ,"//lst[@name='facet_fields']/lst[@name='foo_s']"
+                 ,"count(//lst[@name='facet_fields']/lst[@name='foo_s'])=1"
+                 ,"count(//lst[@name='facet_fields']/lst)=1"
+                 // only one invariant facet.query
+                 ,"//lst[@name='facet_queries']/int[@name='foo_s:bar']"
+                 ,"count(//lst[@name='facet_queries']/int[@name='foo_s:bar'])=1"
+                 ,"count(//lst[@name='facet_queries']/int)=1"
+                 );
+      }
+    }
   }
 
   @Test
@@ -637,6 +706,7 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
     final String ooo = "00:00:00.000Z";
     final String xxx = "15:15:15.155Z";
 
+    //note: add_doc duplicates bday to bday_drf and a_tdt to a_drf (date range field)
     add_doc(i, "201",  f, "1976-07-04T12:08:56.235Z", ff, "1900-01-01T"+ooo);
     add_doc(i, "202",  f, "1976-07-05T00:00:00.000Z", ff, "1976-07-01T"+ooo);
     add_doc(i, "203",  f, "1976-07-15T00:07:67.890Z", ff, "1976-07-04T"+ooo);
@@ -661,6 +731,11 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
   @Test
   public void testTrieDateRangeFacets() {
     helpTestDateFacets("bday", true);
+  }
+
+  @Test
+  public void testDateRangeFieldFacets() {
+    helpTestDateFacets("bday_drf", true);
   }
 
   private void helpTestDateFacets(final String fieldName, 
@@ -860,8 +935,13 @@ public class SimpleFacetsTest extends SolrTestCaseJ4 {
     helpTestDateFacetsWithIncludeOption("a_tdt", true);
   }
 
-  /** similar to helpTestDateFacets, but for differnet fields with test data 
-      exactly on on boundary marks */
+  @Test
+  public void testDateRangeFieldDateRangeFacetsWithIncludeOption() {
+    helpTestDateFacetsWithIncludeOption("a_drf", true);
+  }
+
+  /** Similar to helpTestDateFacets, but for different fields with test data
+      exactly on boundary marks */
   private void helpTestDateFacetsWithIncludeOption(final String fieldName,
                                                    final boolean rangeMode) {
     final String p = rangeMode ? "facet.range" : "facet.date";

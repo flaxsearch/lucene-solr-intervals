@@ -24,7 +24,7 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
@@ -36,6 +36,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.FieldComparator;
 import org.apache.lucene.search.FieldComparatorSource;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.SimpleFieldComparator;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
@@ -49,6 +50,7 @@ import org.apache.solr.common.params.QueryElevationParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.schema.IndexSchema;
+import org.apache.solr.search.QueryParsing;
 import org.apache.solr.search.grouping.GroupingSpecification;
 import org.apache.solr.util.DOMUtil;
 import org.apache.solr.common.util.NamedList;
@@ -388,7 +390,8 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
     String exStr = params.get(QueryElevationParams.EXCLUDE);
 
     Query query = rb.getQuery();
-    String qstr = QueryElevationComponent.stripLocalParams(rb.getQueryString());
+    SolrParams localParams = rb.getQparser().getLocalParams();
+    String qstr = localParams == null ? rb.getQueryString() : localParams.get(QueryParsing.V);
     if (query == null || qstr == null) {
       return;
     }
@@ -490,19 +493,6 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
     }
   }
 
-  /**
-   * Simple stripping of localParam at start of query
-   * @param queryString the raw query string
-   * @return the query string without localParams, or the original queryString if no valid localParam found at beginning of string
-   */
-  protected static String stripLocalParams(String queryString) {
-    if (queryString == null || !queryString.startsWith("{!") || queryString.indexOf("}") == -1) {
-      return queryString;
-    }
-
-    return queryString.substring(queryString.indexOf("}")+1);
-  }
-
   private Sort modifySort(SortField[] current, boolean force, ElevationComparatorSource comparator) {
     SortSpec tmp = new SortSpec(new Sort(current), Arrays.asList(new SchemaField[current.length]));
     tmp = modifySortSpec(tmp, force, comparator);
@@ -573,7 +563,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
 
       List<LeafReaderContext>leaves = indexSearcher.getTopReaderContext().leaves();
       TermsEnum termsEnum = null;
-      DocsEnum docsEnum = null;
+      PostingsEnum postingsEnum = null;
       for(LeafReaderContext leaf : leaves) {
         LeafReader reader = leaf.reader();
         int docBase = leaf.docBase;
@@ -584,9 +574,9 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         while(it.hasNext()) {
           BytesRef ref = it.next();
           if(termsEnum.seekExact(ref)) {
-            docsEnum = termsEnum.docs(liveDocs, docsEnum);
-            int doc = docsEnum.nextDoc();
-            if(doc != DocsEnum.NO_MORE_DOCS) {
+            postingsEnum = termsEnum.postings(liveDocs, postingsEnum);
+            int doc = postingsEnum.nextDoc();
+            if(doc != PostingsEnum.NO_MORE_DOCS) {
               //Found the document.
               int p = boosted.get(ref);
               boostDocs.put(doc+docBase, p);
@@ -642,12 +632,12 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
 
   @Override
   public FieldComparator<Integer> newComparator(String fieldname, final int numHits, int sortPos, boolean reversed) throws IOException {
-    return new FieldComparator<Integer>() {
+    return new SimpleFieldComparator<Integer>() {
       private final int[] values = new int[numHits];
       private int bottomVal;
       private int topVal;
       private TermsEnum termsEnum;
-      private DocsEnum docsEnum;
+      private PostingsEnum postingsEnum;
       Set<String> seen = new HashSet<>(elevations.ids.size());
 
       @Override
@@ -688,13 +678,13 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       }
 
       @Override
-      public FieldComparator setNextReader(LeafReaderContext context) throws IOException {
+      protected void doSetNextReader(LeafReaderContext context) throws IOException {
         //convert the ids to Lucene doc ids, the ordSet and termValues needs to be the same size as the number of elevation docs we have
         ordSet.clear();
         Fields fields = context.reader().fields();
-        if (fields == null) return this;
+        if (fields == null) return;
         Terms terms = fields.terms(idField);
-        if (terms == null) return this;
+        if (terms == null) return;
         termsEnum = terms.iterator(termsEnum);
         BytesRefBuilder term = new BytesRefBuilder();
         Bits liveDocs = context.reader().getLiveDocs();
@@ -702,17 +692,16 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         for (String id : elevations.ids) {
           term.copyChars(id);
           if (seen.contains(id) == false  && termsEnum.seekExact(term.get())) {
-            docsEnum = termsEnum.docs(liveDocs, docsEnum, DocsEnum.FLAG_NONE);
-            if (docsEnum != null) {
-              int docId = docsEnum.nextDoc();
+            postingsEnum = termsEnum.postings(liveDocs, postingsEnum, PostingsEnum.FLAG_NONE);
+            if (postingsEnum != null) {
+              int docId = postingsEnum.nextDoc();
               if (docId == DocIdSetIterator.NO_MORE_DOCS ) continue;  // must have been deleted
               termValues[ordSet.put(docId)] = term.toBytesRef();
               seen.add(id);
-              assert docsEnum.nextDoc() == DocIdSetIterator.NO_MORE_DOCS;
+              assert postingsEnum.nextDoc() == DocIdSetIterator.NO_MORE_DOCS;
             }
           }
         }
-        return this;
       }
 
       @Override

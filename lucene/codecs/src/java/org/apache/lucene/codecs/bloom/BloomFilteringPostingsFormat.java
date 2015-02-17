@@ -19,20 +19,20 @@ package org.apache.lucene.codecs.bloom;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map.Entry;
 import java.util.Map;
+import java.util.Map.Entry;
 
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.bloom.FuzzySet.ContainsResult;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexFileNames;
@@ -72,7 +72,7 @@ import org.apache.lucene.util.automaton.CompiledAutomaton;
  * NumFilteredFields, Filter<sup>NumFilteredFields</sup>, Footer</li>
  * <li>Filter --&gt; FieldNumber, FuzzySet</li>
  * <li>FuzzySet --&gt;See {@link FuzzySet#serialize(DataOutput)}</li>
- * <li>Header --&gt; {@link CodecUtil#writeSegmentHeader SegmentHeader}</li>
+ * <li>Header --&gt; {@link CodecUtil#writeIndexHeader IndexHeader}</li>
  * <li>DelegatePostingsFormatName --&gt; {@link DataOutput#writeString(String)
  * String} The name of a ServiceProvider registered {@link PostingsFormat}</li>
  * <li>NumFilteredFields --&gt; {@link DataOutput#writeInt Uint32}</li>
@@ -166,7 +166,7 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
       boolean success = false;
       try {
         bloomIn = state.directory.openChecksumInput(bloomFileName, state.context);
-        CodecUtil.checkSegmentHeader(bloomIn, BLOOM_CODEC_NAME, VERSION_START, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+        CodecUtil.checkIndexHeader(bloomIn, BLOOM_CODEC_NAME, VERSION_START, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
         // // Load the hash function used in the BloomFilter
         // hashFunction = HashFunction.forName(bloomIn.readString());
         // Load the delegate postings format
@@ -381,19 +381,13 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
       public long totalTermFreq() throws IOException {
         return delegate().totalTermFreq();
       }
-      
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs,
-          DocsAndPositionsEnum reuse, int flags) throws IOException {
-        return delegate().docsAndPositions(liveDocs, reuse, flags);
-      }
-
-      @Override
-      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags)
+      public PostingsEnum postings(Bits liveDocs, PostingsEnum reuse, int flags)
           throws IOException {
-        return delegate().docs(liveDocs, reuse, flags);
+        return delegate().postings(liveDocs, reuse, flags);
       }
+
     }
 
     @Override
@@ -407,7 +401,7 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       List<Accountable> resources = new ArrayList<>();
       resources.addAll(Accountables.namedAccountables("field", bloomsByFieldName));
       if (delegateFieldsProducer != null) {
@@ -459,7 +453,7 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
 
         FuzzySet bloomFilter = null;
 
-        DocsEnum docsEnum = null;
+        PostingsEnum postingsEnum = null;
         while (true) {
           BytesRef term = termsEnum.next();
           if (term == null) {
@@ -475,17 +469,22 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
             bloomFilters.put(fieldInfo, bloomFilter);
           }
           // Make sure there's at least one doc for this term:
-          docsEnum = termsEnum.docs(null, docsEnum, 0);
-          if (docsEnum.nextDoc() != DocsEnum.NO_MORE_DOCS) {
+          postingsEnum = termsEnum.postings(null, postingsEnum, 0);
+          if (postingsEnum.nextDoc() != PostingsEnum.NO_MORE_DOCS) {
             bloomFilter.addValue(term);
           }
         }
       }
     }
 
+    private boolean closed;
+    
     @Override
     public void close() throws IOException {
-
+      if (closed) {
+        return;
+      }
+      closed = true;
       delegateFieldsConsumer.close();
 
       // Now we are done accumulating values for these fields
@@ -499,10 +498,8 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
       }
       String bloomFileName = IndexFileNames.segmentFileName(
           state.segmentInfo.name, state.segmentSuffix, BLOOM_EXTENSION);
-      IndexOutput bloomOutput = null;
-      try {
-        bloomOutput = state.directory.createOutput(bloomFileName, state.context);
-        CodecUtil.writeSegmentHeader(bloomOutput, BLOOM_CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+      try (IndexOutput bloomOutput = state.directory.createOutput(bloomFileName, state.context)) {
+        CodecUtil.writeIndexHeader(bloomOutput, BLOOM_CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
         // remember the name of the postings format we will delegate to
         bloomOutput.writeString(delegatePostingsFormat.getName());
         
@@ -515,8 +512,6 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
           saveAppropriatelySizedBloomFilter(bloomOutput, bloomFilter, fieldInfo);
         }
         CodecUtil.writeFooter(bloomOutput);
-      } finally {
-        IOUtils.close(bloomOutput);
       }
       //We are done with large bitsets so no need to keep them hanging around
       bloomFilters.clear(); 

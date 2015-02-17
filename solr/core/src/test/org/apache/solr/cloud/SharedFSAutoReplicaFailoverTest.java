@@ -19,6 +19,7 @@ package org.apache.solr.cloud;
 
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutorCompletionService;
@@ -27,25 +28,30 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope.Scope;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
-import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.LuceneTestCase.Nightly;
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
-import org.apache.solr.client.solrj.request.CollectionAdminRequest;
+import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest.Create;
+import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.response.CollectionAdminResponse;
 import org.apache.solr.cloud.hdfs.HdfsTestUtil;
 import org.apache.solr.common.cloud.ClusterStateUtil;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.common.params.CollectionParams;
+import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Test;
 
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope.Scope;
+import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
 
 @Nightly
 @Slow
@@ -75,10 +81,9 @@ public class SharedFSAutoReplicaFailoverTest extends AbstractFullDistribZkTestBa
     dfsCluster = null;
   }
   
-  @Before
   @Override
-  public void setUp() throws Exception {
-    super.setUp();
+  public void distribSetUp() throws Exception {
+    super.distribSetUp();
     useJettyDataDir = false;
     System.setProperty("solr.xml.persist", "true");
   }
@@ -89,18 +94,16 @@ public class SharedFSAutoReplicaFailoverTest extends AbstractFullDistribZkTestBa
 
   
   public SharedFSAutoReplicaFailoverTest() {
-    fixShardCount = true;
-    
     sliceCount = 2;
-    shardCount = 4;
     completionService = new ExecutorCompletionService<>(executor);
     pending = new HashSet<>();
     checkCreatedVsState = false;
     
   }
-  
-  @Override
-  public void doTest() throws Exception {
+
+  @Test
+  @ShardsFixed(num = 4)
+  public void test() throws Exception {
     try {
       testBasics();
     } finally {
@@ -109,7 +112,7 @@ public class SharedFSAutoReplicaFailoverTest extends AbstractFullDistribZkTestBa
       }
     }
   }
-  
+
   // very slow tests, especially since jetty is started and stopped
   // serially
   private void testBasics() throws Exception {
@@ -137,25 +140,25 @@ public class SharedFSAutoReplicaFailoverTest extends AbstractFullDistribZkTestBa
     createCollectionRequest.setConfigName("conf1");
     createCollectionRequest.setRouterField("myOwnField");
     createCollectionRequest.setAutoAddReplicas(false);
-    CollectionAdminResponse response2 = createCollectionRequest.process(getCommonCloudSolrServer());
+    CollectionAdminResponse response2 = createCollectionRequest.process(getCommonCloudSolrClient());
 
     assertEquals(0, response2.getStatus());
     assertTrue(response2.isSuccess());
     
     waitForRecoveriesToFinish(collection2, false);
-    
+
     ChaosMonkey.stop(jettys.get(1));
     ChaosMonkey.stop(jettys.get(2));
-    
+
     Thread.sleep(3000);
-    
+
     assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLive(cloudClient.getZkStateReader(), collection1, 120000));
-    
+
     assertSliceAndReplicaCount(collection1);
-    
+
     assertEquals(4, getLiveAndActiveCount(collection1));
     assertTrue(getLiveAndActiveCount(collection2) < 4);
-    
+
     ChaosMonkey.stop(jettys);
     ChaosMonkey.stop(controlJetty);
 
@@ -163,18 +166,47 @@ public class SharedFSAutoReplicaFailoverTest extends AbstractFullDistribZkTestBa
 
     ChaosMonkey.start(jettys);
     ChaosMonkey.start(controlJetty);
-    
+
     assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLive(cloudClient.getZkStateReader(), collection1, 120000));
 
     assertSliceAndReplicaCount(collection1);
-    
-    
+
     int jettyIndex = random().nextInt(jettys.size());
     ChaosMonkey.stop(jettys.get(jettyIndex));
     ChaosMonkey.start(jettys.get(jettyIndex));
-    
+
     assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLive(cloudClient.getZkStateReader(), collection1, 60000));
-    
+
+    //disable autoAddReplicas
+    Map m = makeMap(
+        "action", CollectionParams.CollectionAction.CLUSTERPROP.toLower(),
+        "name", ZkStateReader.AUTO_ADD_REPLICAS,
+        "val", "false");
+
+    SolrRequest request = new QueryRequest(new MapSolrParams(m));
+    request.setPath("/admin/collections");
+    cloudClient.request(request);
+
+    int currentCount = getLiveAndActiveCount(collection1);
+
+    ChaosMonkey.stop(jettys.get(3));
+
+    //solr-no-core.xml has defined workLoopDelay=10s and waitAfterExpiration=10s
+    //Hence waiting for 30 seconds to be on the safe side.
+    Thread.sleep(30000);
+    //Ensures that autoAddReplicas has not kicked in.
+    assertTrue(currentCount > getLiveAndActiveCount(collection1));
+
+    //enable autoAddReplicas
+    m = makeMap(
+        "action", CollectionParams.CollectionAction.CLUSTERPROP.toLower(),
+        "name", ZkStateReader.AUTO_ADD_REPLICAS);
+
+    request = new QueryRequest(new MapSolrParams(m));
+    request.setPath("/admin/collections");
+    cloudClient.request(request);
+
+    assertTrue("Timeout waiting for all live and active", ClusterStateUtil.waitForAllActiveAndLive(cloudClient.getZkStateReader(), collection1, 60000));
     assertSliceAndReplicaCount(collection1);
   }
 
@@ -204,8 +236,8 @@ public class SharedFSAutoReplicaFailoverTest extends AbstractFullDistribZkTestBa
   }
   
   @Override
-  public void tearDown() throws Exception {
-    super.tearDown();
+  public void distribTearDown() throws Exception {
+    super.distribTearDown();
     System.clearProperty("solr.xml.persist");
   }
 }

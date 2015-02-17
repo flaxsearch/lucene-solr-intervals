@@ -38,10 +38,11 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.IntField;
+import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 
 /** Minimal port of benchmark's LneDocSource +
  * DocMaker, so tests can enum docs from a line file created
@@ -89,7 +90,7 @@ public class LineFileDocs implements Closeable {
     boolean needSkip = true;
     long size = 0L, seekTo = 0L;
     if (is == null) {
-      // if its not in classpath, we load it as absolute filesystem path (e.g. Hudson's home dir)
+      // if it's not in classpath, we load it as absolute filesystem path (e.g. Hudson's home dir)
       Path file = Paths.get(path);
       size = Files.size(file);
       if (path.endsWith(".gz")) {
@@ -162,6 +163,7 @@ public class LineFileDocs implements Closeable {
     final Field body;
     final Field id;
     final Field idNum;
+    final Field idNumDV;
     final Field date;
 
     public DocState(boolean useDocValues) {
@@ -193,9 +195,12 @@ public class LineFileDocs implements Closeable {
 
       if (useDocValues) {
         titleDV = new SortedDocValuesField("titleDV", new BytesRef());
+        idNumDV = new NumericDocValuesField("docid_intDV", 0);
         doc.add(titleDV);
+        doc.add(idNumDV);
       } else {
         titleDV = null;
+        idNumDV = null;
       }
     }
   }
@@ -244,6 +249,9 @@ public class LineFileDocs implements Closeable {
     final int i = id.getAndIncrement();
     docState.id.setStringValue(Integer.toString(i));
     docState.idNum.setIntValue(i);
+    if (docState.idNumDV != null) {
+      docState.idNumDV.setLongValue(i);
+    }
     return docState.doc;
   }
 }

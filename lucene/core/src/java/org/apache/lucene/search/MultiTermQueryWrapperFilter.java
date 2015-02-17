@@ -19,14 +19,12 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.Fields;
-import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.DocIdSetBuilder;
 
 /**
  * A wrapper for {@link MultiTermQuery}, that exposes its
@@ -54,9 +52,9 @@ public class MultiTermQueryWrapperFilter<Q extends MultiTermQuery> extends Filte
   }
 
   @Override
-  public String toString() {
+  public String toString(String field) {
     // query.toString should be ok for the filter, too, if the query boost is 1.0f
-    return query.toString();
+    return query.toString(field);
   }
 
   @Override
@@ -84,14 +82,7 @@ public class MultiTermQueryWrapperFilter<Q extends MultiTermQuery> extends Filte
    */
   @Override
   public DocIdSet getDocIdSet(LeafReaderContext context, Bits acceptDocs) throws IOException {
-    final LeafReader reader = context.reader();
-    final Fields fields = reader.fields();
-    if (fields == null) {
-      // reader has no fields
-      return null;
-    }
-
-    final Terms terms = fields.terms(query.field);
+    final Terms terms = context.reader().terms(query.field);
     if (terms == null) {
       // field does not exist
       return null;
@@ -100,10 +91,10 @@ public class MultiTermQueryWrapperFilter<Q extends MultiTermQuery> extends Filte
     final TermsEnum termsEnum = query.getTermsEnum(terms);
     assert termsEnum != null;
 
-    DocIdSetBuilder builder = new DocIdSetBuilder(context.reader().maxDoc());
-    DocsEnum docs = null;
+    BitDocIdSet.Builder builder = new BitDocIdSet.Builder(context.reader().maxDoc());
+    PostingsEnum docs = null;
     while (termsEnum.next() != null) {
-      docs = termsEnum.docs(acceptDocs, docs, DocsEnum.FLAG_NONE);
+      docs = termsEnum.postings(acceptDocs, docs, PostingsEnum.FLAG_NONE);
       builder.or(docs);
     }
     return builder.build();

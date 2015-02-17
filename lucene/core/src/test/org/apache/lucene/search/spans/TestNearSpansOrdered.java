@@ -20,17 +20,17 @@ package org.apache.lucene.search.spans;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.CheckHits;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Weight.PostingFeatures;
+import org.apache.lucene.search.Weight;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 
@@ -82,6 +82,22 @@ public class TestNearSpansOrdered extends LuceneTestCase {
   }
   protected SpanNearQuery makeQuery() {
     return makeQuery("w1","w2","w3",1,true);
+  }
+
+  protected SpanNearQuery makeOverlappedQuery(
+      String sqt1, String sqt2, boolean sqOrdered,
+      String t3, boolean ordered) {
+    return new SpanNearQuery(
+      new SpanQuery[] {
+        new SpanNearQuery(new SpanQuery[] {
+          new SpanTermQuery(new Term(FIELD, sqt1)),
+            new SpanTermQuery(new Term(FIELD, sqt2)) },
+            1,
+            sqOrdered
+          ),
+          new SpanTermQuery(new Term(FIELD, t3)) },
+          0,
+          ordered);
   }
   
   public void testSpanNearQuery() throws Exception {
@@ -165,12 +181,28 @@ public class TestNearSpansOrdered extends LuceneTestCase {
    */
   public void testSpanNearScorerSkipTo1() throws Exception {
     SpanNearQuery q = makeQuery();
-    Weight w = searcher.createNormalizedWeight(q);
+    Weight w = searcher.createNormalizedWeight(q, true, PostingsEnum.FLAG_FREQS);
     IndexReaderContext topReaderContext = searcher.getTopReaderContext();
     LeafReaderContext leave = topReaderContext.leaves().get(0);
-    Scorer s = w.scorer(leave, PostingFeatures.DOCS_AND_FREQS, leave.reader().getLiveDocs());
+    Scorer s = w.scorer(leave, leave.reader().getLiveDocs());
     assertEquals(1, s.advance(1));
   }
+
+  public void testOverlappedOrderedSpan() throws Exception {
+    SpanNearQuery q = makeOverlappedQuery("w5", "w3", false, "w4", true);
+    CheckHits.checkHits(random(), q, FIELD, searcher, new int[] {});
+  }
+  
+  public void testOverlappedNonOrderedSpan() throws Exception {
+    SpanNearQuery q = makeOverlappedQuery("w3", "w5", true, "w4", false);
+    CheckHits.checkHits(random(), q, FIELD, searcher, new int[] {0});
+  }
+
+  public void testNonOverlappedOrderedSpan() throws Exception {
+    SpanNearQuery q = makeOverlappedQuery("w3", "w4", true, "w5", true);
+    CheckHits.checkHits(random(), q, FIELD, searcher, new int[] {0});
+  }
+  
   
   /**
    * not a direct test of NearSpans, but a demonstration of how/when
@@ -183,5 +215,4 @@ public class TestNearSpansOrdered extends LuceneTestCase {
                + e.toString(),
                0.0f < e.getValue());
   }
-  
 }

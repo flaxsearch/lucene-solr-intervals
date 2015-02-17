@@ -17,23 +17,19 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
-import java.io.File;
-import java.io.FilenameFilter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.BasicResponseHandler;
-import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.TestUtil;
+import com.google.common.collect.Lists;
+import org.apache.lucene.mockfile.FilterPath;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CoreAdminRequest.Create;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.request.UpdateRequest;
@@ -44,9 +40,8 @@ import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.handler.ReplicationHandler;
-import org.apache.solr.util.AbstractSolrTestCase;
+import org.apache.solr.handler.CheckBackupStatus;
+import org.junit.Test;
 
 /**
  * This test simply does a bunch of basic things in solrcloud mode and asserts things
@@ -57,24 +52,15 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
   private static final String SHARD2 = "shard2";
   private static final String SHARD1 = "shard1";
   private static final String ONE_NODE_COLLECTION = "onenodecollection";
-  
+
   public BasicDistributedZk2Test() {
     super();
-    fixShardCount = true;
-    
     sliceCount = 2;
-    shardCount = 4;
   }
   
-  /*
-   * (non-Javadoc)
-   * 
-   * @see org.apache.solr.BaseDistributedSearchTestCase#doTest()
-   * 
-   * Create 3 shards, each with one replica
-   */
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  @ShardsFixed(num = 4)
+  public void test() throws Exception {
     boolean testFinished = false;
     try {
       handle.clear();
@@ -125,7 +111,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
         // expected
       }
       
-      // TODO: bring this to it's own method?
+      // TODO: bring this to its own method?
       // try indexing to a leader that has no replicas up
       ZkStateReader zkStateReader = cloudClient.getZkStateReader();
       ZkNodeProps leaderProps = zkStateReader.getLeaderRetry(
@@ -134,7 +120,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
       String nodeName = leaderProps.getStr(ZkStateReader.NODE_NAME_PROP);
       chaosMonkey.stopShardExcept(SHARD2, nodeName);
       
-      SolrServer client = getClient(nodeName);
+      SolrClient client = getClient(nodeName);
       
       index_specific(client, "id", docId + 1, t1, "what happens here?");
       
@@ -158,20 +144,17 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
     
   }
   
-  private void testNodeWithoutCollectionForwarding() throws Exception,
-      SolrServerException, IOException {
-    try {
-      final String baseUrl = getBaseUrl((HttpSolrServer) clients.get(0));
-      HttpSolrServer server = new HttpSolrServer(baseUrl);
-      server.setConnectionTimeout(30000);
+  private void testNodeWithoutCollectionForwarding() throws Exception {
+    final String baseUrl = getBaseUrl((HttpSolrClient) clients.get(0));
+    try (HttpSolrClient client = new HttpSolrClient(baseUrl)) {
+      client.setConnectionTimeout(30000);
       Create createCmd = new Create();
       createCmd.setRoles("none");
       createCmd.setCoreName(ONE_NODE_COLLECTION + "core");
       createCmd.setCollection(ONE_NODE_COLLECTION);
       createCmd.setNumShards(1);
       createCmd.setDataDir(getDataDir(createTempDir(ONE_NODE_COLLECTION).toFile().getAbsolutePath()));
-      server.request(createCmd);
-      server.shutdown();
+      client.request(createCmd);
     } catch (Exception e) {
       e.printStackTrace();
       fail(e.getMessage());
@@ -183,9 +166,9 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
     cloudClient.getZkStateReader().getLeaderRetry(ONE_NODE_COLLECTION, SHARD1, 30000);
     
     int docs = 2;
-    for (SolrServer client : clients) {
-      final String baseUrl = getBaseUrl((HttpSolrServer) client);
-      addAndQueryDocs(baseUrl, docs);
+    for (SolrClient client : clients) {
+      final String clientUrl = getBaseUrl((HttpSolrClient) client);
+      addAndQueryDocs(clientUrl, docs);
       docs += 2;
     }
   }
@@ -193,36 +176,39 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
   // 2 docs added every call
   private void addAndQueryDocs(final String baseUrl, int docs)
       throws Exception {
-    HttpSolrServer qclient = new HttpSolrServer(baseUrl + "/onenodecollection" + "core");
-    
-    // it might take a moment for the proxy node to see us in their cloud state
-    waitForNon403or404or503(qclient);
-    
-    // add a doc
-    SolrInputDocument doc = new SolrInputDocument();
-    doc.addField("id", docs);
-    qclient.add(doc);
-    qclient.commit();
-    
+
     SolrQuery query = new SolrQuery("*:*");
-    QueryResponse results = qclient.query(query);
-    assertEquals(docs - 1, results.getResults().getNumFound());
-    qclient.shutdown();
+
+    try (HttpSolrClient qclient = new HttpSolrClient(baseUrl + "/onenodecollection" + "core")) {
+
+      // it might take a moment for the proxy node to see us in their cloud state
+      waitForNon403or404or503(qclient);
+
+      // add a doc
+      SolrInputDocument doc = new SolrInputDocument();
+      doc.addField("id", docs);
+      qclient.add(doc);
+      qclient.commit();
+
+
+      QueryResponse results = qclient.query(query);
+      assertEquals(docs - 1, results.getResults().getNumFound());
+    }
     
-    qclient = new HttpSolrServer(baseUrl + "/onenodecollection");
-    results = qclient.query(query);
-    assertEquals(docs - 1, results.getResults().getNumFound());
-    
-    doc = new SolrInputDocument();
-    doc.addField("id", docs + 1);
-    qclient.add(doc);
-    qclient.commit();
-    
-    query = new SolrQuery("*:*");
-    query.set("rows", 0);
-    results = qclient.query(query);
-    assertEquals(docs, results.getResults().getNumFound());
-    qclient.shutdown();
+    try (HttpSolrClient qclient = new HttpSolrClient(baseUrl + "/onenodecollection")) {
+      QueryResponse results = qclient.query(query);
+      assertEquals(docs - 1, results.getResults().getNumFound());
+
+      SolrInputDocument doc = new SolrInputDocument();
+      doc.addField("id", docs + 1);
+      qclient.add(doc);
+      qclient.commit();
+
+      query = new SolrQuery("*:*");
+      query.set("rows", 0);
+      results = qclient.query(query);
+      assertEquals(docs, results.getResults().getNumFound());
+    }
   }
   
   private long testUpdateAndDelete() throws Exception {
@@ -351,7 +337,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
       System.err.println(controlClient.query(new SolrQuery("*:*")).getResults()
           .getNumFound());
       
-      for (SolrServer client : clients) {
+      for (SolrClient client : clients) {
         try {
           SolrQuery q = new SolrQuery("*:*");
           q.set("distrib", false);
@@ -402,7 +388,7 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
     // make sure we have published we are recovering
     Thread.sleep(1500);
     
-    waitForThingsToLevelOut(45);
+    waitForThingsToLevelOut(60);
     
     Thread.sleep(500);
     
@@ -411,88 +397,33 @@ public class BasicDistributedZk2Test extends AbstractFullDistribZkTestBase {
     checkShardConsistency(true, false);
     
     // try a backup command
-    final HttpSolrServer client = (HttpSolrServer) shardToJetty.get(SHARD2).get(0).client.solrClient;
+    final HttpSolrClient client = (HttpSolrClient) shardToJetty.get(SHARD2).get(0).client.solrClient;
     ModifiableSolrParams params = new ModifiableSolrParams();
     params.set("qt", "/replication");
     params.set("command", "backup");
-    File location = createTempDir().toFile();
-    params.set("location", location.getAbsolutePath());
+    Path location = createTempDir();
+    location = FilterPath.unwrap(location).toRealPath();
+    params.set("location", location.toString());
 
     QueryRequest request = new QueryRequest(params);
-    NamedList<Object> results = client.request(request );
+    client.request(request);
     
     checkForBackupSuccess(client, location);
   }
 
-  private void checkForBackupSuccess(final HttpSolrServer client, File location)
-      throws InterruptedException, IOException {
-    class CheckStatus extends Thread {
-      volatile String fail = null;
-      volatile String response = null;
-      volatile boolean success = false;
-      final Pattern p = Pattern
-          .compile("<str name=\"snapshotCompletedAt\">(.*?)</str>");
-      
-      CheckStatus() {}
-      
-      @Override
-      public void run() {
-        String masterUrl = client.getBaseURL() + "/replication?command="
-            + ReplicationHandler.CMD_DETAILS;
-        
-        try {
-          response = client.getHttpClient().execute(new HttpGet(masterUrl), new BasicResponseHandler());
-          if (response.contains("<str name=\"status\">success</str>")) {
-            Matcher m = p.matcher(response);
-            if (!m.find()) {
-              fail("could not find the completed timestamp in response.");
-            }
-            
-            success = true;
-          }
-        } catch (Exception e) {
-          e.printStackTrace();
-          fail = e.getMessage();
-        }
-        
-      };
+  private void checkForBackupSuccess(HttpSolrClient client, Path location) throws InterruptedException, IOException {
+    CheckBackupStatus checkBackupStatus = new CheckBackupStatus(client);
+    while (!checkBackupStatus.success) {
+      checkBackupStatus.fetchStatus();
+      Thread.sleep(1000);
     }
-    
-    int waitCnt = 0;
-    CheckStatus checkStatus = new CheckStatus();
-    while (true) {
-      checkStatus.run();
-      if (checkStatus.fail != null) {
-        fail(checkStatus.fail);
-      }
-      if (checkStatus.success) {
-        break;
-      }
-      Thread.sleep(500);
-      if (waitCnt == 90) {
-        fail("Backup success not detected:" + checkStatus.response);
-      }
-      waitCnt++;
-    }
-    
-    File[] files = location.listFiles(new FilenameFilter() {
-      
-      @Override
-      public boolean accept(File dir, String name) {
-        if (name.startsWith("snapshot")) {
-          return true;
-        }
-        return false;
-      }
-    });
-    assertEquals(Arrays.asList(files).toString(), 1, files.length);
-    File snapDir = files[0];
-    
-    IOUtils.rm(snapDir.toPath());
+    ArrayList<Path> files = Lists.newArrayList(Files.newDirectoryStream(location, "snapshot*").iterator());
+
+    assertEquals(Arrays.asList(files).toString(), 1, files.size());
+
   }
   
   private void addNewReplica() throws Exception {
-    JettySolrRunner newReplica = createJettys(1).get(0);
     
     waitForRecoveriesToFinish(false);
     

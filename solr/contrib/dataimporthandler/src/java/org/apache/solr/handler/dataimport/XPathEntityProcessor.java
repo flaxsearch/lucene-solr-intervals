@@ -43,10 +43,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * <p> An implementation of {@link EntityProcessor} which uses a streaming xpath parser to extract values out of XML documents.
- * It is typically used in conjunction with {@link URLDataSource} or {@link FileDataSource}. </p> <p/> <p> Refer to <a
+ * It is typically used in conjunction with {@link URLDataSource} or {@link FileDataSource}. </p> <p> Refer to <a
  * href="http://wiki.apache.org/solr/DataImportHandler">http://wiki.apache.org/solr/DataImportHandler</a> for more
  * details. </p>
- * <p/>
+ * <p>
  * <b>This API is experimental and may change in the future.</b>
  *
  *
@@ -301,7 +301,7 @@ public class XPathEntityProcessor extends EntityProcessorBase {
           data = caw.getReader();
         } catch (TransformerException e) {
           if (ABORT.equals(onError)) {
-            wrapAndThrow(SEVERE, e, "Exception in applying XSL Transformeation");
+            wrapAndThrow(SEVERE, e, "Exception in applying XSL Transformation");
           } else if (SKIP.equals(onError)) {
             wrapAndThrow(DataImportHandlerException.SKIP, e);
           } else {

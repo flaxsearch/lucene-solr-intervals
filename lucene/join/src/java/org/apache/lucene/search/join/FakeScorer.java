@@ -17,27 +17,20 @@ package org.apache.lucene.search.join;
  * limitations under the License.
  */
 
-import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
+import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
-import java.util.Collection;
 
-/** Passed to {@link LeafCollector#setScorer} during join collection. */
-final class FakeScorer extends Scorer {
+class FakeScorer extends Scorer {
+
   float score;
   int doc = -1;
   int freq = 1;
 
-  public FakeScorer() {
+  FakeScorer() {
     super(null);
-  }
-    
-  @Override
-  public int advance(int target) {
-    throw new UnsupportedOperationException("FakeScorer doesn't support advance(int)");
   }
 
   @Override
@@ -46,13 +39,13 @@ final class FakeScorer extends Scorer {
   }
 
   @Override
-  public int freq() {
-    throw new UnsupportedOperationException("FakeScorer doesn't support freq()");
+  public int nextDoc() throws IOException {
+    throw new UnsupportedOperationException();
   }
 
   @Override
-  public int nextDoc() {
-    throw new UnsupportedOperationException("FakeScorer doesn't support nextDoc()");
+  public int advance(int target) throws IOException {
+    throw new UnsupportedOperationException();
   }
 
   @Override
@@ -61,22 +54,37 @@ final class FakeScorer extends Scorer {
   }
 
   @Override
-  public float score() {
-    return score;
-  }
-
-  @Override
   public long cost() {
-    return 1;
-  }
-
-  @Override
-  public Weight getWeight() {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public Collection<ChildScorer> getChildren() {
+  public int freq() throws IOException {
+    return freq;
+  }
+
+  @Override
+  public int nextPosition() throws IOException {
     throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public int startOffset() throws IOException {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public int endOffset() throws IOException {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public BytesRef getPayload() throws IOException {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public float score() throws IOException {
+    return score;
   }
 }

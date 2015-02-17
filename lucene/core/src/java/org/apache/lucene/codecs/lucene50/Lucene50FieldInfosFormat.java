@@ -25,12 +25,12 @@ import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.FieldInfosFormat;
 import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.SegmentInfo;
-import org.apache.lucene.index.FieldInfo.DocValuesType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.store.ChecksumIndexInput;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.Directory;
@@ -40,13 +40,12 @@ import org.apache.lucene.store.IndexOutput;
 
 /**
  * Lucene 5.0 Field Infos format.
- * <p>
- * <p>Field names are stored in the field info file, with suffix <tt>.fnm</tt>.</p>
+ * <p>Field names are stored in the field info file, with suffix <tt>.fnm</tt>.
  * <p>FieldInfos (.fnm) --&gt; Header,FieldsCount, &lt;FieldName,FieldNumber,
- * FieldBits,DocValuesBits,DocValuesGen,Attributes&gt; <sup>FieldsCount</sup>,Footer</p>
+ * FieldBits,DocValuesBits,DocValuesGen,Attributes&gt; <sup>FieldsCount</sup>,Footer
  * <p>Data types:
  * <ul>
- *   <li>Header --&gt; {@link CodecUtil#checkSegmentHeader SegmentHeader}</li>
+ *   <li>Header --&gt; {@link CodecUtil#checkIndexHeader IndexHeader}</li>
  *   <li>FieldsCount --&gt; {@link DataOutput#writeVInt VInt}</li>
  *   <li>FieldName --&gt; {@link DataOutput#writeString String}</li>
  *   <li>FieldBits, IndexOptions, DocValuesBits --&gt; {@link DataOutput#writeByte Byte}</li>
@@ -55,7 +54,6 @@ import org.apache.lucene.store.IndexOutput;
  *   <li>DocValuesGen --&gt; {@link DataOutput#writeLong(long) Int64}</li>
  *   <li>Footer --&gt; {@link CodecUtil#writeFooter CodecFooter}</li>
  * </ul>
- * </p>
  * Field Descriptions:
  * <ul>
  *   <li>FieldsCount: the number of fields in this file.</li>
@@ -114,9 +112,9 @@ public final class Lucene50FieldInfosFormat extends FieldInfosFormat {
       Throwable priorE = null;
       FieldInfo infos[] = null;
       try {
-        CodecUtil.checkSegmentHeader(input, CODEC_NAME, 
-                                     FORMAT_START, 
-                                     FORMAT_CURRENT,
+        CodecUtil.checkIndexHeader(input, Lucene50FieldInfosFormat.CODEC_NAME, 
+                                     Lucene50FieldInfosFormat.FORMAT_START, 
+                                     Lucene50FieldInfosFormat.FORMAT_CURRENT,
                                      segmentInfo.getId(), segmentSuffix);
         
         final int size = input.readVInt(); //read in the size
@@ -159,35 +157,33 @@ public final class Lucene50FieldInfosFormat extends FieldInfosFormat {
   static {
     // We "mirror" DocValues enum values with the constants below; let's try to ensure if we add a new DocValuesType while this format is
     // still used for writing, we remember to fix this encoding:
-    assert DocValuesType.values().length == 5;
+    assert DocValuesType.values().length == 6;
   }
 
   private static byte docValuesByte(DocValuesType type) {
-    if (type == null) {
+    switch(type) {
+    case NONE:
       return 0;
-    } else {
-      switch(type) {
-      case NUMERIC:
-        return 1;
-      case BINARY:
-        return 2;
-      case SORTED:
-        return 3;
-      case SORTED_SET:
-        return 4;
-      case SORTED_NUMERIC:
-        return 5;
-      default:
-        // BUG
-        throw new AssertionError("unhandled DocValuesType: " + type);
-      }
+    case NUMERIC:
+      return 1;
+    case BINARY:
+      return 2;
+    case SORTED:
+      return 3;
+    case SORTED_SET:
+      return 4;
+    case SORTED_NUMERIC:
+      return 5;
+    default:
+      // BUG
+      throw new AssertionError("unhandled DocValuesType: " + type);
     }
   }
 
   private static DocValuesType getDocValuesType(IndexInput input, byte b) throws IOException {
     switch(b) {
     case 0:
-      return null;
+      return DocValuesType.NONE;
     case 1:
       return DocValuesType.NUMERIC;
     case 2:
@@ -206,35 +202,33 @@ public final class Lucene50FieldInfosFormat extends FieldInfosFormat {
   static {
     // We "mirror" IndexOptions enum values with the constants below; let's try to ensure if we add a new IndexOption while this format is
     // still used for writing, we remember to fix this encoding:
-    assert IndexOptions.values().length == 4;
+    assert IndexOptions.values().length == 5;
   }
 
   private static byte indexOptionsByte(IndexOptions indexOptions) {
-    if (indexOptions == null) {
+    switch (indexOptions) {
+    case NONE:
       return 0;
-    } else {
-      switch (indexOptions) {
-      case DOCS_ONLY:
-        return 1;
-      case DOCS_AND_FREQS:
-        return 2;
-      case DOCS_AND_FREQS_AND_POSITIONS:
-        return 3;
-      case DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS:
-        return 4;
-      default:
-        // BUG:
-        throw new AssertionError("unhandled IndexOptions: " + indexOptions);
-      }
+    case DOCS:
+      return 1;
+    case DOCS_AND_FREQS:
+      return 2;
+    case DOCS_AND_FREQS_AND_POSITIONS:
+      return 3;
+    case DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS:
+      return 4;
+    default:
+      // BUG:
+      throw new AssertionError("unhandled IndexOptions: " + indexOptions);
     }
   }
   
   private static IndexOptions getIndexOptions(IndexInput input, byte b) throws IOException {
     switch (b) {
     case 0:
-      return null;
+      return IndexOptions.NONE;
     case 1:
-      return IndexOptions.DOCS_ONLY;
+      return IndexOptions.DOCS;
     case 2:
       return IndexOptions.DOCS_AND_FREQS;
     case 3:
@@ -251,7 +245,7 @@ public final class Lucene50FieldInfosFormat extends FieldInfosFormat {
   public void write(Directory directory, SegmentInfo segmentInfo, String segmentSuffix, FieldInfos infos, IOContext context) throws IOException {
     final String fileName = IndexFileNames.segmentFileName(segmentInfo.name, segmentSuffix, EXTENSION);
     try (IndexOutput output = directory.createOutput(fileName, context)) {
-      CodecUtil.writeSegmentHeader(output, CODEC_NAME, FORMAT_CURRENT, segmentInfo.getId(), segmentSuffix);
+      CodecUtil.writeIndexHeader(output, Lucene50FieldInfosFormat.CODEC_NAME, Lucene50FieldInfosFormat.FORMAT_CURRENT, segmentInfo.getId(), segmentSuffix);
       output.writeVInt(infos.size());
       for (FieldInfo fi : infos) {
         fi.checkConsistency();

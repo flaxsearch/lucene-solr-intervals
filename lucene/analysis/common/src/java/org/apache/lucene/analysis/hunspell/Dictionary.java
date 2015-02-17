@@ -447,7 +447,7 @@ public class Dictionary {
    * @param reader BufferedReader to read the content of the rule from
    * @param conditionPattern {@link String#format(String, Object...)} pattern to be used to generate the condition regex
    *                         pattern
-   * @param seenPatterns map from condition -> index of patterns, for deduplication.
+   * @param seenPatterns map from condition -&gt; index of patterns, for deduplication.
    * @throws IOException Can be thrown while reading the rule
    */
   private void parseAffix(TreeMap<String,List<Integer>> affixes,
@@ -555,7 +555,7 @@ public class Dictionary {
         // already exists in our hash
         appendFlagsOrd = (-appendFlagsOrd)-1;
       } else if (appendFlagsOrd > Short.MAX_VALUE) {
-        // this limit is probably flexible, but its a good sanity check too
+        // this limit is probably flexible, but it's a good sanity check too
         throw new UnsupportedOperationException("Too many unique append flags, please report this to dev@lucene.apache.org");
       }
       
@@ -1027,7 +1027,7 @@ public class Dictionary {
   }
   
   private String parseStemException(String morphData) {
-    // first see if its an alias
+    // first see if it's an alias
     if (morphAliasCount > 0) {
       try {
         int alias = Integer.parseInt(morphData.trim());

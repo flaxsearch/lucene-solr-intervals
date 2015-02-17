@@ -17,11 +17,11 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import java.io.IOException;
+
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.ThreadInterruptedException;
-
-import java.io.IOException;
 
 /**
  * The {@link TimeLimitingCollector} is used to timeout search requests that
@@ -94,7 +94,6 @@ public class TimeLimitingCollector implements Collector {
    *   collector.setBaseline(baseline);
    *   indexSearcher.search(query, collector);
    * </pre>
-   * </p>
    * @see #setBaseline() 
    */
   public void setBaseline(long clockTime) {
@@ -156,7 +155,12 @@ public class TimeLimitingCollector implements Collector {
       
     };
   }
-  
+
+  @Override
+  public boolean needsScores() {
+    return collector.needsScores();
+  }
+
   /**
    * This is so the same timer can be used with a multi-phase search process such as grouping. 
    * We don't want to create a new TimeLimitingCollector for each phase because that would 

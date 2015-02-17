@@ -30,6 +30,7 @@ import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
@@ -187,19 +188,14 @@ public class CustomScoreQuery extends Query {
     boolean qStrict;
     float queryWeight;
 
-    public CustomWeight(IndexSearcher searcher) throws IOException {
-      this.subQueryWeight = subQuery.createWeight(searcher);
+    public CustomWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+      super(CustomScoreQuery.this);
+      this.subQueryWeight = subQuery.createWeight(searcher, needsScores, flags);
       this.valSrcWeights = new Weight[scoringQueries.length];
       for(int i = 0; i < scoringQueries.length; i++) {
-        this.valSrcWeights[i] = scoringQueries[i].createWeight(searcher);
+        this.valSrcWeights[i] = scoringQueries[i].createWeight(searcher, needsScores, flags);
       }
       this.qStrict = strict;
-    }
-
-    /*(non-Javadoc) @see org.apache.lucene.search.Weight#getQuery() */
-    @Override
-    public Query getQuery() {
-      return CustomScoreQuery.this;
     }
 
     @Override
@@ -235,14 +231,14 @@ public class CustomScoreQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
-      Scorer subQueryScorer = subQueryWeight.scorer(context, flags, acceptDocs);
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+      Scorer subQueryScorer = subQueryWeight.scorer(context, acceptDocs);
       if (subQueryScorer == null) {
         return null;
       }
       Scorer[] valSrcScorers = new Scorer[valSrcWeights.length];
       for(int i = 0; i < valSrcScorers.length; i++) {
-         valSrcScorers[i] = valSrcWeights[i].scorer(context, flags, acceptDocs);
+         valSrcScorers[i] = valSrcWeights[i].scorer(context, acceptDocs);
       }
       return new CustomScorer(CustomScoreQuery.this.getCustomScoreProvider(context), this, queryWeight, subQueryScorer, valSrcScorers);
     }
@@ -264,17 +260,12 @@ public class CustomScoreQuery extends Query {
         valSrcExpls[i] = valSrcWeights[i].explain(info, doc);
       }
       Explanation customExp = CustomScoreQuery.this.getCustomScoreProvider(info).customExplain(doc,subQueryExpl,valSrcExpls);
-      float sc = getBoost() * customExp.getValue();
+      float sc = queryWeight * customExp.getValue();
       Explanation res = new ComplexExplanation(
         true, sc, CustomScoreQuery.this.toString() + ", product of:");
       res.addDetail(customExp);
-      res.addDetail(new Explanation(getBoost(), "queryBoost")); // actually using the q boost as q weight (== weight value)
+      res.addDetail(new Explanation(queryWeight, "queryWeight"));
       return res;
-    }
-
-    @Override
-    public boolean scoresDocsOutOfOrder() {
-      return false;
     }
     
   }
@@ -291,6 +282,8 @@ public class CustomScoreQuery extends Query {
     private final Scorer[] valSrcScorers;
     private final CustomScoreProvider provider;
     private final float[] vScores; // reused in score() to avoid allocating this array for each doc
+
+    // TODO : can we use FilterScorer here instead?
 
     // constructor
     private CustomScorer(CustomScoreProvider provider, CustomWeight w, float qWeight,
@@ -334,6 +327,26 @@ public class CustomScoreQuery extends Query {
     }
 
     @Override
+    public int nextPosition() throws IOException {
+      return subQueryScorer.nextPosition();
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      return subQueryScorer.startOffset();
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return subQueryScorer.endOffset();
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return subQueryScorer.getPayload();
+    }
+
+    @Override
     public Collection<ChildScorer> getChildren() {
       return Collections.singleton(new ChildScorer(subQueryScorer, "CUSTOM"));
     }
@@ -360,8 +373,8 @@ public class CustomScoreQuery extends Query {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return new CustomWeight(searcher);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+    return new CustomWeight(searcher, needsScores, flags);
   }
 
   /**

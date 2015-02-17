@@ -35,7 +35,7 @@ import java.io.IOException;
  * attributes and the defaults if optional attributes are omitted. For more
  * detail on what each of the attributes actually do, consult the documentation
  * for {@link NumericRangeFilter}:
- * <table>
+ * <table summary="supported attributes">
  * <tr>
  * <th>Attribute name</th>
  * <th>Values</th>
@@ -85,7 +85,7 @@ import java.io.IOException;
  * <td>4</td>
  * </tr>
  * </table>
- * <p/>
+ * <p>
  * If an error occurs parsing the supplied <tt>lowerTerm</tt> or
  * <tt>upperTerm</tt> into the numeric type specified by <tt>type</tt>, then the
  * error will be silently ignored and the resulting filter will not match any
@@ -99,13 +99,13 @@ public class NumericRangeFilterBuilder implements FilterBuilder {
 
   /**
    * Specifies how this {@link NumericRangeFilterBuilder} will handle errors.
-   * <p/>
+   * <p>
    * If this is set to true, {@link #getFilter(Element)} will throw a
    * {@link ParserException} if it is unable to parse the lowerTerm or upperTerm
    * into the appropriate numeric type. If this is set to false, then this
    * exception will be silently ignored and the resulting filter will not match
    * any documents.
-   * <p/>
+   * <p>
    * Defaults to false.
    */
   public void setStrictMode(boolean strictMode) {
@@ -159,5 +159,10 @@ public class NumericRangeFilterBuilder implements FilterBuilder {
       return null;
     }
 
+
+    @Override
+    public String toString(String field) {
+      return "NoMatchFilter()";
+    }
   }
 }

@@ -74,10 +74,10 @@ class MemoryDocValuesConsumer extends DocValuesConsumer {
     try {
       String dataName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, dataExtension);
       data = state.directory.createOutput(dataName, state.context);
-      CodecUtil.writeSegmentHeader(data, dataCodec, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+      CodecUtil.writeIndexHeader(data, dataCodec, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
       String metaName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, metaExtension);
       meta = state.directory.createOutput(metaName, state.context);
-      CodecUtil.writeSegmentHeader(meta, metaCodec, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+      CodecUtil.writeIndexHeader(meta, metaCodec, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
       success = true;
     } finally {
       if (!success) {
@@ -196,7 +196,7 @@ class MemoryDocValuesConsumer extends DocValuesConsumer {
       int numBlocks = maxDoc / BLOCK_SIZE;
       float avgBPV = blockSum / (float)numBlocks;
       // just a heuristic, with tiny amounts of blocks our estimate is skewed as we ignore the final "incomplete" block.
-      // with at least 4 blocks its pretty accurate. The difference must also be significant (according to acceptable overhead).
+      // with at least 4 blocks it's pretty accurate. The difference must also be significant (according to acceptable overhead).
       if (numBlocks >= 4 && (avgBPV+avgBPV*acceptableOverheadRatio) < deltaBPV.bitsPerValue) {
         doBlock = true;
       }
@@ -305,6 +305,7 @@ class MemoryDocValuesConsumer extends DocValuesConsumer {
     int maxLength = Integer.MIN_VALUE;
     final long startFP = data.getFilePointer();
     boolean missing = false;
+    int upto = 0;
     for(BytesRef v : values) {
       final int length;
       if (v == null) {
@@ -314,8 +315,9 @@ class MemoryDocValuesConsumer extends DocValuesConsumer {
         length = v.length;
       }
       if (length > MemoryDocValuesFormat.MAX_BINARY_FIELD_LENGTH) {
-        throw new IllegalArgumentException("DocValuesField \"" + field.name + "\" is too large, must be <= " + MemoryDocValuesFormat.MAX_BINARY_FIELD_LENGTH);
+        throw new IllegalArgumentException("DocValuesField \"" + field.name + "\" is too large, must be <= " + MemoryDocValuesFormat.MAX_BINARY_FIELD_LENGTH + " but got length=" + length + " v=" + v + "; upto=" + upto + " values=" + values);
       }
+      upto++;
       minLength = Math.min(minLength, length);
       maxLength = Math.max(maxLength, length);
       if (v != null) {
@@ -335,7 +337,7 @@ class MemoryDocValuesConsumer extends DocValuesConsumer {
     meta.writeVInt(minLength);
     meta.writeVInt(maxLength);
     
-    // if minLength == maxLength, its a fixed-length byte[], we are done (the addresses are implicit)
+    // if minLength == maxLength, it's a fixed-length byte[], we are done (the addresses are implicit)
     // otherwise, we need to record the length fields...
     if (minLength != maxLength) {
       meta.writeVInt(PackedInts.VERSION_CURRENT);
@@ -432,7 +434,7 @@ class MemoryDocValuesConsumer extends DocValuesConsumer {
     }
   }
 
-  // note: this might not be the most efficient... but its fairly simple
+  // note: this might not be the most efficient... but it's fairly simple
   @Override
   public void addSortedSetField(FieldInfo field, Iterable<BytesRef> values, final Iterable<Number> docToOrdCount, final Iterable<Number> ords) throws IOException {
     meta.writeVInt(field.number);

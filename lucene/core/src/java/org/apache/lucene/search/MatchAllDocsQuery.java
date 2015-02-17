@@ -17,15 +17,16 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.intervals.IntervalIterator;
-import org.apache.lucene.util.ToStringUtils;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.ToStringUtils;
 
-import java.util.Set;
 import java.io.IOException;
+import java.util.Set;
 
 /**
  * A query that matches all documents.
@@ -57,7 +58,7 @@ public class MatchAllDocsQuery extends Query {
       while(liveDocs != null && doc < maxDoc && !liveDocs.get(doc)) {
         doc++;
       }
-      if (doc == maxDoc) {
+      if (doc >= maxDoc) { // can be > maxDoc when called from advance()
         doc = NO_MORE_DOCS;
       }
       return doc;
@@ -71,6 +72,26 @@ public class MatchAllDocsQuery extends Query {
     @Override
     public int freq() {
       return 1;
+    }
+
+    @Override
+    public int nextPosition() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return null;
     }
 
     @Override
@@ -94,16 +115,12 @@ public class MatchAllDocsQuery extends Query {
     private float queryNorm;
 
     public MatchAllDocsWeight(IndexSearcher searcher) {
+      super(MatchAllDocsQuery.this);
     }
 
     @Override
     public String toString() {
       return "weight(" + MatchAllDocsQuery.this + ")";
-    }
-
-    @Override
-    public Query getQuery() {
-      return MatchAllDocsQuery.this;
     }
 
     @Override
@@ -119,7 +136,7 @@ public class MatchAllDocsQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
       return new MatchAllScorer(context.reader(), acceptDocs, this, queryWeight);
     }
 
@@ -138,7 +155,7 @@ public class MatchAllDocsQuery extends Query {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) {
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) {
     return new MatchAllDocsWeight(searcher);
   }
 

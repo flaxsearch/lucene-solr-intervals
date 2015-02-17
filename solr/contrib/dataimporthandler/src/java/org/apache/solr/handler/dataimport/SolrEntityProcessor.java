@@ -18,11 +18,11 @@ package org.apache.solr.handler.dataimport;
  */
 
 import org.apache.http.client.HttpClient;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpClientUtil;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.impl.XMLResponseParser;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
@@ -31,6 +31,7 @@ import org.apache.solr.common.params.CommonParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Collection;
@@ -64,13 +65,24 @@ public class SolrEntityProcessor extends EntityProcessorBase {
   public static final int TIMEOUT_SECS = 5 * 60; // 5 minutes
   public static final int ROWS_DEFAULT = 50;
   
-  private SolrServer solrServer = null;
+  private SolrClient solrClient = null;
   private String queryString;
   private int rows = ROWS_DEFAULT;
   private String[] filterQueries;
   private String[] fields;
   private String requestHandler;// 'qt' param
   private int timeout = TIMEOUT_SECS;
+  
+  @Override
+  public void destroy() {
+    try {
+      solrClient.close();
+    } catch (IOException e) {
+
+    } finally {
+      HttpClientUtil.close(((HttpSolrClient) solrClient).getHttpClient());
+    }
+  }
 
   /**
    * Factory method that returns a {@link HttpClient} instance used for interfacing with a source Solr service.
@@ -94,17 +106,16 @@ public class SolrEntityProcessor extends EntityProcessorBase {
             "SolrEntityProcessor: parameter 'url' is required");
       }
 
-      // TODO: we should close this client!
       HttpClient client = getHttpClient();
       URL url = new URL(serverPath);
       // (wt="javabin|xml") default is javabin
       if ("xml".equals(context.getResolvedEntityAttribute(CommonParams.WT))) {
         // TODO: it doesn't matter for this impl when passing a client currently, but we should close this!
-        solrServer = new HttpSolrServer(url.toExternalForm(), client, new XMLResponseParser());
+        solrClient = new HttpSolrClient(url.toExternalForm(), client, new XMLResponseParser());
         LOG.info("using XMLResponseParser");
       } else {
         // TODO: it doesn't matter for this impl when passing a client currently, but we should close this!
-        solrServer = new HttpSolrServer(url.toExternalForm(), client);
+        solrClient = new HttpSolrClient(url.toExternalForm(), client);
         LOG.info("using BinaryResponseParser");
       }
     } catch (MalformedURLException e) {
@@ -184,7 +195,7 @@ public class SolrEntityProcessor extends EntityProcessorBase {
     
     QueryResponse response = null;
     try {
-      response = solrServer.query(solrQuery);
+      response = solrClient.query(solrQuery);
     } catch (SolrServerException e) {
       if (ABORT.equals(onError)) {
         wrapAndThrow(SEVERE, e);

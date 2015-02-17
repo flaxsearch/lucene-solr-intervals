@@ -175,7 +175,7 @@ public class RealTimeGetComponent extends SearchComponent
 
        int docid = searcher.getFirstMatch(new Term(idField.getName(), idBytes.get()));
        if (docid < 0) continue;
-       Document luceneDocument = searcher.doc(docid);
+       Document luceneDocument = searcher.doc(docid, rsp.getReturnFields().getLuceneFieldNames());
        SolrDocument doc = toSolrDoc(luceneDocument,  core.getLatestSchema());
        if( transformer != null ) {
          transformer.transform(doc, docid);
@@ -380,7 +380,7 @@ public class RealTimeGetComponent extends SearchComponent
 
       Map<String, List<String>> sliceToId = new HashMap<>();
       for (String id : allIds) {
-        Slice slice = coll.getRouter().getTargetSlice(id, null, params, coll);
+        Slice slice = coll.getRouter().getTargetSlice(id, null, null, params, coll);
 
         List<String> idsForShard = sliceToId.get(slice.getName());
         if (idsForShard == null) {
@@ -596,9 +596,7 @@ public class RealTimeGetComponent extends SearchComponent
           // TODO: do any kind of validation here?
           updates.add(o);
 
-        } catch (SolrException e) {
-          log.warn("Exception reading log for updates", e);
-        } catch (ClassCastException e) {
+        } catch (SolrException | ClassCastException e) {
           log.warn("Exception reading log for updates", e);
         }
       }

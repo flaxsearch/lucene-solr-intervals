@@ -17,6 +17,27 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakLingering;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.SolrQuery;
+import org.apache.solr.client.solrj.impl.CloudSolrClient;
+import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrClient;
+import org.apache.solr.client.solrj.impl.HttpClientUtil;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.common.util.IOUtils;
+import org.apache.solr.core.Diagnostics;
+import org.apache.solr.update.SolrCmdDistributor;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.net.ConnectException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -24,30 +45,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.http.client.HttpClient;
-import org.apache.lucene.util.LuceneTestCase.Slow;
-import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
-import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
-import org.apache.solr.client.solrj.impl.CloudSolrServer;
-import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
-import org.apache.solr.client.solrj.impl.HttpClientUtil;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
-import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.cloud.ZkStateReader;
-import org.apache.solr.core.Diagnostics;
-import org.apache.solr.update.SolrCmdDistributor;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakLingering;
-
 @Slow
-@SuppressSSL
+@SuppressSSL(bugUrl = "https://issues.apache.org/jira/browse/SOLR-5776")
 @ThreadLeakLingering(linger = 60000)
 public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase {
   private static final int FAIL_TOLERANCE = 20;
@@ -87,10 +86,9 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
     return randVals;
   }
   
-  @Before
   @Override
-  public void setUp() throws Exception {
-    super.setUp();
+  public void distribSetUp() throws Exception {
+    super.distribSetUp();
     // can help to hide this when testing and looking at logs
     //ignoreException("shard update error");
     System.setProperty("numShards", Integer.toString(sliceCount));
@@ -98,28 +96,27 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
   }
   
   @Override
-  @After
-  public void tearDown() throws Exception {
+  public void distribTearDown() throws Exception {
     System.clearProperty("numShards");
-    super.tearDown();
-    resetExceptionIgnores();
+    super.distribTearDown();
   }
   
   public ChaosMonkeyNothingIsSafeTest() {
     super();
     sliceCount = Integer.parseInt(System.getProperty("solr.tests.cloud.cm.slicecount", "-1"));
-    shardCount = Integer.parseInt(System.getProperty("solr.tests.cloud.cm.shardcount", "-1"));
-    
     if (sliceCount == -1) {
       sliceCount = random().nextInt(TEST_NIGHTLY ? 5 : 3) + 1;
     }
-    if (shardCount == -1) {
-      shardCount = sliceCount + random().nextInt(TEST_NIGHTLY ? 12 : 2);
+
+    int numShards = Integer.parseInt(System.getProperty("solr.tests.cloud.cm.shardcount", "-1"));
+    if (numShards == -1) {
+      numShards = sliceCount + random().nextInt(TEST_NIGHTLY ? 12 : 2);
     }
+    fixShardCount(numShards);
   }
-  
-  @Override
-  public void doTest() throws Exception {
+
+  @Test
+  public void test() throws Exception {
     boolean testsSuccesful = false;
     try {
       handle.clear();
@@ -253,13 +250,11 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
         zkServer.run();
       }
       
-      CloudSolrServer client = createCloudClient("collection1");
-      try {
+
+      try (CloudSolrClient client = createCloudClient("collection1")) {
           createCollection(null, "testcollection",
               1, 1, 1, client, null, "conf1");
 
-      } finally {
-        client.shutdown();
       }
       List<Integer> numShardsNumReplicas = new ArrayList<>(2);
       numShardsNumReplicas.add(1);
@@ -291,14 +286,14 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
   }
 
   class FullThrottleStopableIndexingThread extends StopableIndexingThread {
-    private HttpClient httpClient = HttpClientUtil.createClient(null);
+    private CloseableHttpClient httpClient = HttpClientUtil.createClient(null);
     private volatile boolean stop = false;
     int clientIndex = 0;
-    private ConcurrentUpdateSolrServer suss;
-    private List<SolrServer> clients;  
+    private ConcurrentUpdateSolrClient cusc;
+    private List<SolrClient> clients;
     private AtomicInteger fails = new AtomicInteger();
     
-    public FullThrottleStopableIndexingThread(List<SolrServer> clients,
+    public FullThrottleStopableIndexingThread(List<SolrClient> clients,
         String id, boolean doDeletes) {
       super(controlClient, cloudClient, id, doDeletes);
       setName("FullThrottleStopableIndexingThread");
@@ -306,12 +301,12 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
       this.clients = clients;
       HttpClientUtil.setConnectionTimeout(httpClient, 15000);
       HttpClientUtil.setSoTimeout(httpClient, 15000);
-      suss = new ConcurrentUpdateSolrServer(
-          ((HttpSolrServer) clients.get(0)).getBaseURL(), httpClient, 8,
+      cusc = new ConcurrentUpdateSolrClient(
+          ((HttpSolrClient) clients.get(0)).getBaseURL(), httpClient, 8,
           2) {
         @Override
         public void handleError(Throwable ex) {
-          log.warn("suss error", ex);
+          log.warn("cusc error", ex);
         }
       };
     }
@@ -330,7 +325,7 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
           String delete = deletes.remove(0);
           try {
             numDeletes++;
-            suss.deleteById(delete);
+            cusc.deleteById(delete);
           } catch (Exception e) {
             changeUrlOnError(e);
             //System.err.println("REQUEST FAILED:");
@@ -350,7 +345,7 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
               50,
               t1,
               "Saxon heptarchies that used to rip around so in old times and raise Cain.  My, you ought to seen old Henry the Eight when he was in bloom.  He WAS a blossom.  He used to marry a new wife every day, and chop off her head next morning.  And he would do it just as indifferent as if ");
-          suss.add(doc);
+          cusc.add(doc);
         } catch (Exception e) {
           changeUrlOnError(e);
           //System.err.println("REQUEST FAILED:");
@@ -373,13 +368,13 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
         if (clientIndex > clients.size() - 1) {
           clientIndex = 0;
         }
-        suss.shutdownNow();
-        suss = new ConcurrentUpdateSolrServer(
-            ((HttpSolrServer) clients.get(clientIndex)).getBaseURL(),
+        cusc.shutdownNow();
+        cusc = new ConcurrentUpdateSolrClient(
+            ((HttpSolrClient) clients.get(clientIndex)).getBaseURL(),
             httpClient, 30, 3) {
           @Override
           public void handleError(Throwable ex) {
-            log.warn("suss error", ex);
+            log.warn("cusc error", ex);
           }
         };
       }
@@ -388,9 +383,9 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
     @Override
     public void safeStop() {
       stop = true;
-      suss.blockUntilFinished();
-      suss.shutdownNow();
-      httpClient.getConnectionManager().shutdown();
+      cusc.blockUntilFinished();
+      cusc.shutdownNow();
+      IOUtils.closeQuietly(httpClient);
     }
 
     @Override

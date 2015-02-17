@@ -28,7 +28,7 @@ import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.PostingsWriterBase;
 import org.apache.lucene.codecs.TermStats;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
@@ -110,14 +110,14 @@ public class BlockTermsWriter extends FieldsConsumer implements Closeable {
     boolean success = false;
     try {
       fieldInfos = state.fieldInfos;
-      CodecUtil.writeSegmentHeader(out, CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+      CodecUtil.writeIndexHeader(out, CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
       currentField = null;
       this.postingsWriter = postingsWriter;
       // segment = state.segmentName;
       
       //System.out.println("BTW.init seg=" + state.segmentName);
       
-      postingsWriter.init(out); // have consumer write its format/header
+      postingsWriter.init(out, state); // have consumer write its format/header
       success = true;
     } finally {
       if (!success) {
@@ -172,7 +172,7 @@ public class BlockTermsWriter extends FieldsConsumer implements Closeable {
           out.writeVInt(field.fieldInfo.number);
           out.writeVLong(field.numTerms);
           out.writeVLong(field.termsStartPointer);
-          if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+          if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
             out.writeVLong(field.sumTotalTermFreq);
           }
           out.writeVLong(field.sumDocFreq);
@@ -347,7 +347,7 @@ public class BlockTermsWriter extends FieldsConsumer implements Closeable {
         final BlockTermState state = pendingTerms[termCount].state;
         assert state != null;
         bytesWriter.writeVInt(state.docFreq);
-        if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+        if (fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
           bytesWriter.writeVLong(state.totalTermFreq-state.docFreq);
         }
       }

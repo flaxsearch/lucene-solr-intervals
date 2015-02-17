@@ -73,7 +73,7 @@ public class MockRandomMergePolicy extends MergePolicy {
       // TODO: sometimes make more than 1 merge?
       mergeSpec = new MergeSpecification();
       final int segsToMerge = TestUtil.nextInt(random, 1, numSegments);
-      if (doNonBulkMerges) {
+      if (doNonBulkMerges && random.nextBoolean()) {
         mergeSpec.add(new MockRandomOneMerge(segments.subList(0, segsToMerge),random.nextLong()));
       } else {
         mergeSpec.add(new OneMerge(segments.subList(0, segsToMerge)));
@@ -106,7 +106,7 @@ public class MockRandomMergePolicy extends MergePolicy {
       while(upto < eligibleSegments.size()) {
         int max = Math.min(10, eligibleSegments.size()-upto);
         int inc = max <= 2 ? max : TestUtil.nextInt(random, 2, max);
-        if (doNonBulkMerges) {
+        if (doNonBulkMerges && random.nextBoolean()) {
           mergeSpec.add(new MockRandomOneMerge(eligibleSegments.subList(upto, upto+inc), random.nextLong()));
         } else {
           mergeSpec.add(new OneMerge(eligibleSegments.subList(upto, upto+inc)));
@@ -138,7 +138,7 @@ public class MockRandomMergePolicy extends MergePolicy {
   
   static class MockRandomOneMerge extends OneMerge {
     final Random r;
-    ArrayList<LeafReader> readers;
+    ArrayList<CodecReader> readers;
 
     MockRandomOneMerge(List<SegmentCommitInfo> segments, long seed) {
       super(segments);
@@ -146,14 +146,25 @@ public class MockRandomMergePolicy extends MergePolicy {
     }
 
     @Override
-    public List<LeafReader> getMergeReaders() throws IOException {
+    public List<CodecReader> getMergeReaders() throws IOException {
       if (readers == null) {
-        readers = new ArrayList<LeafReader>(super.getMergeReaders());
+        readers = new ArrayList<CodecReader>(super.getMergeReaders());
         for (int i = 0; i < readers.size(); i++) {
           // wrap it (e.g. prevent bulk merge etc)
-          if (r.nextInt(4) == 0) {
-            readers.set(i, new FilterLeafReader(readers.get(i)));
+          // TODO: cut this over to FilterCodecReader api, we can explicitly
+          // enable/disable bulk merge for portions of the index we want.
+          int thingToDo = r.nextInt(7);
+          if (thingToDo == 0) {
+            // simple no-op FilterReader
+            readers.set(i, SlowCodecReaderWrapper.wrap(new FilterLeafReader(readers.get(i))));
+          } else if (thingToDo == 1) {
+            // renumber fields
+            // NOTE: currently this only "blocks" bulk merges just by
+            // being a FilterReader. But it might find bugs elsewhere, 
+            // and maybe the situation can be improved in the future.
+            readers.set(i, SlowCodecReaderWrapper.wrap(new MismatchedLeafReader(readers.get(i), r)));
           }
+          // otherwise, reader is unchanged
         }
       }
       return readers;

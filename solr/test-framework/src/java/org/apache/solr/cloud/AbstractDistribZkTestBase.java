@@ -33,8 +33,6 @@ import org.apache.solr.core.Diagnostics;
 import org.apache.solr.core.MockDirectoryFactory;
 import org.apache.solr.servlet.SolrDispatchFilter;
 import org.apache.zookeeper.KeeperException;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.BeforeClass;
 
 public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTestCase {
@@ -54,11 +52,9 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
     //useFactory(null);
   }
 
-
-  @Before
   @Override
-  public void setUp() throws Exception {
-    super.setUp();
+  public void distribSetUp() throws Exception {
+    super.distribSetUp();
     
     String zkDir = testDir.getAbsolutePath() + File.separator
     + "zookeeper/server1/data";
@@ -102,7 +98,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
       System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);
     }
 
-    controlClient = createNewSolrServer(controlJetty.getLocalPort());
+    controlClient = createNewSolrClient(controlJetty.getLocalPort());
 
     StringBuilder sb = new StringBuilder();
     for (int i = 1; i <= numShards; i++) {
@@ -112,7 +108,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
       setupJettySolrHome(jettyHome);
       JettySolrRunner j = createJetty(jettyHome, null, "shard" + (i + 2));
       jettys.add(j);
-      clients.add(createNewSolrServer(j.getLocalPort()));
+      clients.add(createNewSolrClient(j.getLocalPort()));
       sb.append(buildUrl(j.getLocalPort()));
     }
 
@@ -212,8 +208,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
   }
   
   @Override
-  @After
-  public void tearDown() throws Exception {
+  public void distribTearDown() throws Exception {
     if (DEBUG) {
       printLayout();
     }
@@ -228,7 +223,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
     System.clearProperty(MockDirectoryFactory.SOLR_TESTS_ALLOW_READING_FILES_STILL_OPEN_FOR_WRITE);
     
     resetExceptionIgnores();
-    super.tearDown();
+    super.distribTearDown();
     zkServer.shutdown();
   }
   

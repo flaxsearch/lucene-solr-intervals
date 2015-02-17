@@ -107,9 +107,6 @@ import java.util.Set;
  * @lucene.experimental 
  */
 public class PostingsSolrHighlighter extends SolrHighlighter implements PluginInfoInitialized {
-
-  @Override
-  public void initalize(SolrConfig config) {}
   
   @Override
   public void init(PluginInfo info) {}
@@ -161,7 +158,7 @@ public class PostingsSolrHighlighter extends SolrHighlighter implements PluginIn
       for (String field : fieldNames) {
         String snippet = snippets.get(field)[i];
         // box in an array to match the format of existing highlighters, 
-        // even though its always one element.
+        // even though it's always one element.
         if (snippet == null) {
           summary.add(field, new String[0]);
         } else {

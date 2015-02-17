@@ -20,8 +20,8 @@ package org.apache.lucene.search.payloads;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.Explanation;
-import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
@@ -46,11 +46,11 @@ import java.util.Iterator;
  * {@link org.apache.lucene.search.spans.SpanNearQuery} except that it factors
  * in the value of the payloads located at each of the positions where the
  * {@link org.apache.lucene.search.spans.TermSpans} occurs.
- * <p/>
+ * <p>
  * NOTE: In order to take advantage of this with the default scoring implementation
  * ({@link DefaultSimilarity}), you must override {@link DefaultSimilarity#scorePayload(int, int, int, BytesRef)},
  * which returns 1 by default.
- * <p/>
+ * <p>
  * Payload scores are aggregated using a pluggable {@link PayloadFunction}.
  * 
  * @see org.apache.lucene.search.similarities.Similarity.SimScorer#computePayloadFactor(int, int, int, BytesRef)
@@ -71,7 +71,7 @@ public class PayloadNearQuery extends SpanNearQuery {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
     return new PayloadNearSpanWeight(this, searcher);
   }
 
@@ -148,14 +148,14 @@ public class PayloadNearQuery extends SpanNearQuery {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
       return new PayloadNearSpanScorer(query.getSpans(context, acceptDocs, termContexts), this,
           similarity, similarity.simScorer(stats, context));
     }
     
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      PayloadNearSpanScorer scorer = (PayloadNearSpanScorer) scorer(context, PostingFeatures.POSITIONS_AND_PAYLOADS, context.reader().getLiveDocs());
+      PayloadNearSpanScorer scorer = (PayloadNearSpanScorer) scorer(context, context.reader().getLiveDocs());
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {

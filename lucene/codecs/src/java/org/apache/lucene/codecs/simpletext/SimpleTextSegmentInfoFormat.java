@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -36,14 +37,13 @@ import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
-import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.Version;
 
 /**
  * plain text segments file format.
  * <p>
- * <b><font color="red">FOR RECREATIONAL USE ONLY</font></B>
+ * <b>FOR RECREATIONAL USE ONLY</b>
  * @lucene.experimental
  */
 public class SimpleTextSegmentInfoFormat extends SegmentInfoFormat {
@@ -53,6 +53,9 @@ public class SimpleTextSegmentInfoFormat extends SegmentInfoFormat {
   final static BytesRef SI_NUM_DIAG         = new BytesRef("    diagnostics ");
   final static BytesRef SI_DIAG_KEY         = new BytesRef("      key ");
   final static BytesRef SI_DIAG_VALUE       = new BytesRef("      value ");
+  final static BytesRef SI_NUM_ATT          = new BytesRef("    attributes ");
+  final static BytesRef SI_ATT_KEY          = new BytesRef("      key ");
+  final static BytesRef SI_ATT_VALUE        = new BytesRef("      value ");
   final static BytesRef SI_NUM_FILES        = new BytesRef("    files ");
   final static BytesRef SI_FILE             = new BytesRef("      file ");
   final static BytesRef SI_ID               = new BytesRef("    id ");
@@ -60,12 +63,10 @@ public class SimpleTextSegmentInfoFormat extends SegmentInfoFormat {
   public static final String SI_EXTENSION = "si";
   
   @Override
-  public SegmentInfo read(Directory directory, String segmentName, IOContext context) throws IOException {
+  public SegmentInfo read(Directory directory, String segmentName, byte[] segmentID, IOContext context) throws IOException {
     BytesRefBuilder scratch = new BytesRefBuilder();
     String segFileName = IndexFileNames.segmentFileName(segmentName, "", SimpleTextSegmentInfoFormat.SI_EXTENSION);
-    ChecksumIndexInput input = directory.openChecksumInput(segFileName, context);
-    boolean success = false;
-    try {
+    try (ChecksumIndexInput input = directory.openChecksumInput(segFileName, context)) {
       SimpleTextUtil.readLine(input, scratch);
       assert StringHelper.startsWith(scratch.get(), SI_VERSION);
       final Version version;
@@ -100,6 +101,22 @@ public class SimpleTextSegmentInfoFormat extends SegmentInfoFormat {
       }
       
       SimpleTextUtil.readLine(input, scratch);
+      assert StringHelper.startsWith(scratch.get(), SI_NUM_ATT);
+      int numAtt = Integer.parseInt(readString(SI_NUM_ATT.length, scratch));
+      Map<String,String> attributes = new HashMap<>(numAtt);
+
+      for (int i = 0; i < numAtt; i++) {
+        SimpleTextUtil.readLine(input, scratch);
+        assert StringHelper.startsWith(scratch.get(), SI_ATT_KEY);
+        String key = readString(SI_ATT_KEY.length, scratch);
+      
+        SimpleTextUtil.readLine(input, scratch);
+        assert StringHelper.startsWith(scratch.get(), SI_ATT_VALUE);
+        String value = readString(SI_ATT_VALUE.length, scratch);
+        attributes.put(key, value);
+      }
+      
+      SimpleTextUtil.readLine(input, scratch);
       assert StringHelper.startsWith(scratch.get(), SI_NUM_FILES);
       int numFiles = Integer.parseInt(readString(SI_NUM_FILES.length, scratch));
       Set<String> files = new HashSet<>();
@@ -114,20 +131,18 @@ public class SimpleTextSegmentInfoFormat extends SegmentInfoFormat {
       SimpleTextUtil.readLine(input, scratch);
       assert StringHelper.startsWith(scratch.get(), SI_ID);
       final byte[] id = Arrays.copyOfRange(scratch.bytes(), SI_ID.length, scratch.length());
+      
+      if (!Arrays.equals(segmentID, id)) {
+        throw new CorruptIndexException("file mismatch, expected: " + StringHelper.idToString(segmentID)
+                                                        + ", got: " + StringHelper.idToString(id), input);
+      }
 
       SimpleTextUtil.checkFooter(input);
 
       SegmentInfo info = new SegmentInfo(directory, version, segmentName, docCount,
-                                         isCompoundFile, null, diagnostics, id);
+                                         isCompoundFile, null, diagnostics, id, Collections.unmodifiableMap(attributes));
       info.setFiles(files);
-      success = true;
       return info;
-    } finally {
-      if (!success) {
-        IOUtils.closeWhileHandlingException(input);
-      } else {
-        input.close();
-      }
     }
   }
 
@@ -141,10 +156,7 @@ public class SimpleTextSegmentInfoFormat extends SegmentInfoFormat {
     String segFileName = IndexFileNames.segmentFileName(si.name, "", SimpleTextSegmentInfoFormat.SI_EXTENSION);
     si.addFile(segFileName);
 
-    boolean success = false;
-    IndexOutput output = dir.createOutput(segFileName, ioContext);
-
-    try {
+    try (IndexOutput output = dir.createOutput(segFileName, ioContext)) {
       BytesRefBuilder scratch = new BytesRefBuilder();
     
       SimpleTextUtil.write(output, SI_VERSION);
@@ -177,6 +189,21 @@ public class SimpleTextSegmentInfoFormat extends SegmentInfoFormat {
         }
       }
       
+      Map<String,String> attributes = si.getAttributes();
+      SimpleTextUtil.write(output, SI_NUM_ATT);
+      SimpleTextUtil.write(output, Integer.toString(attributes.size()), scratch);
+      SimpleTextUtil.writeNewline(output);
+    
+      for (Map.Entry<String,String> attEntry : attributes.entrySet()) {
+        SimpleTextUtil.write(output, SI_ATT_KEY);
+        SimpleTextUtil.write(output, attEntry.getKey(), scratch);
+        SimpleTextUtil.writeNewline(output);
+        
+        SimpleTextUtil.write(output, SI_ATT_VALUE);
+        SimpleTextUtil.write(output, attEntry.getValue(), scratch);
+        SimpleTextUtil.writeNewline(output);
+      }
+      
       Set<String> files = si.files();
       int numFiles = files == null ? 0 : files.size();
       SimpleTextUtil.write(output, SI_NUM_FILES);
@@ -196,14 +223,6 @@ public class SimpleTextSegmentInfoFormat extends SegmentInfoFormat {
       SimpleTextUtil.writeNewline(output);
       
       SimpleTextUtil.writeChecksum(output, scratch);
-      success = true;
-    } finally {
-      if (!success) {
-        IOUtils.closeWhileHandlingException(output);
-        IOUtils.deleteFilesIgnoringExceptions(dir, segFileName);
-      } else {
-        output.close();
-      }
     }
   }
 }

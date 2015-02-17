@@ -21,8 +21,10 @@ import org.apache.solr.BaseDistributedSearchTestCase;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.junit.BeforeClass;
+import org.junit.Test;
 
 import java.nio.ByteBuffer;
 import java.util.Map;
@@ -38,8 +40,6 @@ import java.util.Map;
 public class DistributedQueryComponentOptimizationTest extends BaseDistributedSearchTestCase {
 
   public DistributedQueryComponentOptimizationTest() {
-    fixShardCount = true;
-    shardCount = 3;
     stress = 0;
   }
 
@@ -48,8 +48,9 @@ public class DistributedQueryComponentOptimizationTest extends BaseDistributedSe
     initCore("solrconfig.xml", "schema-custom-field.xml");
   }
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  @ShardsFixed(num = 3)
+  public void test() throws Exception {
     del("*:*");
 
     index(id, "1", "text", "a", "test_sS", "21", "payload", ByteBuffer.wrap(new byte[] { 0x12, 0x62, 0x15 }),                     //  2
@@ -115,6 +116,17 @@ public class DistributedQueryComponentOptimizationTest extends BaseDistributedSe
 
     verifySinglePass("q", "id:19", "fl", "id,*a_sS", "sort", "payload asc", "distrib.singlePass", "true");
     verifySinglePass("q", "id:19", "fl", "id,dynamic,cat*", "sort", "payload asc", "distrib.singlePass", "true");
+
+    // see SOLR-6795, distrib.singlePass=true would return score even when not asked for
+    handle.clear();
+    handle.put("timestamp", SKIPVAL);
+    handle.put("_version_", SKIPVAL);
+    // we don't to compare maxScore because most distributed requests return it anyway (just because they have score already)
+    handle.put("maxScore", SKIPVAL);
+    query("q", "{!func}id", ShardParams.DISTRIB_SINGLE_PASS, "true");
+
+    // fix for a bug where not all fields are returned if using multiple fl parameters, see SOLR-6796
+    query("q","*:*", "fl", "id", "fl","dynamic","sort","payload desc", ShardParams.DISTRIB_SINGLE_PASS, "true");
   }
 
   private void verifySinglePass(String... q) throws SolrServerException {

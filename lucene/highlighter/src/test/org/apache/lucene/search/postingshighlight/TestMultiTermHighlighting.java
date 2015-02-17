@@ -24,12 +24,11 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
-import org.apache.lucene.queries.TermFilter;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ConstantScoreQuery;
@@ -40,8 +39,10 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.RegexpQuery;
 import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.WildcardQuery;
@@ -472,7 +473,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
     };
     FilteredQuery query = new FilteredQuery(
         new WildcardQuery(new Term("body", "te*")),
-        new TermFilter(new Term("body", "test")));
+        new QueryWrapperFilter(new TermQuery(new Term("body", "test"))));
     TopDocs topDocs = searcher.search(query, null, 10, Sort.INDEXORDER);
     assertEquals(2, topDocs.totalHits);
     String snippets[] = highlighter.highlight("body", query, searcher, topDocs);
@@ -837,7 +838,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
             StringBuilder sb = new StringBuilder();
             int pos = 0;
             for (Passage passage : passages) {
-              // don't add ellipsis if its the first one, or if its connected.
+              // don't add ellipsis if it's the first one, or if it's connected.
               if (passage.startOffset > pos && pos > 0) {
                 sb.append("... ");
               }
@@ -845,7 +846,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
               for (int i = 0; i < passage.numMatches; i++) {
                 int start = passage.matchStarts[i];
                 int end = passage.matchEnds[i];
-                // its possible to have overlapping terms
+                // it's possible to have overlapping terms
                 if (start > pos) {
                   sb.append(content, pos, start);
                 }
@@ -859,7 +860,7 @@ public class TestMultiTermHighlighting extends LuceneTestCase {
                   pos = end;
                 }
               }
-              // its possible a "term" from the analyzer could span a sentence boundary.
+              // it's possible a "term" from the analyzer could span a sentence boundary.
               sb.append(content, pos, Math.max(pos, passage.endOffset));
               pos = passage.endOffset;
             }

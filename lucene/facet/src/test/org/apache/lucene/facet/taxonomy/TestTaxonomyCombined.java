@@ -12,8 +12,6 @@ import org.apache.lucene.facet.SlowRAMDirectory;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyReader;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.LockObtainFailedException;
-import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.junit.Test;
 
@@ -226,7 +224,7 @@ public class TestTaxonomyCombined extends FacetTestCase {
     // Now, open the same taxonomy and add the same categories again.
     // After a few categories, the LuceneTaxonomyWriter implementation
     // will stop looking for each category on disk, and rather read them
-    // all into memory and close it's reader. The bug was that it closed
+    // all into memory and close its reader. The bug was that it closed
     // the reader, but forgot that it did (because it didn't set the reader
     // reference to null).
     tw = new DirectoryTaxonomyWriter(indexDir);
@@ -329,7 +327,7 @@ public class TestTaxonomyCombined extends FacetTestCase {
     indexDir.close();
   }
 
-  /**  Basic tests for TaxonomyReader's category <=> ordinal transformations
+  /**  Basic tests for TaxonomyReader's category &lt;=&gt; ordinal transformations
     (getSize(), getCategory() and getOrdinal()).
     We test that after writing the index, it can be read and all the
     categories and ordinals are there just as we expected them to be.
@@ -385,7 +383,7 @@ public class TestTaxonomyCombined extends FacetTestCase {
     We check it by comparing its results to those we could have gotten by
     looking at the category string paths (where the parentage is obvious).
     Note that after testReaderBasic(), we already know we can trust the
-    ordinal <=> category conversions.
+    ordinal &lt;=&gt; category conversions.
     
     Note: At the moment, the parent methods in the reader are deprecated,
     but this does not mean they should not be tested! Until they are
@@ -431,7 +429,7 @@ public class TestTaxonomyCombined extends FacetTestCase {
    * its results to those we could have gotten by looking at the category
    * string paths using a TaxonomyReader (where the parentage is obvious).
    * Note that after testReaderBasic(), we already know we can trust the
-   * ordinal <=> category conversions from TaxonomyReader.
+   * ordinal &lt;=&gt; category conversions from TaxonomyReader.
    *
    * The difference between testWriterParent1 and testWriterParent2 is that
    * the former closes the taxonomy writer before reopening it, while the
@@ -745,7 +743,7 @@ public class TestTaxonomyCombined extends FacetTestCase {
   private void assertConsistentYoungestChild(final FacetLabel abPath,
       final int abOrd, final int abYoungChildBase1, final int abYoungChildBase2, final int retry, int numCategories)
       throws Exception {
-    SlowRAMDirectory indexDir = new SlowRAMDirectory(-1, null); // no slowness for intialization
+    SlowRAMDirectory indexDir = new SlowRAMDirectory(-1, null); // no slowness for initialization
     TaxonomyWriter tw = new DirectoryTaxonomyWriter(indexDir);
     tw.addCategory(new FacetLabel("a", "0"));
     tw.addCategory(abPath);
@@ -912,47 +910,6 @@ public class TestTaxonomyCombined extends FacetTestCase {
     assertEquals(2, tr.getSize());
     tw.close();
     tr.close();
-    indexDir.close();
-  }
-  
-  /**
-   * Test what happens if we try to write to a locked taxonomy writer,
-   * and see that we can unlock it and continue.
-   */
-  @Test
-  public void testWriterLock() throws Exception {
-    // native fslock impl gets angry if we use it, so use RAMDirectory explicitly.
-    Directory indexDir = new RAMDirectory();
-    TaxonomyWriter tw = new DirectoryTaxonomyWriter(indexDir);
-    tw.addCategory(new FacetLabel("hi", "there"));
-    tw.commit();
-    // we deliberately not close the write now, and keep it open and
-    // locked.
-    // Verify that the writer worked:
-    TaxonomyReader tr = new DirectoryTaxonomyReader(indexDir);
-    assertEquals(2, tr.getOrdinal(new FacetLabel("hi", "there")));
-    // Try to open a second writer, with the first one locking the directory.
-    // We expect to get a LockObtainFailedException.
-    try {
-      assertNull(new DirectoryTaxonomyWriter(indexDir));
-      fail("should have failed to write in locked directory");
-    } catch (LockObtainFailedException e) {
-      // this is what we expect to happen.
-    }
-    // Remove the lock, and now the open should succeed, and we can
-    // write to the new writer.
-    DirectoryTaxonomyWriter.unlock(indexDir);
-    TaxonomyWriter tw2 = new DirectoryTaxonomyWriter(indexDir);
-    tw2.addCategory(new FacetLabel("hey"));
-    tw2.close();
-    // See that the writer indeed wrote:
-    TaxonomyReader newtr = TaxonomyReader.openIfChanged(tr);
-    assertNotNull(newtr);
-    tr.close();
-    tr = newtr;
-    assertEquals(3, tr.getOrdinal(new FacetLabel("hey")));
-    tr.close();
-    tw.close();
     indexDir.close();
   }
   

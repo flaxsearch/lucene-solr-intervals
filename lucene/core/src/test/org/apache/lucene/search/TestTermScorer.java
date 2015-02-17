@@ -20,12 +20,12 @@ package org.apache.lucene.search;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.Weight.PostingFeatures;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
@@ -76,10 +76,10 @@ public class TestTermScorer extends LuceneTestCase {
     Term allTerm = new Term(FIELD, "all");
     TermQuery termQuery = new TermQuery(allTerm);
     
-    Weight weight = indexSearcher.createNormalizedWeight(termQuery);
+    Weight weight = indexSearcher.createNormalizedWeight(termQuery, true, PostingsEnum.FLAG_FREQS);
     assertTrue(indexSearcher.getTopReaderContext() instanceof LeafReaderContext);
     LeafReaderContext context = (LeafReaderContext)indexSearcher.getTopReaderContext();
-    BulkScorer ts = weight.bulkScorer(context, true, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
+    BulkScorer ts = weight.bulkScorer(context, context.reader().getLiveDocs());
     // we have 2 documents with the term all in them, one document for all the
     // other values
     final List<TestHit> docs = new ArrayList<>();
@@ -110,7 +110,7 @@ public class TestTermScorer extends LuceneTestCase {
       }
       
       @Override
-      public boolean acceptsDocsOutOfOrder() {
+      public boolean needsScores() {
         return true;
       }
     });
@@ -138,10 +138,10 @@ public class TestTermScorer extends LuceneTestCase {
     Term allTerm = new Term(FIELD, "all");
     TermQuery termQuery = new TermQuery(allTerm);
     
-    Weight weight = indexSearcher.createNormalizedWeight(termQuery);
+    Weight weight = indexSearcher.createNormalizedWeight(termQuery, true, PostingsEnum.FLAG_FREQS);
     assertTrue(indexSearcher.getTopReaderContext() instanceof LeafReaderContext);
     LeafReaderContext context = (LeafReaderContext) indexSearcher.getTopReaderContext();
-    Scorer ts = weight.scorer(context, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
+    Scorer ts = weight.scorer(context, context.reader().getLiveDocs());
     assertTrue("next did not return a doc",
         ts.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertTrue("score is not correct", ts.score() == 1.6931472f);
@@ -157,10 +157,10 @@ public class TestTermScorer extends LuceneTestCase {
     Term allTerm = new Term(FIELD, "all");
     TermQuery termQuery = new TermQuery(allTerm);
     
-    Weight weight = indexSearcher.createNormalizedWeight(termQuery);
+    Weight weight = indexSearcher.createNormalizedWeight(termQuery, true, PostingsEnum.FLAG_FREQS);
     assertTrue(indexSearcher.getTopReaderContext() instanceof LeafReaderContext);
     LeafReaderContext context = (LeafReaderContext) indexSearcher.getTopReaderContext();
-    Scorer ts = weight.scorer(context, PostingFeatures.DOCS_AND_FREQS, context.reader().getLiveDocs());
+    Scorer ts = weight.scorer(context, context.reader().getLiveDocs());
     assertTrue("Didn't skip", ts.advance(3) != DocIdSetIterator.NO_MORE_DOCS);
     // The next doc should be doc 5
     assertTrue("doc should be number 5", ts.docID() == 5);

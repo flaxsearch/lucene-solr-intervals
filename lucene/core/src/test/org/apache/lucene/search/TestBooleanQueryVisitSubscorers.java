@@ -22,14 +22,15 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.Scorer.ChildScorer;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.LuceneTestCase;
 
 import java.io.IOException;
@@ -43,6 +44,7 @@ import java.util.Set;
 // TODO: refactor to a base class, that collects freqs from the scorer tree
 // and test all queries with it
 public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
+
   Analyzer analyzer;
   IndexReader reader;
   IndexSearcher searcher;
@@ -64,7 +66,9 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
     writer.addDocument(doc("nutch", "nutch is an internet search engine with web crawler and is using lucene and hadoop"));
     reader = writer.getReader();
     writer.close();
-    searcher = newSearcher(reader);
+    // we do not use newSearcher because the assertingXXX layers break
+    // the toString representations we are relying on
+    searcher = new IndexSearcher(reader);
   }
   
   @Override
@@ -75,7 +79,7 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
   }
 
   public void testDisjunctions() throws IOException {
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery2 bq = new BooleanQuery2();
     bq.add(new TermQuery(new Term(F1, "lucene")), BooleanClause.Occur.SHOULD);
     bq.add(new TermQuery(new Term(F2, "lucene")), BooleanClause.Occur.SHOULD);
     bq.add(new TermQuery(new Term(F2, "search")), BooleanClause.Occur.SHOULD);
@@ -87,9 +91,9 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
   }
   
   public void testNestedDisjunctions() throws IOException {
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery2 bq = new BooleanQuery2();
     bq.add(new TermQuery(new Term(F1, "lucene")), BooleanClause.Occur.SHOULD);
-    BooleanQuery bq2 = new BooleanQuery();
+    BooleanQuery2 bq2 = new BooleanQuery2();
     bq2.add(new TermQuery(new Term(F2, "lucene")), BooleanClause.Occur.SHOULD);
     bq2.add(new TermQuery(new Term(F2, "search")), BooleanClause.Occur.SHOULD);
     bq.add(bq2, BooleanClause.Occur.SHOULD);
@@ -130,18 +134,13 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
     private final Set<Scorer> tqsSet = new HashSet<>();
     
     MyCollector() {
-      super(TopScoreDocCollector.create(10, true));
+      super(TopScoreDocCollector.create(10));
     }
 
     public LeafCollector getLeafCollector(LeafReaderContext context)
         throws IOException {
       final int docBase = context.docBase;
       return new FilterLeafCollector(super.getLeafCollector(context)) {
-        
-        @Override
-        public boolean acceptsDocsOutOfOrder() {
-          return false;
-        }
         
         @Override
         public void setScorer(Scorer scorer) throws IOException {
@@ -191,21 +190,25 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
     query.add(new TermQuery(new Term(F2, "web")), Occur.SHOULD);
     query.add(new TermQuery(new Term(F2, "crawler")), Occur.SHOULD);
     query.setMinimumNumberShouldMatch(2);
+    query.add(new MatchAllDocsQuery(), Occur.MUST);
     ScorerSummarizingCollector collector = new ScorerSummarizingCollector();
     searcher.search(query, collector);
     assertEquals(1, collector.getNumHits());
     assertFalse(collector.getSummaries().isEmpty());
     for (String summary : collector.getSummaries()) {
       assertEquals(
-          "MinShouldMatchSumScorer\n" +
-          "    SHOULD TermScorer body:nutch\n" +
-          "    SHOULD TermScorer body:web\n" +
-          "    SHOULD TermScorer body:crawler", summary);
+          "CoordinatingConjunctionScorer\n" +
+          "    MUST MatchAllScorer\n" +
+          "    MUST MinShouldMatchSumScorer\n" +
+          "            SHOULD TermScorer body:nutch\n" +
+          "            SHOULD TermScorer body:web\n" +
+          "            SHOULD TermScorer body:crawler",
+          summary);
     }
   }
 
   public void testGetChildrenBoosterScorer() throws IOException {
-    final BooleanQuery query = new BooleanQuery();
+    final BooleanQuery2 query = new BooleanQuery2();
     query.add(new TermQuery(new Term(F2, "nutch")), Occur.SHOULD);
     query.add(new TermQuery(new Term(F2, "miss")), Occur.SHOULD);
     ScorerSummarizingCollector collector = new ScorerSummarizingCollector();
@@ -230,6 +233,11 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
     public List<String> getSummaries() {
       return summaries;
     }
+    
+    @Override
+    public boolean needsScores() {
+      return true;
+    }
 
     @Override
     public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
@@ -247,15 +255,6 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
           numHits[0]++;
         }
 
-        @Override
-        public boolean acceptsDocsOutOfOrder() {
-          return false;
-        }
-
-        @Override
-        public Weight.PostingFeatures postingFeatures() {
-          return Weight.PostingFeatures.DOCS_AND_FREQS;
-        }
       };
     }
 
@@ -280,5 +279,23 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
       }
       return builder;
     }
+  }
+
+  static class BooleanQuery2 extends BooleanQuery {
+
+    @Override
+    public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+      return new BooleanWeight(this, searcher, needsScores, flags, false) {
+        @Override
+        public BulkScorer bulkScorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+          Scorer scorer = scorer(context, acceptDocs);
+          if (scorer == null) {
+            return null;
+          }
+          return new DefaultBulkScorer(scorer);
+        }
+      };
+    }
+
   }
 }

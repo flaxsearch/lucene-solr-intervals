@@ -22,6 +22,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.codecs.simpletext.SimpleTextCodec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
@@ -85,8 +86,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     writer.close();
     
     // read in index to try to not depend on codec-specific filenames so much
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     SegmentInfo si0 = sis.info(0).info;
     SegmentInfo si1 = sis.info(1).info;
     SegmentInfo si3 = sis.info(3).info;
@@ -116,35 +116,30 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     // non-existent segment:
     copyFile(dir, "_0_1" + ext, "_188_1" + ext);
 
-    String cfsFiles0[] = si0.getCodec().compoundFormat().files(si0);
+    String cfsFiles0[] = si0.getCodec() instanceof SimpleTextCodec ? new String[] { "_0.scf" } : new String[] { "_0.cfs", "_0.cfe" };
     
     // Create a bogus segment file:
     copyFile(dir, cfsFiles0[0], "_188.cfs");
 
     // Create a bogus fnm file when the CFS already exists:
     copyFile(dir, cfsFiles0[0], "_0.fnm");
-    
-    // Create some old segments file:
-    copyFile(dir, "segments_2", "segments");
-    copyFile(dir, "segments_2", "segments_1");
 
     // Create a bogus cfs file shadowing a non-cfs segment:
     
     // TODO: assert is bogus (relies upon codec-specific filenames)
     assertTrue(slowFileExists(dir, "_3.fdt") || slowFileExists(dir, "_3.fld"));
     
-    String cfsFiles3[] = si3.getCodec().compoundFormat().files(si3);
+    String cfsFiles3[] = si3.getCodec() instanceof SimpleTextCodec ? new String[] { "_3.scf" } : new String[] { "_3.cfs", "_3.cfe" };
     for (String f : cfsFiles3) {
       assertTrue(!slowFileExists(dir, f));
     }
     
-    String cfsFiles1[] = si1.getCodec().compoundFormat().files(si1);
+    String cfsFiles1[] = si1.getCodec() instanceof SimpleTextCodec ? new String[] { "_1.scf" } : new String[] { "_1.cfs", "_1.cfe" };
     copyFile(dir, cfsFiles1[0], "_3.cfs");
     
     String[] filesPre = dir.listAll();
 
-    // Open & close a writer: it should delete the above 4
-    // files and nothing more:
+    // Open & close a writer: it should delete the above files and nothing more:
     writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
                                     .setOpenMode(OpenMode.APPEND));
     writer.close();
@@ -265,8 +260,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     // empty commit
     new IndexWriter(dir, new IndexWriterConfig(null)).close();   
     
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(1, sis.getGeneration());
     
     // no inflation
@@ -283,8 +277,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     // empty commit
     new IndexWriter(dir, new IndexWriterConfig(null)).close();   
     
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(1, sis.getGeneration());
     
     // add trash commit
@@ -308,8 +301,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     // empty commit
     new IndexWriter(dir, new IndexWriterConfig(null)).close();   
     
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(0, sis.counter);
     
     // no inflation
@@ -333,8 +325,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     iw.addDocument(new Document());
     iw.commit();
     iw.close();
-    sis = new SegmentInfos();
-    sis.read(dir);
+    sis = SegmentInfos.readLatestCommit(dir);
     assertEquals("_4", sis.info(0).info.name);
     assertEquals(5, sis.counter);
     
@@ -351,8 +342,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     iw.close();   
     
     // no deletes: start at 1
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(1, sis.info(0).getNextDelGen());
     
     // no inflation
@@ -376,8 +366,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     // empty commit
     new IndexWriter(dir, new IndexWriterConfig(null)).close();   
     
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(1, sis.getGeneration());
     
     // add trash file
@@ -400,8 +389,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     iw.close();   
     
     // no deletes: start at 1
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(1, sis.info(0).getNextDelGen());
     
     // add trash file
@@ -445,7 +433,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     if (ms instanceof ConcurrentMergeScheduler) {
       final ConcurrentMergeScheduler suppressFakeFail = new ConcurrentMergeScheduler() {
           @Override
-          protected void handleMergeException(Throwable exc) {
+          protected void handleMergeException(Directory dir, Throwable exc) {
             // suppress only FakeIOException:
             if (exc instanceof RuntimeException && exc.getMessage().equals("fake fail")) {
               // ok to ignore
@@ -453,13 +441,12 @@ public class TestIndexFileDeleter extends LuceneTestCase {
                         && exc.getCause() != null && "fake fail".equals(exc.getCause().getMessage())) {
               // also ok to ignore
             } else {
-              super.handleMergeException(exc);
+              super.handleMergeException(dir, exc);
             }
           }
         };
       final ConcurrentMergeScheduler cms = (ConcurrentMergeScheduler) ms;
       suppressFakeFail.setMaxMergesAndThreads(cms.getMaxMergeCount(), cms.getMaxThreadCount());
-      suppressFakeFail.setMergeThreadPriority(cms.getMergeThreadPriority());
       iwc.setMergeScheduler(suppressFakeFail);
     }
 

@@ -17,42 +17,6 @@
 
 package org.apache.solr.schema;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.DelegatingAnalyzerWrapper;
-import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.uninverting.UninvertingReader;
-import org.apache.lucene.util.Version;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.common.params.SolrParams;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.SimpleOrderedMap;
-import org.apache.solr.request.LocalSolrQueryRequest;
-import org.apache.solr.response.SchemaXmlWriter;
-import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.util.DOMUtil;
-import org.apache.solr.core.SolrConfig;
-import org.apache.solr.core.Config;
-import org.apache.solr.core.SolrResourceLoader;
-import org.apache.solr.search.similarities.DefaultSimilarityFactory;
-import org.apache.solr.util.plugin.SolrCoreAware;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NamedNodeMap;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
-
-import javax.xml.xpath.XPath;
-import javax.xml.xpath.XPathConstants;
-import javax.xml.xpath.XPathExpressionException;
-
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
@@ -71,6 +35,45 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
+
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpressionException;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.DelegatingAnalyzerWrapper;
+import org.apache.lucene.index.DocValuesType;
+import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.IndexOptions;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.uninverting.UninvertingReader;
+import org.apache.lucene.util.Version;
+import org.apache.solr.cloud.CloudUtil;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
+import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.core.Config;
+import org.apache.solr.core.SolrConfig;
+import org.apache.solr.core.SolrResourceLoader;
+import org.apache.solr.request.LocalSolrQueryRequest;
+import org.apache.solr.response.SchemaXmlWriter;
+import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.search.similarities.DefaultSimilarityFactory;
+import org.apache.solr.util.DOMUtil;
+import org.apache.solr.util.plugin.SolrCoreAware;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NamedNodeMap;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
 
 import static java.util.Collections.singletonList;
 import static java.util.Collections.singletonMap;
@@ -295,7 +298,7 @@ public class IndexSchema {
   
   /**
    * Name of the default search field specified in the schema file.
-   * <br/><b>Note:</b>Avoid calling this, try to use this method so that the 'df' param is consulted as an override:
+   * <br><b>Note:</b>Avoid calling this, try to use this method so that the 'df' param is consulted as an override:
    * {@link org.apache.solr.search.QueryParsing#getDefaultField(IndexSchema, String)}
    */
   public String getDefaultSearchFieldName() {
@@ -366,7 +369,7 @@ public class IndexSchema {
   public Map<String,UninvertingReader.Type> getUninversionMap(IndexReader reader) {
     Map<String,UninvertingReader.Type> map = new HashMap<>();
     for (FieldInfo f : MultiFields.getMergedFieldInfos(reader)) {
-      if (f.hasDocValues() == false && f.isIndexed()) {
+      if (f.getDocValuesType() == DocValuesType.NONE && f.getIndexOptions() != IndexOptions.NONE) {
         SchemaField sf = getFieldOrNull(f.name);
         if (sf != null) {
           UninvertingReader.Type type = sf.getType().getUninversionType(sf);
@@ -443,7 +446,8 @@ public class IndexSchema {
   }
 
   protected void readSchema(InputSource is) {
-    log.info("Reading Solr Schema from " + resourceName);
+    String resourcePath = CloudUtil.unifiedResourcePath(loader) + resourceName;
+    log.info("Reading Solr Schema from " + resourcePath);
 
     try {
       // pass the config resource loader to avoid building an empty one for no reason:
@@ -592,11 +596,11 @@ public class IndexSchema {
       }
     } catch (SolrException e) {
       throw new SolrException(ErrorCode.getErrorCode(e.code()), e.getMessage() + ". Schema file is " +
-          loader.getConfigDir() + resourceName, e);
+          resourcePath, e);
     } catch(Exception e) {
       // unexpected exception...
       throw new SolrException(ErrorCode.SERVER_ERROR,
-          "Schema Parsing Failed: " + e.getMessage() + ". Schema file is " + loader.getConfigDir() + resourceName,
+          "Schema Parsing Failed: " + e.getMessage() + ". Schema file is " + resourcePath,
           e);
     }
 
@@ -898,36 +902,48 @@ public class IndexSchema {
       String msg = "copyField dest :'" + dest + "' is not an explicit field and doesn't match a dynamicField.";
       throw new SolrException(ErrorCode.SERVER_ERROR, msg);
     }
-    if (sourceIsDynamicFieldReference || sourceIsGlob) {
-      if (null != destDynamicField) { // source: glob or no-asterisk dynamic field ref; dest: dynamic field ref
+    if (sourceIsGlob) {
+      if (null != destDynamicField) { // source: glob ; dest: dynamic field ref
         registerDynamicCopyField(new DynamicCopy(source, destDynamicField, maxChars, sourceDynamicBase, destDynamicBase));
         incrementCopyFieldTargetCount(destSchemaField);
-      } else {                        // source: glob or no-asterisk dynamic field ref; dest: explicit field
+      } else {                        // source: glob ; dest: explicit field
         destDynamicField = new DynamicField(destSchemaField);
         registerDynamicCopyField(new DynamicCopy(source, destDynamicField, maxChars, sourceDynamicBase, null));
         incrementCopyFieldTargetCount(destSchemaField);
       }
-    } else {                          
-      if (null != destDynamicField) { // source: explicit field; dest: dynamic field reference
+    } else if (sourceIsDynamicFieldReference) {
+        if (null != destDynamicField) {  // source: no-asterisk dynamic field ref ; dest: dynamic field ref
+          registerDynamicCopyField(new DynamicCopy(source, destDynamicField, maxChars, sourceDynamicBase, destDynamicBase));
+          incrementCopyFieldTargetCount(destSchemaField);
+        } else {                        // source: no-asterisk dynamic field ref ; dest: explicit field
+          sourceSchemaField = getField(source);
+          registerExplicitSrcAndDestFields(source, maxChars, destSchemaField, sourceSchemaField);
+        }
+    } else {
+      if (null != destDynamicField) { // source: explicit field ; dest: dynamic field reference
         if (destDynamicField.pattern instanceof DynamicReplacement.DynamicPattern.NameEquals) {
           // Dynamic dest with no asterisk is acceptable
           registerDynamicCopyField(new DynamicCopy(source, destDynamicField, maxChars, sourceDynamicBase, destDynamicBase));
           incrementCopyFieldTargetCount(destSchemaField);
-        } else {
+        } else {                    // source: explicit field ; dest: dynamic field with an asterisk
           String msg = "copyField only supports a dynamic destination with an asterisk "
                      + "if the source also has an asterisk";
           throw new SolrException(ErrorCode.SERVER_ERROR, msg);
         }
-      } else {                        // source & dest: explicit fields 
-        List<CopyField> copyFieldList = copyFieldsMap.get(source);
-        if (copyFieldList == null) {
-          copyFieldList = new ArrayList<>();
-          copyFieldsMap.put(source, copyFieldList);
-        }
-        copyFieldList.add(new CopyField(sourceSchemaField, destSchemaField, maxChars));
-        incrementCopyFieldTargetCount(destSchemaField);
+      } else {                        // source & dest: explicit fields
+        registerExplicitSrcAndDestFields(source, maxChars, destSchemaField, sourceSchemaField);
       }
     }
+  }
+
+  private void registerExplicitSrcAndDestFields(String source, int maxChars, SchemaField destSchemaField, SchemaField sourceSchemaField) {
+    List<CopyField> copyFieldList = copyFieldsMap.get(source);
+    if (copyFieldList == null) {
+      copyFieldList = new ArrayList<>();
+      copyFieldsMap.put(source, copyFieldList);
+    }
+    copyFieldList.add(new CopyField(sourceSchemaField, destSchemaField, maxChars));
+    incrementCopyFieldTargetCount(destSchemaField);
   }
   
   private void incrementCopyFieldTargetCount(SchemaField dest) {
@@ -1341,7 +1357,7 @@ public class IndexSchema {
   }
 
   /**
-   * Get a map of property name -> value for the whole schema.
+   * Get a map of property name -&gt; value for the whole schema.
    */
   public SimpleOrderedMap<Object> getNamedPropertyValues() {
     SimpleOrderedMap<Object> topLevel = new SimpleOrderedMap<>();

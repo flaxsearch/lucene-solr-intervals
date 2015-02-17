@@ -353,9 +353,6 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
                   if (s.getIndexReader().numDocs() > 0) {
                     smokeTestSearcher(s);
                     Fields fields = MultiFields.getFields(s.getIndexReader());
-                    if (fields == null) {
-                      continue;
-                    }
                     Terms terms = fields.terms("body");
                     if (terms == null) {
                       continue;
@@ -461,6 +458,11 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
       } else if (mp instanceof LogMergePolicy) {
         ((LogMergePolicy) mp).setMaxMergeDocs(100000);
       }
+      // when running nightly, merging can still have crazy parameters, 
+      // and might use many per-field codecs. turn on CFS for IW flushes
+      // and ensure CFS ratio is reasonable to keep it contained.
+      conf.setUseCompoundFile(true);
+      mp.setNoCFSRatio(Math.max(0.25d, mp.getNoCFSRatio()));
     }
 
     conf.setMergedSegmentWarmer(new IndexWriter.IndexReaderWarmer() {
@@ -663,8 +665,8 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
 
   private int runQuery(IndexSearcher s, Query q) throws Exception {
     s.search(q, 10);
-    int hitCount = s.search(q, null, 10, new Sort(new SortField("title", SortField.Type.STRING))).totalHits;
-    final Sort dvSort = new Sort(new SortField("title", SortField.Type.STRING));
+    int hitCount = s.search(q, null, 10, new Sort(new SortField("titleDV", SortField.Type.STRING))).totalHits;
+    final Sort dvSort = new Sort(new SortField("titleDV", SortField.Type.STRING));
     int hitCount2 = s.search(q, null, 10, dvSort).totalHits;
     assertEquals(hitCount, hitCount2);
     return hitCount;

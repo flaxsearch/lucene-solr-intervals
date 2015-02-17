@@ -450,11 +450,8 @@ public class Grouping {
     }
     try {
       searcher.search(query, luceneFilter, collector);
-    } catch (TimeLimitingCollector.TimeExceededException x) {
+    } catch (TimeLimitingCollector.TimeExceededException | ExitableDirectoryReader.ExitingReaderException x) {
       logger.warn( "Query: " + query + "; " + x.getMessage() );
-      qr.setPartialResults(true);
-    } catch (ExitableDirectoryReader.ExitingReaderException e) {
-      logger.warn( "Query: " + query + "; " + e.getMessage() );
       qr.setPartialResults(true);
     }
   }
@@ -514,7 +511,7 @@ public class Grouping {
   /**
    * General group command. A group command is responsible for creating the first and second pass collectors.
    * A group command is also responsible for creating the response structure.
-   * <p/>
+   * <p>
    * Note: Maybe the creating the response structure should be done in something like a ReponseBuilder???
    * Warning NOT thread save!
    */
@@ -879,9 +876,9 @@ public class Grouping {
     TopDocsCollector newCollector(Sort sort, boolean needScores) throws IOException {
       int groupDocsToCollect = getMax(groupOffset, docsPerGroup, maxDoc);
       if (sort == null || sort == Sort.RELEVANCE) {
-        return TopScoreDocCollector.create(groupDocsToCollect, true);
+        return TopScoreDocCollector.create(groupDocsToCollect);
       } else {
-        return TopFieldCollector.create(searcher.weightSort(sort), groupDocsToCollect, false, needScores, needScores, true);
+        return TopFieldCollector.create(searcher.weightSort(sort), groupDocsToCollect, false, needScores, needScores);
       }
     }
 
@@ -930,7 +927,7 @@ public class Grouping {
      */
     @Override
     protected void prepare() throws IOException {
-      Map context = ValueSource.newContext(searcher);
+      context = ValueSource.newContext(searcher);
       groupBy.createWeight(context, searcher);
       actualGroupsToFind = getMax(offset, numGroups, maxDoc);
     }

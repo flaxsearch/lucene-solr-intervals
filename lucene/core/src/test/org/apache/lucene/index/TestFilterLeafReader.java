@@ -76,14 +76,14 @@ public class TestFilterLeafReader extends LuceneTestCase {
       }
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException {
-        return new TestPositions(super.docsAndPositions(liveDocs, reuse == null ? null : ((FilterDocsAndPositionsEnum) reuse).in, flags));
+      public PostingsEnum postings(Bits liveDocs, PostingsEnum reuse, int flags) throws IOException {
+        return new TestPositions(super.postings(liveDocs, reuse == null ? null : ((FilterDocsEnum) reuse).in, flags));
       }
     }
 
     /** Filter that only returns odd numbered documents. */
-    private static class TestPositions extends FilterDocsAndPositionsEnum {
-      public TestPositions(DocsAndPositionsEnum in) {
+    private static class TestPositions extends FilterDocsEnum {
+      public TestPositions(PostingsEnum in) {
         super(in);
       }
 
@@ -138,11 +138,11 @@ public class TestFilterLeafReader extends LuceneTestCase {
     ((BaseDirectoryWrapper) target).setCrossCheckTermVectorsOnClose(false);
 
     writer = new IndexWriter(target, newIndexWriterConfig(new MockAnalyzer(random())));
-    IndexReader reader = new TestReader(DirectoryReader.open(directory));
-    writer.addIndexes(reader);
+    try (LeafReader reader = new TestReader(DirectoryReader.open(directory))) {
+      writer.addIndexes(SlowCodecReaderWrapper.wrap(reader));
+    }
     writer.close();
-    reader.close();
-    reader = DirectoryReader.open(target);
+    IndexReader reader = DirectoryReader.open(target);
     
     TermsEnum terms = MultiFields.getTerms(reader, "default").iterator(null);
     while (terms.next() != null) {
@@ -151,7 +151,7 @@ public class TestFilterLeafReader extends LuceneTestCase {
     
     assertEquals(TermsEnum.SeekStatus.FOUND, terms.seekCeil(new BytesRef("one")));
     
-    DocsAndPositionsEnum positions = terms.docsAndPositions(MultiFields.getLiveDocs(reader), null);
+    PostingsEnum positions = terms.postings(MultiFields.getLiveDocs(reader), null, PostingsEnum.FLAG_ALL);
     while (positions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
       assertTrue((positions.docID() % 2) == 1);
     }
@@ -166,7 +166,7 @@ public class TestFilterLeafReader extends LuceneTestCase {
     for (Method m : superClazz.getMethods()) {
       final int mods = m.getModifiers();
       if (Modifier.isStatic(mods) || Modifier.isAbstract(mods) || Modifier.isFinal(mods) || m.isSynthetic()
-          || m.getName().equals("attributes")) {
+          || m.getName().equals("attributes") || m.getName().equals("getStats")) {
         continue;
       }
       // The point of these checks is to ensure that methods that have a default
@@ -189,7 +189,19 @@ public class TestFilterLeafReader extends LuceneTestCase {
     checkOverrideMethods(FilterLeafReader.FilterTerms.class);
     checkOverrideMethods(FilterLeafReader.FilterTermsEnum.class);
     checkOverrideMethods(FilterLeafReader.FilterDocsEnum.class);
-    checkOverrideMethods(FilterLeafReader.FilterDocsAndPositionsEnum.class);
   }
 
+  public void testUnwrap() throws IOException {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    w.addDocument(new Document());
+    DirectoryReader dr = w.getReader();
+    LeafReader r = dr.leaves().get(0).reader();
+    FilterLeafReader r2 = new FilterLeafReader(r);
+    assertEquals(r, r2.getDelegate());
+    assertEquals(r, FilterLeafReader.unwrap(r2));
+    w.close();
+    dr.close();
+    dir.close();
+  }
 }

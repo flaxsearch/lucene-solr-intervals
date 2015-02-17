@@ -34,12 +34,13 @@ public abstract class Spans {
    * <code> target &le; current</code>, or after the iterator has exhausted.
    * Both cases may result in unpredicted behavior.
    * <p>Returns true iff there is such
-   * a match.  <p>Behaves as if written: <pre class="prettyprint">
+   * a match.  <p>Behaves as if written: 
+   * <pre class="prettyprint">
    *   boolean skipTo(int target) {
    *     do {
    *       if (!next())
    *         return false;
-   *     } while (target > doc());
+   *     } while (target &gt; doc());
    *     return true;
    *   }
    * </pre>
@@ -68,19 +69,19 @@ public abstract class Spans {
    * you do not want ordered SpanNearQuerys to collect payloads, you can
    * disable collection with a constructor option.<br>
    * <br>
-    * Note that the return type is a collection, thus the ordering should not be relied upon.
-    * <br/>
+   * Note that the return type is a collection, thus the ordering should not be relied upon.
+   * <br>
    * @lucene.experimental
    *
    * @return a List of byte arrays containing the data of this payload, otherwise null if isPayloadAvailable is false
    * @throws IOException if there is a low-level I/O error
-    */
+   */
   // TODO: Remove warning after API has been finalized
   public abstract Collection<byte[]> getPayload() throws IOException;
 
   /**
    * Checks if a payload can be loaded at this position.
-   * <p/>
+   * <p>
    * Payloads can only be loaded once per call to
    * {@link #next()}.
    *

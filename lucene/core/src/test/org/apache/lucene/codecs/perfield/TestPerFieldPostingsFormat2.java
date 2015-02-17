@@ -16,13 +16,14 @@ package org.apache.lucene.codecs.perfield;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.asserting.AssertingCodec;
-import org.apache.lucene.codecs.lucene41vargap.Lucene41VarGapFixedInterval;
+import org.apache.lucene.codecs.blockterms.LuceneVarGapFixedInterval;
 import org.apache.lucene.codecs.memory.MemoryPostingsFormat;
 import org.apache.lucene.codecs.simpletext.SimpleTextPostingsFormat;
 import org.apache.lucene.document.Document;
@@ -265,7 +266,7 @@ public class TestPerFieldPostingsFormat2 extends LuceneTestCase {
     }
     dir.close();
   }
-  
+
   public void testSameCodecDifferentInstance() throws Exception {
     Codec codec = new AssertingCodec() {
       @Override
@@ -287,9 +288,9 @@ public class TestPerFieldPostingsFormat2 extends LuceneTestCase {
       @Override
       public PostingsFormat getPostingsFormatForField(String field) {
         if ("id".equals(field)) {
-          return new Lucene41VarGapFixedInterval(1);
+          return new LuceneVarGapFixedInterval(1);
         } else if ("date".equals(field)) {
-          return new Lucene41VarGapFixedInterval(2);
+          return new LuceneVarGapFixedInterval(2);
         } else {
           return super.getPostingsFormatForField(field);
         }

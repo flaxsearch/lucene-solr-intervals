@@ -28,7 +28,6 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
@@ -39,7 +38,7 @@ import org.apache.lucene.util.TestUtil;
  * Simple test that adds numeric terms, where each term has the 
  * totalTermFreq of its integer value, and checks that the totalTermFreq is correct. 
  */
-// TODO: somehow factor this with BagOfPostings? its almost the same
+// TODO: somehow factor this with BagOfPostings? it's almost the same
 @SuppressCodecs({"Direct", "Memory"}) // at night this makes like 200k/300k docs and will make Direct's heart beat!
 public class TestBagOfPositions extends LuceneTestCase {
   public void test() throws Exception {
@@ -145,7 +144,7 @@ public class TestBagOfPositions extends LuceneTestCase {
       assertEquals(value, termsEnum.totalTermFreq());
       // don't really need to check more than this, as CheckIndex
       // will verify that totalTermFreq == total number of positions seen
-      // from a docsAndPositionsEnum.
+      // from a postingsEnum.
     }
     ir.close();
     iw.close();

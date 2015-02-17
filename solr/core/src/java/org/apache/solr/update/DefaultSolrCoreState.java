@@ -23,6 +23,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.lucene.index.IndexWriter;
 import org.apache.solr.cloud.RecoveryStrategy;
+import org.apache.solr.cloud.ActionThrottle;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.core.CoreContainer;
@@ -39,6 +40,10 @@ public final class DefaultSolrCoreState extends SolrCoreState implements Recover
   private final boolean SKIP_AUTO_RECOVERY = Boolean.getBoolean("solrcloud.skip.autorecovery");
   
   private final Object recoveryLock = new Object();
+  
+  private final ActionThrottle recoveryThrottle = new ActionThrottle("recovery", 10000);
+  
+  private final ActionThrottle leaderThrottle = new ActionThrottle("leader", 5000);
   
   // protects pauseWriter and writerFree
   private final Object writerPauseLock = new Object();
@@ -143,7 +148,7 @@ public final class DefaultSolrCoreState extends SolrCoreState implements Recover
       // we need to wait for the Writer to fall out of use
       // first lets stop it from being lent out
       pauseWriter = true;
-      // then lets wait until its out of use
+      // then lets wait until it's out of use
       log.info("Waiting until IndexWriter is unused... core=" + coreName);
       
       while (!writerFree) {
@@ -201,7 +206,7 @@ public final class DefaultSolrCoreState extends SolrCoreState implements Recover
       // we need to wait for the Writer to fall out of use
       // first lets stop it from being lent out
       pauseWriter = true;
-      // then lets wait until its out of use
+      // then lets wait until it's out of use
       log.info("Waiting until IndexWriter is unused... core=" + coreName);
       
       while (!writerFree) {
@@ -264,7 +269,7 @@ public final class DefaultSolrCoreState extends SolrCoreState implements Recover
   }
   
   protected SolrIndexWriter createMainIndexWriter(SolrCore core, String name) throws IOException {
-    return SolrIndexWriter.create(name, core.getNewIndexDir(),
+    return SolrIndexWriter.create(core, name, core.getNewIndexDir(),
         core.getDirectoryFactory(), false, core.getLatestSchema(),
         core.getSolrConfig().indexConfig, core.getDeletionPolicy(), core.getCodec());
   }
@@ -313,6 +318,9 @@ public final class DefaultSolrCoreState extends SolrCoreState implements Recover
       // if true, we are recovering after startup and shouldn't have (or be receiving) additional updates (except for local tlog recovery)
       boolean recoveringAfterStartup = recoveryStrat == null;
 
+      recoveryThrottle.minimumWaitBetweenActions();
+      recoveryThrottle.markAttemptingAction();
+      
       recoveryStrat = new RecoveryStrategy(cc, cd, this);
       recoveryStrat.setRecoveringAfterStartup(recoveringAfterStartup);
       recoveryStrat.start();
@@ -363,5 +371,11 @@ public final class DefaultSolrCoreState extends SolrCoreState implements Recover
   public Lock getCommitLock() {
     return commitLock;
   }
+  
+  @Override
+  public ActionThrottle getLeaderThrottle() {
+    return leaderThrottle;
+  }
+  
   
 }

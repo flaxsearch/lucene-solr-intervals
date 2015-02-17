@@ -21,6 +21,17 @@ package org.apache.lucene.search.suggest.analyzing;
 //   - test w/ syns
 //   - add pruning of low-freq ngrams?
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.AnalyzerWrapper;
 import org.apache.lucene.analysis.TokenStream;
@@ -35,7 +46,7 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -66,17 +77,6 @@ import org.apache.lucene.util.fst.PositiveIntOutputs;
 import org.apache.lucene.util.fst.Util;
 import org.apache.lucene.util.fst.Util.Result;
 import org.apache.lucene.util.fst.Util.TopResults;
-
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 //import java.io.PrintWriter;
 
@@ -213,7 +213,7 @@ public class FreeTextSuggester extends Lookup {
   }
 
   @Override
-  public Iterable<? extends Accountable> getChildResources() {
+  public Collection<Accountable> getChildResources() {
     if (fst == null) {
       return Collections.emptyList();
     } else {
@@ -468,6 +468,9 @@ public class FreeTextSuggester extends Lookup {
   public List<LookupResult> lookup(final CharSequence key, Set<BytesRef> contexts, int num) throws IOException {
     if (contexts != null) {
       throw new IllegalArgumentException("this suggester doesn't support contexts");
+    }
+    if (fst == null) {
+      throw new IllegalStateException("Lookup not supported at this time");
     }
 
     try (TokenStream ts = queryAnalyzer.tokenStream("", key.toString())) {
@@ -734,12 +737,12 @@ public class FreeTextSuggester extends Lookup {
     }
   }
 
-  /** weight -> cost */
+  /** weight -&gt; cost */
   private long encodeWeight(long ngramCount) {
     return Long.MAX_VALUE - ngramCount;
   }
 
-  /** cost -> weight */
+  /** cost -&gt; weight */
   //private long decodeWeight(Pair<Long,BytesRef> output) {
   private long decodeWeight(Long output) {
     assert output != null;

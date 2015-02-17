@@ -31,7 +31,7 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.DocsAndPositionsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Terms;
@@ -111,7 +111,7 @@ public class TestTeeSinkTokenFilter extends BaseTokenStreamTestCase {
     TermsEnum termsEnum = vector.iterator(null);
     termsEnum.next();
     assertEquals(2, termsEnum.totalTermFreq());
-    DocsAndPositionsEnum positions = termsEnum.docsAndPositions(null, null);
+    PostingsEnum positions = termsEnum.postings(null, null, PostingsEnum.FLAG_ALL);
     assertTrue(positions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(2, positions.freq());
     positions.nextPosition();
@@ -143,9 +143,8 @@ public class TestTeeSinkTokenFilter extends BaseTokenStreamTestCase {
     final TeeSinkTokenFilter tee1 = new TeeSinkTokenFilter(whitespaceMockTokenizer(buffer1.toString()));
     final TeeSinkTokenFilter.SinkTokenStream dogDetector = tee1.newSinkTokenStream(dogFilter);
     final TeeSinkTokenFilter.SinkTokenStream theDetector = tee1.newSinkTokenStream(theFilter);
-    tee1.reset();
     final TokenStream source1 = new CachingTokenFilter(tee1);
-    
+
     tee1.addAttribute(CheckClearAttributesAttribute.class);
     dogDetector.addAttribute(CheckClearAttributesAttribute.class);
     theDetector.addAttribute(CheckClearAttributesAttribute.class);
@@ -163,7 +162,6 @@ public class TestTeeSinkTokenFilter extends BaseTokenStreamTestCase {
     assertTokenStreamContents(theDetector, new String[]{"The", "the", "The", "the"});
     assertTokenStreamContents(dogDetector, new String[]{"Dogs", "Dogs"});
     
-    source1.reset();
     TokenStream lowerCasing = new LowerCaseFilter(source1);
     String[] lowerCaseTokens = new String[tokens1.length];
     for (int i = 0; i < tokens1.length; i++)

@@ -18,13 +18,13 @@ package org.apache.lucene.index;
  */
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.lucene.index.DocumentsWriterPerThreadPool.ThreadState;
@@ -76,7 +76,7 @@ final class DocumentsWriterFlushControl implements Accountable {
 
   DocumentsWriterFlushControl(DocumentsWriter documentsWriter, LiveIndexWriterConfig config, BufferedUpdatesStream bufferedUpdatesStream) {
     this.infoStream = config.getInfoStream();
-    this.stallControl = new DocumentsWriterStallControl();
+    this.stallControl = new DocumentsWriterStallControl(config);
     this.perThreadPool = documentsWriter.perThreadPool;
     this.flushPolicy = documentsWriter.flushPolicy;
     this.config = config;
@@ -311,7 +311,7 @@ final class DocumentsWriterFlushControl implements Accountable {
       dwpt = perThreadPool.reset(perThread, closed);
       numPending--;
       blockedFlushes.add(new BlockedFlush(dwpt, bytes));
-    }finally {
+    } finally {
       perThread.unlock();
     }
   }
@@ -439,7 +439,7 @@ final class DocumentsWriterFlushControl implements Accountable {
   }
 
   @Override
-  public Iterable<? extends Accountable> getChildResources() {
+  public Collection<Accountable> getChildResources() {
     // TODO: improve this?
     return Collections.emptyList();
   }
@@ -588,7 +588,7 @@ final class DocumentsWriterFlushControl implements Accountable {
         assert !flushingWriters.containsKey(blockedFlush.dwpt) : "DWPT is already flushing";
         // Record the flushing DWPT to reduce flushBytes in doAfterFlush
         flushingWriters.put(blockedFlush.dwpt, Long.valueOf(blockedFlush.bytes));
-        // don't decr pending here - its already done when DWPT is blocked
+        // don't decr pending here - it's already done when DWPT is blocked
         flushQueue.add(blockedFlush.dwpt);
       }
     }
@@ -617,20 +617,20 @@ final class DocumentsWriterFlushControl implements Accountable {
     return true;
   }
 
-  synchronized void abortFullFlushes(Set<String> newFiles) {
+  synchronized void abortFullFlushes() {
    try {
-     abortPendingFlushes(newFiles);
+     abortPendingFlushes();
    } finally {
      fullFlush = false;
    }
   }
   
-  synchronized void abortPendingFlushes(Set<String> newFiles) {
+  synchronized void abortPendingFlushes() {
     try {
       for (DocumentsWriterPerThread dwpt : flushQueue) {
         try {
           documentsWriter.subtractFlushedNumDocs(dwpt.getNumDocsInRAM());
-          dwpt.abort(newFiles);
+          dwpt.abort();
         } catch (Throwable ex) {
           // ignore - keep on aborting the flush queue
         } finally {
@@ -642,7 +642,7 @@ final class DocumentsWriterFlushControl implements Accountable {
           flushingWriters
               .put(blockedFlush.dwpt, Long.valueOf(blockedFlush.bytes));
           documentsWriter.subtractFlushedNumDocs(blockedFlush.dwpt.getNumDocsInRAM());
-          blockedFlush.dwpt.abort(newFiles);
+          blockedFlush.dwpt.abort();
         } catch (Throwable ex) {
           // ignore - keep on aborting the blocked queue
         } finally {

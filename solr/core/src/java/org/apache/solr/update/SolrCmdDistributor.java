@@ -17,6 +17,24 @@ package org.apache.solr.update;
  * limitations under the License.
  */
 
+import org.apache.http.HttpResponse;
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.impl.BinaryResponseParser;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
+import org.apache.solr.client.solrj.request.UpdateRequest;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
+import org.apache.solr.common.cloud.ZkCoreNodeProps;
+import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.core.Diagnostics;
+import org.apache.solr.update.processor.DistributedUpdateProcessor.RequestReplicationTracker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.ConnectException;
@@ -31,30 +49,12 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
-import org.apache.http.HttpResponse;
-import org.apache.solr.client.solrj.SolrServer;
-import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.BinaryResponseParser;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
-import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
-import org.apache.solr.client.solrj.request.UpdateRequest;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.common.cloud.ZkCoreNodeProps;
-import org.apache.solr.common.cloud.ZkStateReader;
-import org.apache.solr.common.params.ModifiableSolrParams;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.core.Diagnostics;
-import org.apache.solr.update.processor.DistributedUpdateProcessor.RequestReplicationTracker;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 
 public class SolrCmdDistributor {
   private static final int MAX_RETRIES_ON_FORWARD = 25;
   public static Logger log = LoggerFactory.getLogger(SolrCmdDistributor.class);
   
-  private StreamingSolrServers servers;
+  private StreamingSolrClients clients;
   
   private int retryPause = 500;
   private int maxRetriesOnForward = MAX_RETRIES_ON_FORWARD;
@@ -71,16 +71,16 @@ public class SolrCmdDistributor {
   }
   
   public SolrCmdDistributor(UpdateShardHandler updateShardHandler) {
-    this.servers = new StreamingSolrServers(updateShardHandler);
+    this.clients = new StreamingSolrClients(updateShardHandler);
     this.updateExecutor = updateShardHandler.getUpdateExecutor();
     this.completionService = new ExecutorCompletionService<>(updateExecutor);
   }
   
-  public SolrCmdDistributor(StreamingSolrServers servers, int maxRetriesOnForward, int retryPause) {
-    this.servers = servers;
+  public SolrCmdDistributor(StreamingSolrClients clients, int maxRetriesOnForward, int retryPause) {
+    this.clients = clients;
     this.maxRetriesOnForward = maxRetriesOnForward;
     this.retryPause = retryPause;
-    this.updateExecutor = servers.getUpdateExecutor();
+    this.updateExecutor = clients.getUpdateExecutor();
     completionService = new ExecutorCompletionService<>(updateExecutor);
   }
   
@@ -88,7 +88,7 @@ public class SolrCmdDistributor {
     try {
       blockAndDoRetries();
     } finally {
-      servers.shutdown();
+      clients.shutdown();
     }
   }
 
@@ -96,7 +96,7 @@ public class SolrCmdDistributor {
     // NOTE: retries will be forwards to a single url
     
     List<Error> errors = new ArrayList<>(this.errors);
-    errors.addAll(servers.getErrors());
+    errors.addAll(clients.getErrors());
     List<Error> resubmitList = new ArrayList<>();
 
     for (Error err : errors) {
@@ -118,7 +118,7 @@ public class SolrCmdDistributor {
             doRetry = true;
           }
           
-          // if its a connect exception, lets try again
+          // if it's a connect exception, lets try again
           if (err.e instanceof SolrServerException) {
             if (((SolrServerException) err.e).getRootCause() instanceof ConnectException) {
               doRetry = true;
@@ -156,7 +156,7 @@ public class SolrCmdDistributor {
       }
     }
     
-    servers.clearErrors();
+    clients.clearErrors();
     this.errors.clear();
     for (Error err : resubmitList) {
       submit(err.req, false);
@@ -176,8 +176,9 @@ public class SolrCmdDistributor {
     for (Node node : nodes) {
       UpdateRequest uReq = new UpdateRequest();
       uReq.setParams(params);
+      uReq.setCommitWithin(cmd.commitWithin);
       if (cmd.isDeleteById()) {
-        uReq.deleteById(cmd.getId(), cmd.getVersion());
+        uReq.deleteById(cmd.getId(), cmd.getRoute(), cmd.getVersion());
       } else {
         uReq.deleteByQuery(cmd.query);
       }
@@ -225,7 +226,7 @@ public class SolrCmdDistributor {
   }
 
   private void blockAndDoRetries() {
-    servers.blockUntilFinished();
+    clients.blockUntilFinished();
     
     // wait for any async commits to complete
     while (pending != null && pending.size() > 0) {
@@ -252,15 +253,11 @@ public class SolrCmdDistributor {
   private void submit(final Req req, boolean isCommit) {
     if (req.synchronous) {
       blockAndDoRetries();
-      
-      HttpSolrServer server = new HttpSolrServer(req.node.getUrl(),
-          servers.getHttpClient());
-      try {
-        server.request(req.uReq);
+
+      try (HttpSolrClient client = new HttpSolrClient(req.node.getUrl(), clients.getHttpClient())) {
+        client.request(req.uReq);
       } catch (Exception e) {
         throw new SolrException(ErrorCode.SERVER_ERROR, "Failed synchronous update on shard " + req.node + " update: " + req.uReq , e);
-      } finally {
-        server.shutdown();
       }
       
       return;
@@ -292,8 +289,8 @@ public class SolrCmdDistributor {
   
   private void doRequest(final Req req) {
     try {
-      SolrServer solrServer = servers.getSolrServer(req);
-      solrServer.request(req.uReq);
+      SolrClient solrClient = clients.getSolrClient(req);
+      solrClient.request(req.uReq);
     } catch (Exception e) {
       SolrException.log(log, e);
       Error error = new Error();

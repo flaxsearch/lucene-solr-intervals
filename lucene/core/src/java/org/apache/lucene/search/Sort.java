@@ -34,7 +34,7 @@ import java.util.Arrays;
  * <p><code>document.add (new Field ("byNumber", Integer.toString(x), Field.Store.NO, Field.Index.NOT_ANALYZED));</code></p>
  * 
  *
- * <p><h3>Valid Types of Values</h3>
+ * <h3>Valid Types of Values</h3>
  *
  * <p>There are four possible kinds of term values which may be put into
  * sorting fields: Integers, Longs, Floats, or Strings.  Unless
@@ -67,14 +67,14 @@ import java.util.Arrays;
  * of term value has higher memory requirements than the other
  * two types.
  *
- * <p><h3>Object Reuse</h3>
+ * <h3>Object Reuse</h3>
  *
  * <p>One of these objects can be
  * used multiple times and the sort order changed between usages.
  *
  * <p>This class is thread safe.
  *
- * <p><h3>Memory Usage</h3>
+ * <h3>Memory Usage</h3>
  *
  * <p>Sorting uses of caches of term values maintained by the
  * internal HitQueue(s).  The cache is static and contains an integer
@@ -127,7 +127,11 @@ public class Sort {
     setSort(field);
   }
 
-  /** Sorts in succession by the criteria in each SortField. */
+  /** Sets the sort to the given criteria in succession: the
+   *  first SortField is checked first, but if it produces a
+   *  tie, then the second SortField is used to break the tie,
+   *  etc.  Finally, if there is still a tie after all SortFields
+   *  are checked, the internal Lucene docid is used to break it. */
   public Sort(SortField... fields) {
     setSort(fields);
   }
@@ -137,7 +141,11 @@ public class Sort {
     this.fields = new SortField[] { field };
   }
 
-  /** Sets the sort to the given criteria in succession. */
+  /** Sets the sort to the given criteria in succession: the
+   *  first SortField is checked first, but if it produces a
+   *  tie, then the second SortField is used to break the tie,
+   *  etc.  Finally, if there is still a tie after all SortFields
+   *  are checked, the internal Lucene docid is used to break it. */
   public void setSort(SortField... fields) {
     this.fields = fields;
   }

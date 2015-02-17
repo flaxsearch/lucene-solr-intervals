@@ -29,7 +29,6 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StoredField;
-import org.apache.lucene.index.FieldInfo.DocValuesType;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -59,7 +58,7 @@ public class TestIndexableField extends LuceneTestCase {
 
       @Override
       public boolean storeTermVectors() {
-        return indexOptions() != null && counter % 2 == 1 && counter % 10 != 9;
+        return indexOptions() != IndexOptions.NONE && counter % 2 == 1 && counter % 10 != 9;
       }
 
       @Override
@@ -83,13 +82,13 @@ public class TestIndexableField extends LuceneTestCase {
       }
 
       @Override
-      public FieldInfo.IndexOptions indexOptions() {
-        return counter%10 == 3 ? null : FieldInfo.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
+      public IndexOptions indexOptions() {
+        return counter%10 == 3 ? IndexOptions.NONE : IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
       }
 
       @Override
-      public DocValuesType docValueType() {
-        return null;
+      public DocValuesType docValuesType() {
+        return DocValuesType.NONE;
       }
     };
 
@@ -268,14 +267,14 @@ public class TestIndexableField extends LuceneTestCase {
             TermsEnum termsEnum = tfv.iterator(null);
             assertEquals(new BytesRef(""+counter), termsEnum.next());
             assertEquals(1, termsEnum.totalTermFreq());
-            DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
+            PostingsEnum dpEnum = termsEnum.postings(null, null, PostingsEnum.FLAG_ALL);
             assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
             assertEquals(1, dpEnum.freq());
             assertEquals(1, dpEnum.nextPosition());
 
             assertEquals(new BytesRef("text"), termsEnum.next());
             assertEquals(1, termsEnum.totalTermFreq());
-            dpEnum = termsEnum.docsAndPositions(null, dpEnum);
+            dpEnum = termsEnum.postings(null, dpEnum, PostingsEnum.FLAG_ALL);
             assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
             assertEquals(1, dpEnum.freq());
             assertEquals(0, dpEnum.nextPosition());

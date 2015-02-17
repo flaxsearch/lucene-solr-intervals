@@ -35,7 +35,7 @@ import org.apache.lucene.util.BytesRef;
 public class PerThreadPKLookup {
 
   protected final TermsEnum[] termsEnums;
-  protected final DocsEnum[] docsEnums;
+  protected final PostingsEnum[] postingsEnums;
   protected final Bits[] liveDocs;
   protected final int[] docBases;
   protected final int numSegs;
@@ -54,23 +54,20 @@ public class PerThreadPKLookup {
       });
 
     termsEnums = new TermsEnum[leaves.size()];
-    docsEnums = new DocsEnum[leaves.size()];
+    postingsEnums = new PostingsEnum[leaves.size()];
     liveDocs = new Bits[leaves.size()];
     docBases = new int[leaves.size()];
     int numSegs = 0;
     boolean hasDeletions = false;
     for(int i=0;i<leaves.size();i++) {
-      Fields fields = leaves.get(i).reader().fields();
-      if (fields != null) {
-        Terms terms = fields.terms(idFieldName);
-        if (terms != null) {
-          termsEnums[numSegs] = terms.iterator(null);
-          assert termsEnums[numSegs] != null;
-          docBases[numSegs] = leaves.get(i).docBase;
-          liveDocs[numSegs] = leaves.get(i).reader().getLiveDocs();
-          hasDeletions |= leaves.get(i).reader().hasDeletions();
-          numSegs++;
-        }
+      Terms terms = leaves.get(i).reader().terms(idFieldName);
+      if (terms != null) {
+        termsEnums[numSegs] = terms.iterator(null);
+        assert termsEnums[numSegs] != null;
+        docBases[numSegs] = leaves.get(i).docBase;
+        liveDocs[numSegs] = leaves.get(i).reader().getLiveDocs();
+        hasDeletions |= leaves.get(i).reader().hasDeletions();
+        numSegs++;
       }
     }
     this.numSegs = numSegs;
@@ -81,9 +78,9 @@ public class PerThreadPKLookup {
   public int lookup(BytesRef id) throws IOException {
     for(int seg=0;seg<numSegs;seg++) {
       if (termsEnums[seg].seekExact(id)) {
-        docsEnums[seg] = termsEnums[seg].docs(liveDocs[seg], docsEnums[seg], 0);
-        int docID = docsEnums[seg].nextDoc();
-        if (docID != DocsEnum.NO_MORE_DOCS) {
+        postingsEnums[seg] = termsEnums[seg].postings(liveDocs[seg], postingsEnums[seg], 0);
+        int docID = postingsEnums[seg].nextDoc();
+        if (docID != PostingsEnum.NO_MORE_DOCS) {
           return docBases[seg] + docID;
         }
         assert hasDeletions;

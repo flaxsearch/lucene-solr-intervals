@@ -34,7 +34,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Attribute;
@@ -49,7 +49,7 @@ import org.apache.lucene.util.TestUtil;
 /** 
  * Base class for all Lucene unit tests that use TokenStreams. 
  * <p>
- * When writing unit tests for analysis components, its highly recommended
+ * When writing unit tests for analysis components, it's highly recommended
  * to use the helper methods here (especially in conjunction with {@link MockAnalyzer} or
  * {@link MockTokenizer}), as they contain many assertions and checks to 
  * catch bugs.
@@ -260,7 +260,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     }
 
     if (ts.incrementToken()) {
-      fail("TokenStream has more tokens than expected (expected count=" + output.length + "); extra token=" + termAtt.toString());
+      fail("TokenStream has more tokens than expected (expected count=" + output.length + "); extra token=" + termAtt);
     }
 
     // repeat our extra safety checks for end()
@@ -391,9 +391,6 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       }
     } catch (IllegalStateException expected) {
       // ok
-    } catch (AssertionError expected) {
-      // ok: MockTokenizer
-      assertTrue(expected.getMessage(), expected.getMessage() != null && expected.getMessage().contains("wrong state"));
     } catch (Exception unexpected) {
       unexpected.printStackTrace(System.err);
       fail("got wrong exception when reset() not called: " + unexpected);
@@ -511,7 +508,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     try {
       checkRandomData(new Random(seed), a, iterations, maxWordLength, useCharFilter, simple, offsetsAreCorrect, iw);
       // now test with multiple threads: note we do the EXACT same thing we did before in each thread,
-      // so this should only really fail from another thread if its an actual thread problem
+      // so this should only really fail from another thread if it's an actual thread problem
       int numThreads = TestUtil.nextInt(random, 2, 4);
       final CountDownLatch startingGun = new CountDownLatch(1);
       AnalysisThread threads[] = new AnalysisThread[numThreads];
@@ -568,15 +565,15 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
         ft.setOmitNorms(true);
       }
       switch(random.nextInt(4)) {
-        case 0: ft.setIndexOptions(IndexOptions.DOCS_ONLY); break;
+        case 0: ft.setIndexOptions(IndexOptions.DOCS); break;
         case 1: ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS); break;
         case 2: ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS); break;
         default:
-                if (offsetsAreCorrect) {
-                  ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
-                } else {
-                  ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
-                }
+          if (offsetsAreCorrect) {
+            ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
+          } else {
+            ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
+          }
       }
       currentField = field = new Field("dummy", bogus, ft);
       doc.add(currentField);
@@ -752,13 +749,13 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
           }
           try {
             ts.end();
-          } catch (AssertionError ae) {
+          } catch (IllegalStateException ise) {
             // Catch & ignore MockTokenizer's
             // anger...
-            if ("end() called before incrementToken() returned false!".equals(ae.getMessage())) {
+            if ("end() called before incrementToken() returned false!".equals(ise.getMessage())) {
               // OK
             } else {
-              throw ae;
+              throw ise;
             }
           }
           ts.close();
@@ -777,13 +774,13 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
           }
           try {
             ts.end();
-          } catch (AssertionError ae) {
+          } catch (IllegalStateException ise) {
             // Catch & ignore MockTokenizer's
             // anger...
-            if ("end() called before incrementToken() returned false!".equals(ae.getMessage())) {
+            if ("end() called before incrementToken() returned false!".equals(ise.getMessage())) {
               // OK
             } else {
-              throw ae;
+              throw ise;
             }
           }
           ts.close();

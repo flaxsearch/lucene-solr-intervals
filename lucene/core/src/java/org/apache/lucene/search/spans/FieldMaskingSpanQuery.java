@@ -17,19 +17,19 @@ package org.apache.lucene.search.spans;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Weight;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.ToStringUtils;
+
 import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
-
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.TermContext;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.Weight;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.ToStringUtils;
 
 /**
  * <p>Wrapper to allow {@link SpanQuery} objects participate in composite 
@@ -67,12 +67,12 @@ import org.apache.lucene.util.ToStringUtils;
  * </pre>
  * to search for 'studentfirstname:james studentsurname:jones' and find 
  * teacherid 1 without matching teacherid 2 (which has a 'james' in position 0 
- * and 'jones' in position 1). </p>
+ * and 'jones' in position 1).
  * 
  * <p>Note: as {@link #getField()} returns the masked field, scoring will be 
  * done using the Similarity and collection statistics of the field name supplied,
  * but with the term statistics of the real field. This may lead to exceptions,
- * poor performance, and unexpected scoring behaviour.</p>
+ * poor performance, and unexpected scoring behaviour.
  */
 public class FieldMaskingSpanQuery extends SpanQuery {
   private SpanQuery maskedQuery;
@@ -106,8 +106,8 @@ public class FieldMaskingSpanQuery extends SpanQuery {
   }  
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return maskedQuery.createWeight(searcher);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+    return maskedQuery.createWeight(searcher, needsScores, flags);
   }
 
   @Override

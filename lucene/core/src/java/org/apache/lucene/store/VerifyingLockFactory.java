@@ -29,13 +29,13 @@ import java.io.OutputStream;
  * external server ({@link LockVerifyServer}) to assert that
  * at most one process holds the lock at a time.  To use
  * this, you should also run {@link LockVerifyServer} on the
- * host & port matching what you pass to the constructor.
+ * host and port matching what you pass to the constructor.
  *
  * @see LockVerifyServer
  * @see LockStressTest
  */
 
-public class VerifyingLockFactory extends LockFactory {
+public final class VerifyingLockFactory extends LockFactory {
 
   final LockFactory lf;
   final InputStream in;
@@ -94,13 +94,7 @@ public class VerifyingLockFactory extends LockFactory {
   }
 
   @Override
-  public synchronized Lock makeLock(String lockName) {
-    return new CheckedLock(lf.makeLock(lockName));
-  }
-
-  @Override
-  public synchronized void clearLock(String lockName)
-    throws IOException {
-    lf.clearLock(lockName);
+  public Lock makeLock(Directory dir, String lockName) {
+    return new CheckedLock(lf.makeLock(dir, lockName));
   }
 }

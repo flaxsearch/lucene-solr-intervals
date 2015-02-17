@@ -17,21 +17,6 @@
 
 package org.apache.solr.client.solrj.util;
 
-import java.io.IOException;
-import java.io.StringWriter;
-import java.io.Writer;
-import java.net.URLEncoder;
-import java.text.DateFormat;
-import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Date;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.TimeZone;
-import java.nio.ByteBuffer;
-
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
@@ -42,6 +27,18 @@ import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.ContentStreamBase;
 import org.apache.solr.common.util.DateUtil;
 import org.apache.solr.common.util.XML;
+
+import java.io.IOException;
+import java.io.StringWriter;
+import java.io.Writer;
+import java.net.URLEncoder;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Map.Entry;
 
 
 /**
@@ -86,11 +83,16 @@ public class ClientUtils
    * @param d SolrInputDocument to convert
    * @return a SolrDocument with the same fields and values as the SolrInputDocument
    */
-  public static SolrDocument toSolrDocument( SolrInputDocument d )
-  {
+  public static SolrDocument toSolrDocument(SolrInputDocument d) {
     SolrDocument doc = new SolrDocument();
-    for( SolrInputField field : d ) {
-      doc.setField( field.getName(), field.getValue() );
+    for (SolrInputField field : d) {
+      doc.setField(field.getName(), field.getValue());
+    }
+    if (d.getChildDocuments() != null) {
+      for (SolrInputDocument in : d.getChildDocuments()) {
+        doc.addChildDocument(toSolrDocument(in));
+      }
+
     }
     return doc;
   }
@@ -187,47 +189,10 @@ public class ClientUtils
   //---------------------------------------------------------------------------------------
 
   /**
-   * @deprecated Use {@link org.apache.solr.common.util.DateUtil#DEFAULT_DATE_FORMATS}
-   */
-  @Deprecated
-  public static final Collection<String> fmts = DateUtil.DEFAULT_DATE_FORMATS;
-
-  /**
-   * Returns a formatter that can be use by the current thread if needed to
-   * convert Date objects to the Internal representation.
-   *
-   * @deprecated Use {@link org.apache.solr.common.util.DateUtil#parseDate(String)}
-   */
-  @Deprecated
-  public static Date parseDate( String d ) throws ParseException
-  {
-    return DateUtil.parseDate(d);
-  }
-
-  /**
-   * Returns a formatter that can be use by the current thread if needed to
-   * convert Date objects to the Internal representation.
-   *
-   * @deprecated use {@link org.apache.solr.common.util.DateUtil#getThreadLocalDateFormat()}
-   */
-  @Deprecated
-  public static DateFormat getThreadLocalDateFormat() {
-
-    return DateUtil.getThreadLocalDateFormat();
-  }
-
-  /**
-   * @deprecated Use {@link org.apache.solr.common.util.DateUtil#UTC}.
-   */
-  @Deprecated
-  public static TimeZone UTC = DateUtil.UTC;
-
-
-
-  /**
-   * See: {@link org.apache.lucene.queryparser.classic queryparser syntax} 
+   * See: <a href="https://www.google.com/?gws_rd=ssl#q=lucene+query+parser+syntax">Lucene query parser syntax</a>
    * for more information on Escaping Special Characters
    */
+  // NOTE: its broken to link to any lucene-queryparser.jar docs, not in classpath!!!!!
   public static String escapeQueryChars(String s) {
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < s.length(); i++) {

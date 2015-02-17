@@ -20,17 +20,20 @@ package org.apache.lucene.uninverting;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DocValues;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.DocValuesType;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.IndexOptions;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SegmentReader;
 import org.apache.lucene.index.SortedDocValues;
@@ -277,7 +280,7 @@ class FieldCacheImpl implements FieldCache {
 
         final TermsEnum termsEnum = termsEnum(terms);
 
-        DocsEnum docs = null;
+        PostingsEnum docs = null;
         FixedBitSet docsWithField = null;
         while(true) {
           final BytesRef term = termsEnum.next();
@@ -285,7 +288,7 @@ class FieldCacheImpl implements FieldCache {
             break;
           }
           visitTerm(term);
-          docs = termsEnum.docs(null, docs, DocsEnum.FLAG_NONE);
+          docs = termsEnum.postings(null, docs, PostingsEnum.FLAG_NONE);
           while (true) {
             final int docID = docs.nextDoc();
             if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -356,9 +359,9 @@ class FieldCacheImpl implements FieldCache {
     if (fieldInfo == null) {
       // field does not exist or has no value
       return new Bits.MatchNoBits(reader.maxDoc());
-    } else if (fieldInfo.hasDocValues()) {
+    } else if (fieldInfo.getDocValuesType() != DocValuesType.NONE) {
       return reader.getDocsWithField(field);
-    } else if (!fieldInfo.isIndexed()) {
+    } else if (fieldInfo.getIndexOptions() == IndexOptions.NONE) {
       return new Bits.MatchNoBits(reader.maxDoc());
     }
     BitsEntry bitsEntry = (BitsEntry) caches.get(DocsWithFieldCache.class).get(reader, new CacheKey(field, null), false);
@@ -383,7 +386,7 @@ class FieldCacheImpl implements FieldCache {
     }
 
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       return Collections.emptyList();
     }
   }
@@ -410,7 +413,7 @@ class FieldCacheImpl implements FieldCache {
           return new BitsEntry(new Bits.MatchAllBits(maxDoc));
         }
         final TermsEnum termsEnum = terms.iterator(null);
-        DocsEnum docs = null;
+        PostingsEnum docs = null;
         while(true) {
           final BytesRef term = termsEnum.next();
           if (term == null) {
@@ -421,7 +424,7 @@ class FieldCacheImpl implements FieldCache {
             res = new FixedBitSet(maxDoc);
           }
 
-          docs = termsEnum.docs(null, docs, DocsEnum.FLAG_NONE);
+          docs = termsEnum.postings(null, docs, PostingsEnum.FLAG_NONE);
           // TODO: use bulk API
           while (true) {
             final int docID = docs.nextDoc();
@@ -459,9 +462,9 @@ class FieldCacheImpl implements FieldCache {
       final FieldInfo info = reader.getFieldInfos().fieldInfo(field);
       if (info == null) {
         return DocValues.emptyNumeric();
-      } else if (info.hasDocValues()) {
+      } else if (info.getDocValuesType() != DocValuesType.NONE) {
         throw new IllegalStateException("Type mismatch: " + field + " was indexed as " + info.getDocValuesType());
-      } else if (!info.isIndexed()) {
+      } else if (info.getIndexOptions() == IndexOptions.NONE) {
         return DocValues.emptyNumeric();
       }
       return (NumericDocValues) caches.get(Long.TYPE).get(reader, new CacheKey(field, parser), setDocsWithField);
@@ -488,7 +491,7 @@ class FieldCacheImpl implements FieldCache {
     }
     
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       return Collections.emptyList();
     }
   }
@@ -611,12 +614,12 @@ class FieldCacheImpl implements FieldCache {
     }
     
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       List<Accountable> resources = new ArrayList<>();
       resources.add(Accountables.namedAccountable("term bytes", bytes));
       resources.add(Accountables.namedAccountable("ord -> term", termOrdToBytesOffset));
       resources.add(Accountables.namedAccountable("doc -> ord", docToTermOrd));
-      return resources;
+      return Collections.unmodifiableList(resources);
     }
   }
 
@@ -634,11 +637,11 @@ class FieldCacheImpl implements FieldCache {
       final FieldInfo info = reader.getFieldInfos().fieldInfo(field);
       if (info == null) {
         return DocValues.emptySorted();
-      } else if (info.hasDocValues()) {
+      } else if (info.getDocValuesType() != DocValuesType.NONE) {
         // we don't try to build a sorted instance from numeric/binary doc
         // values because dedup can be very costly
         throw new IllegalStateException("Type mismatch: " + field + " was indexed as " + info.getDocValuesType());
-      } else if (!info.isIndexed()) {
+      } else if (info.getIndexOptions() == IndexOptions.NONE) {
         return DocValues.emptySorted();
       }
       SortedDocValuesImpl impl = (SortedDocValuesImpl) caches.get(SortedDocValues.class).get(reader, new CacheKey(field, acceptableOverheadRatio), false);
@@ -693,7 +696,7 @@ class FieldCacheImpl implements FieldCache {
 
       if (terms != null) {
         final TermsEnum termsEnum = terms.iterator(null);
-        DocsEnum docs = null;
+        PostingsEnum docs = null;
 
         while(true) {
           final BytesRef term = termsEnum.next();
@@ -705,7 +708,7 @@ class FieldCacheImpl implements FieldCache {
           }
 
           termOrdToBytesOffset.add(bytes.copyUsingLengthPrefix(term));
-          docs = termsEnum.docs(null, docs, DocsEnum.FLAG_NONE);
+          docs = termsEnum.postings(null, docs, PostingsEnum.FLAG_NONE);
           while (true) {
             final int docID = docs.nextDoc();
             if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -754,7 +757,7 @@ class FieldCacheImpl implements FieldCache {
     }
 
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       List<Accountable> resources = new ArrayList<>();
       resources.add(Accountables.namedAccountable("term bytes", bytes));
       resources.add(Accountables.namedAccountable("addresses", docToOffset));
@@ -783,9 +786,9 @@ class FieldCacheImpl implements FieldCache {
     final FieldInfo info = reader.getFieldInfos().fieldInfo(field);
     if (info == null) {
       return DocValues.emptyBinary();
-    } else if (info.hasDocValues()) {
+    } else if (info.getDocValuesType() != DocValuesType.NONE) {
       throw new IllegalStateException("Type mismatch: " + field + " was indexed as " + info.getDocValuesType());
-    } else if (!info.isIndexed()) {
+    } else if (info.getIndexOptions() == IndexOptions.NONE) {
       return DocValues.emptyBinary();
     }
 
@@ -843,7 +846,7 @@ class FieldCacheImpl implements FieldCache {
       if (terms != null) {
         int termCount = 0;
         final TermsEnum termsEnum = terms.iterator(null);
-        DocsEnum docs = null;
+        PostingsEnum docs = null;
         while(true) {
           if (termCount++ == termCountHardLimit) {
             // app is misusing the API (there is more than
@@ -857,7 +860,7 @@ class FieldCacheImpl implements FieldCache {
             break;
           }
           final long pointer = bytes.copyUsingLengthPrefix(term);
-          docs = termsEnum.docs(null, docs, DocsEnum.FLAG_NONE);
+          docs = termsEnum.postings(null, docs, PostingsEnum.FLAG_NONE);
           while (true) {
             final int docID = docs.nextDoc();
             if (docID == DocIdSetIterator.NO_MORE_DOCS) {
@@ -906,9 +909,9 @@ class FieldCacheImpl implements FieldCache {
     final FieldInfo info = reader.getFieldInfos().fieldInfo(field);
     if (info == null) {
       return DocValues.emptySortedSet();
-    } else if (info.hasDocValues()) {
+    } else if (info.getDocValuesType() != DocValuesType.NONE) {
       throw new IllegalStateException("Type mismatch: " + field + " was indexed as " + info.getDocValuesType());
-    } else if (!info.isIndexed()) {
+    } else if (info.getIndexOptions() == IndexOptions.NONE) {
       return DocValues.emptySortedSet();
     }
     
@@ -919,8 +922,8 @@ class FieldCacheImpl implements FieldCache {
       return DocValues.emptySortedSet();
     } else {
       // if #postings = #docswithfield we know that the field is "single valued enough".
-      // its possible the same term might appear twice in the same document, but SORTED_SET discards frequency.
-      // its still ok with filtering (which we limit to numerics), it just means precisionStep = Inf
+      // it's possible the same term might appear twice in the same document, but SORTED_SET discards frequency.
+      // it's still ok with filtering (which we limit to numerics), it just means precisionStep = Inf
       long numPostings = terms.getSumDocFreq();
       if (numPostings != -1 && numPostings == terms.getDocCount()) {
         return DocValues.singleton(getTermsIndex(reader, field));

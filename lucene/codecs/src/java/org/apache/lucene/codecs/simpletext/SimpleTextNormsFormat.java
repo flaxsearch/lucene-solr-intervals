@@ -18,9 +18,8 @@ package org.apache.lucene.codecs.simpletext;
  */
 
 import java.io.IOException;
+import java.util.Collection;
 
-import org.apache.lucene.codecs.DocValuesConsumer;
-import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.codecs.NormsConsumer;
 import org.apache.lucene.codecs.NormsFormat;
 import org.apache.lucene.codecs.NormsProducer;
@@ -33,7 +32,7 @@ import org.apache.lucene.util.Accountable;
 /**
  * plain-text norms format.
  * <p>
- * <b><font color="red">FOR RECREATIONAL USE ONLY</font></B>
+ * <b>FOR RECREATIONAL USE ONLY</b>
  * 
  * @lucene.experimental
  */
@@ -53,7 +52,7 @@ public class SimpleTextNormsFormat extends NormsFormat {
   /**
    * Reads plain-text norms.
    * <p>
-   * <b><font color="red">FOR RECREATIONAL USE ONLY</font></B>
+   * <b>FOR RECREATIONAL USE ONLY</b>
    * 
    * @lucene.experimental
    */
@@ -82,7 +81,7 @@ public class SimpleTextNormsFormat extends NormsFormat {
     }
     
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       return impl.getChildResources();
     }
 
@@ -100,7 +99,7 @@ public class SimpleTextNormsFormat extends NormsFormat {
   /**
    * Writes plain-text norms.
    * <p>
-   * <b><font color="red">FOR RECREATIONAL USE ONLY</font></B>
+   * <b>FOR RECREATIONAL USE ONLY</b>
    * 
    * @lucene.experimental
    */

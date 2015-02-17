@@ -358,7 +358,7 @@ public class TestTimeLimitingCollector extends LuceneTestCase {
     }
     
     @Override
-    public boolean acceptsDocsOutOfOrder() {
+    public boolean needsScores() {
       return false;
     }
 

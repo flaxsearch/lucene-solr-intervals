@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * <p> {@link DocBuilder} is responsible for creating Solr documents out of the given configuration. It also maintains
  * statistics information. It depends on the {@link EntityProcessor} implementations to fetch data. </p>
- * <p/>
+ * <p>
  * <b>This API is experimental and subject to change</b>
  *
  * @since solr 1.3
@@ -171,7 +171,7 @@ public class DocBuilder {
       currentProcess = Context.FULL_DUMP;
     }
     ContextImpl ctx = new ContextImpl(null, getVariableResolver(), null, currentProcess, session, null, this);
-    ctx.lastException = lastException;
+    ctx.setLastException(lastException);
     listener.onEvent(ctx);
   }
 
@@ -400,7 +400,7 @@ public class DocBuilder {
   }
 
   private void resetEntity(EntityProcessorWrapper epw) {
-    epw.setInitalized(false);
+    epw.setInitialized(false);
     for (EntityProcessorWrapper child : epw.getChildren()) {
       resetEntity(child);
     }
@@ -432,9 +432,9 @@ public class DocBuilder {
             pk == null ? Context.FULL_DUMP : Context.DELTA_DUMP,
             session, parentCtx, this);
     epw.init(ctx);
-    if (!epw.isInitalized()) {
+    if (!epw.isInitialized()) {
       entitiesToDestroy.add(epw);
-      epw.setInitalized(true);
+      epw.setInitialized(true);
     }
     
     if (reqParams.getStart() > 0) {
@@ -492,15 +492,29 @@ public class DocBuilder {
             getDebugLogger().log(DIHLogLevels.ENTITY_OUT, epw.getEntity().getName(), arow);
           }
           importStatistics.rowsCount.incrementAndGet();
+          
+          DocWrapper childDoc = null;
           if (doc != null) {
-            handleSpecialCommands(arow, doc);
-            addFields(epw.getEntity(), doc, arow, vr);
+            if (epw.getEntity().isChild()) {
+              childDoc = new DocWrapper();
+              handleSpecialCommands(arow, childDoc);
+              addFields(epw.getEntity(), childDoc, arow, vr);
+              doc.addChildDocument(childDoc);
+            } else {
+              handleSpecialCommands(arow, doc);
+              addFields(epw.getEntity(), doc, arow, vr);
+            }
           }
           if (epw.getEntity().getChildren() != null) {
             vr.addNamespace(epw.getEntity().getName(), arow);
             for (EntityProcessorWrapper child : epw.getChildren()) {
-              buildDocument(vr, doc,
+              if (childDoc != null) {
+              buildDocument(vr, childDoc,
                   child.getEntity().isDocRoot() ? pk : null, child, false, ctx, entitiesToDestroy);
+              } else {
+                buildDocument(vr, doc,
+                    child.getEntity().isDocRoot() ? pk : null, child, false, ctx, entitiesToDestroy);
+              }
             }
             vr.removeNamespace(epw.getEntity().getName());
           }

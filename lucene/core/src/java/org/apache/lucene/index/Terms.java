@@ -46,7 +46,7 @@ public abstract class Terms {
    *  are accepted by the provided {@link
    *  CompiledAutomaton}.  If the <code>startTerm</code> is
    *  provided then the returned enum will only accept terms
-   *  > <code>startTerm</code>, but you still must call
+   *  {@code > startTerm}, but you still must call
    *  next() first to get to the first term.  Note that the
    *  provided <code>startTerm</code> must be accepted by
    *  the automaton.
@@ -54,6 +54,13 @@ public abstract class Terms {
    * <p><b>NOTE</b>: the returned TermsEnum cannot
    * seek</p>. */
   public TermsEnum intersect(CompiledAutomaton compiled, final BytesRef startTerm) throws IOException {
+    
+    // TODO: could we factor out a common interface b/w
+    // CompiledAutomaton and FST?  Then we could pass FST there too,
+    // and likely speed up resolving terms to deleted docs ... but
+    // AutomatonTermsEnum makes this tricky because of its on-the-fly cycle
+    // detection
+    
     // TODO: eventually we could support seekCeil/Exact on
     // the returned enum, instead of only being able to seek
     // at the start
@@ -104,7 +111,7 @@ public abstract class Terms {
   public abstract int getDocCount() throws IOException;
 
   /** Returns true if documents in this field store
-   *  per-document term frequency ({@link DocsEnum#freq}). */
+   *  per-document term frequency ({@link PostingsEnum#freq}). */
   public abstract boolean hasFreqs();
 
   /** Returns true if documents in this field store offsets. */
@@ -192,5 +199,19 @@ public abstract class Terms {
       scratch.setLength(scratch.length() + 1);
       scratch.grow(scratch.length());
     }
+  }
+  
+  /** 
+   * Expert: returns additional information about this Terms instance
+   * for debugging purposes.
+   */
+  public Object getStats() throws IOException {
+    StringBuilder sb = new StringBuilder();
+    sb.append("impl=" + getClass().getSimpleName());
+    sb.append(",size=" + size());
+    sb.append(",docCount=" + getDocCount());
+    sb.append(",sumTotalTermFreq=" + getSumTotalTermFreq());
+    sb.append(",sumDocFreq=" + getSumDocFreq());
+    return sb.toString();
   }
 }

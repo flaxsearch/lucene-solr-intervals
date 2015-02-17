@@ -20,6 +20,7 @@ package org.apache.lucene.search;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.ArrayUtil;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.RamUsageEstimator;
 
 import java.io.IOException;
@@ -75,6 +76,26 @@ public abstract class CachingCollector extends FilterCollector {
     public final int freq() { throw new UnsupportedOperationException(); }
 
     @Override
+    public int nextPosition() throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public final int nextDoc() { throw new UnsupportedOperationException(); }
 
     @Override
@@ -88,7 +109,6 @@ public abstract class CachingCollector extends FilterCollector {
   // A CachingCollector which caches scores
   private static class NoScoreCachingCollector extends CachingCollector {
 
-    List<Boolean> acceptDocsOutOfOrders;
     List<LeafReaderContext> contexts;
     List<int[]> docs;
     int maxDocsToCache;
@@ -98,7 +118,6 @@ public abstract class CachingCollector extends FilterCollector {
       super(in);
       this.maxDocsToCache = maxDocsToCache;
       contexts = new ArrayList<>();
-      acceptDocsOutOfOrders = new ArrayList<>();
       docs = new ArrayList<>();
     }
 
@@ -111,7 +130,6 @@ public abstract class CachingCollector extends FilterCollector {
       final LeafCollector in = this.in.getLeafCollector(context);
       if (contexts != null) {
         contexts.add(context);
-        acceptDocsOutOfOrders.add(in.acceptsDocsOutOfOrder());
       }
       if (maxDocsToCache >= 0) {
         return lastCollector = wrap(in, maxDocsToCache);
@@ -158,14 +176,7 @@ public abstract class CachingCollector extends FilterCollector {
       assert docs.size() == contexts.size();
       for (int i = 0; i < contexts.size(); ++i) {
         final LeafReaderContext context = contexts.get(i);
-        final boolean docsInOrder = !acceptDocsOutOfOrders.get(i);
         final LeafCollector collector = other.getLeafCollector(context);
-        if (!collector.acceptsDocsOutOfOrder() && !docsInOrder) {
-          throw new IllegalArgumentException(
-                "cannot replay: given collector does not support "
-                    + "out-of-order collection, while the wrapped collector does. "
-                    + "Therefore cached documents may be out-of-order.");
-        }
         collect(collector, i);
       }
     }
@@ -306,19 +317,17 @@ public abstract class CachingCollector extends FilterCollector {
    * Creates a {@link CachingCollector} which does not wrap another collector.
    * The cached documents and scores can later be {@link #replay(Collector)
    * replayed}.
-   *
-   * @param acceptDocsOutOfOrder
-   *          whether documents are allowed to be collected out-of-order
    */
-  public static CachingCollector create(final boolean acceptDocsOutOfOrder, boolean cacheScores, double maxRAMMB) {
+  public static CachingCollector create(boolean cacheScores, double maxRAMMB) {
     Collector other = new SimpleCollector() {
-      @Override
-      public boolean acceptsDocsOutOfOrder() {
-        return acceptDocsOutOfOrder;
-      }
 
       @Override
       public void collect(int doc) {}
+
+      @Override
+      public boolean needsScores() {
+        return true;
+      }
 
     };
     return create(other, cacheScores, maxRAMMB);

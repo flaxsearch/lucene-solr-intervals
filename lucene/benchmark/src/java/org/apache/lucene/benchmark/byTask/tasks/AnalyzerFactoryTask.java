@@ -63,7 +63,7 @@ import java.util.regex.Pattern;
  * Each component analysis factory may specify <tt>luceneMatchVersion</tt> (defaults to
  * {@link Version#LATEST}) and any of the args understood by the specified
  * *Factory class, in the above-describe param format.
- * <p/>
+ * <p>
  * Example:
  * <pre>
  *     -AnalyzerFactory(name:'strip html, fold to ascii, whitespace tokenize, max 10k tokens',
@@ -75,7 +75,7 @@ import java.util.regex.Pattern;
  *     [...]
  *     -NewAnalyzer('strip html, fold to ascii, whitespace tokenize, max 10k tokens')
  * </pre>
- * <p/>
+ * <p>
  * AnalyzerFactory will direct analysis component factories to look for resources
  * under the directory specified in the "work.dir" property.
  */
@@ -393,7 +393,7 @@ public class AnalyzerFactoryTask extends PerfTask {
   /**
    * This method looks up a class with its fully qualified name (FQN), or a short-name
    * class-simplename, or with a package suffix, assuming "org.apache.lucene.analysis."
-   * as the package prefix (e.g. "standard.ClassicTokenizerFactory" ->
+   * as the package prefix (e.g. "standard.ClassicTokenizerFactory" -&gt;
    * "org.apache.lucene.analysis.standard.ClassicTokenizerFactory").
    *
    * If className contains a period, the class is first looked up as-is, assuming that it

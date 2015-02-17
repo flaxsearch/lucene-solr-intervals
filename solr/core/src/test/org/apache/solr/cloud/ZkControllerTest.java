@@ -17,13 +17,8 @@ package org.apache.solr.cloud;
  * the License.
  */
 
-import java.io.File;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.SolrJettyTestBase;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
@@ -32,15 +27,20 @@ import org.apache.solr.core.ConfigSolr;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.CoresLocator;
+import org.apache.solr.core.PluginInfo;
 import org.apache.solr.handler.admin.CoreAdminHandler;
 import org.apache.solr.handler.component.HttpShardHandlerFactory;
-import org.apache.solr.handler.component.ShardHandlerFactory;
 import org.apache.solr.update.UpdateShardHandler;
-import org.apache.solr.util.ExternalPaths;
 import org.apache.zookeeper.CreateMode;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import java.io.File;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Slow
 public class ZkControllerTest extends SolrTestCaseJ4 {
@@ -232,11 +232,13 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
             }
           });
 
-      zkController.uploadToZK(new File(ExternalPaths.EXAMPLE_HOME + "/collection1/conf"),
+      String solrHome = SolrJettyTestBase.legacyExampleCollection1SolrHome();
+
+      zkController.uploadToZK(new File(solrHome + "/collection1/conf"),
           ZkController.CONFIGS_ZKNODE + "/config1");
       
       // uploading again should overwrite, not error...
-      zkController.uploadToZK(new File(ExternalPaths.EXAMPLE_HOME + "/collection1/conf"),
+      zkController.uploadToZK(new File(solrHome + "/collection1/conf"),
           ZkController.CONFIGS_ZKNODE + "/config1");
 
       if (DEBUG) {
@@ -320,7 +322,7 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
     
     @Override
     public ConfigSolr getConfig() {
-      return new ConfigSolr() {
+      return new ConfigSolr(null, null) {
 
         @Override
         public CoresLocator getCoresLocator() {
@@ -328,24 +330,21 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
         }
 
         @Override
-        protected String getShardHandlerFactoryConfigPath() {
-          throw new UnsupportedOperationException();
+        public PluginInfo getShardHandlerFactoryPluginInfo() {
+          return null;
         }
 
         @Override
-        public boolean isPersistent() {
-          throw new UnsupportedOperationException();
-        }};
+        protected String getProperty(CfgProp key) {
+          return null;
+        }
+
+      };
     }
     
     @Override
     public UpdateShardHandler getUpdateShardHandler() {
       return new UpdateShardHandler(null);
-    }
-    
-    @Override
-    public String getAdminPath() {
-      return "/admin/cores";
     }
 
   }

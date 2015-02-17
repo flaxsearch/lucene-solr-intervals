@@ -17,18 +17,11 @@ package org.apache.solr.cloud;
  * limitations under the License.
  */
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.Collection;
-import java.util.List;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.commons.io.filefilter.TrueFileFilter;
+import org.apache.solr.SolrJettyTestBase;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.cloud.SolrZkClient;
@@ -42,6 +35,14 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Collection;
+import java.util.List;
 
 // TODO: This test would be a lot faster if it used a solrhome with fewer config
 // files - there are a lot of them to upload
@@ -75,19 +76,12 @@ public class ZkCLITest extends SolrTestCaseJ4 {
   public void setUp() throws Exception {
     super.setUp();
     log.info("####SETUP_START " + getTestName());
-    
-    boolean useNewSolrXml = random().nextBoolean();
+
+    String exampleHome = SolrJettyTestBase.legacyExampleCollection1SolrHome();
+
     File tmpDir = createTempDir().toFile();
-    if (useNewSolrXml) {
-      solrHome = ExternalPaths.EXAMPLE_HOME;
-    } else {
-      File tmpSolrHome = new File(tmpDir, "tmp-solr-home");
-      FileUtils.copyDirectory(new File(ExternalPaths.EXAMPLE_HOME), tmpSolrHome);
-      FileUtils.copyFile(getFile("old-solr-example/solr.xml"), new File(tmpSolrHome, "solr.xml"));
-      solrHome = tmpSolrHome.getAbsolutePath();
-    }
-    
-    
+    solrHome = exampleHome;
+
     zkDir = tmpDir.getAbsolutePath() + File.separator
         + "zookeeper/server1/data";
     log.info("ZooKeeper dataDir:" + zkDir);
@@ -103,23 +97,6 @@ public class ZkCLITest extends SolrTestCaseJ4 {
         AbstractZkTestCase.TIMEOUT);
     
     log.info("####SETUP_END " + getTestName());
-  }
-  
-  @Test
-  public void testBootstrap() throws Exception {
-    // test bootstrap_conf
-    String[] args = new String[] {"-zkhost", zkServer.getZkAddress(), "-cmd",
-        "bootstrap", "-solrhome", this.solrHome};
-    ZkCLI.main(args);
-    
-    assertTrue(zkClient.exists(ZkController.CONFIGS_ZKNODE + "/collection1", true));
-    
-    args = new String[] {"-zkhost", zkServer.getZkAddress(), "-cmd",
-        "bootstrap", "-solrhome", ExternalPaths.EXAMPLE_MULTICORE_HOME};
-    ZkCLI.main(args);
-    
-    assertTrue(zkClient.exists(ZkController.CONFIGS_ZKNODE + "/core0", true));
-    assertTrue(zkClient.exists(ZkController.CONFIGS_ZKNODE + "/core1", true));
   }
   
   @Test
@@ -157,6 +134,13 @@ public class ZkCLITest extends SolrTestCaseJ4 {
 
     zkClient.getData("/data.txt", null, null, true);
 
+    assertArrayEquals(zkClient.getData("/data.txt", null, null, true), data.getBytes(StandardCharsets.UTF_8));
+
+    // test re-put to existing
+    data = "my data deux";
+    args = new String[] {"-zkhost", zkServer.getZkAddress(), "-cmd",
+        "put", "/data.txt", data};
+    ZkCLI.main(args);
     assertArrayEquals(zkClient.getData("/data.txt", null, null, true), data.getBytes(StandardCharsets.UTF_8));
   }
 
@@ -214,8 +198,7 @@ public class ZkCLITest extends SolrTestCaseJ4 {
         "-cmd",
         "upconfig",
         "-confdir",
-        ExternalPaths.EXAMPLE_HOME + File.separator + "collection1"
-            + File.separator + "conf", "-confname", confsetname};
+        ExternalPaths.TECHPRODUCTS_CONFIGSET, "-confname", confsetname};
     ZkCLI.main(args);
     
     assertTrue(zkClient.exists(ZkController.CONFIGS_ZKNODE + "/" + confsetname, true));
@@ -245,13 +228,12 @@ public class ZkCLITest extends SolrTestCaseJ4 {
     List<String> zkFiles = zkClient.getChildren(ZkController.CONFIGS_ZKNODE + "/" + confsetname, null, true);
     assertEquals(files.length, zkFiles.size());
     
-    File sourceConfDir = new File(ExternalPaths.EXAMPLE_HOME + File.separator + "collection1"
-            + File.separator + "conf");
+    File sourceConfDir = new File(ExternalPaths.TECHPRODUCTS_CONFIGSET);
     // filter out all directories starting with . (e.g. .svn)
     Collection<File> sourceFiles = FileUtils.listFiles(sourceConfDir, TrueFileFilter.INSTANCE, new RegexFileFilter("[^\\.].*"));
     for (File sourceFile :sourceFiles){
-        int indexOfRelativePath = sourceFile.getAbsolutePath().lastIndexOf("collection1" + File.separator + "conf");
-        String relativePathofFile = sourceFile.getAbsolutePath().substring(indexOfRelativePath + 17, sourceFile.getAbsolutePath().length());
+        int indexOfRelativePath = sourceFile.getAbsolutePath().lastIndexOf("sample_techproducts_configs" + File.separator + "conf");
+        String relativePathofFile = sourceFile.getAbsolutePath().substring(indexOfRelativePath + 33, sourceFile.getAbsolutePath().length());
         File downloadedFile = new File(confDir,relativePathofFile);
         assertTrue(downloadedFile.getAbsolutePath() + " does not exist source:" + sourceFile.getAbsolutePath(), downloadedFile.exists());
         assertTrue("Content didn't change",FileUtils.contentEquals(sourceFile,downloadedFile));

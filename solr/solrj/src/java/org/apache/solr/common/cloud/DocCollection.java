@@ -35,7 +35,7 @@ public class DocCollection extends ZkNodeProps {
   public static final String DOC_ROUTER = "router";
   public static final String SHARDS = "shards";
   public static final String STATE_FORMAT = "stateFormat";
-  private int znodeVersion;
+  private int znodeVersion = -1; // sentinel
 
   private final String name;
   private final Map<String, Slice> slices;
@@ -130,14 +130,14 @@ public class DocCollection extends ZkNodeProps {
   }
 
   /**
-   * Get the map of all slices (sliceName->Slice) for this collection.
+   * Get the map of all slices (sliceName-&gt;Slice) for this collection.
    */
   public Map<String, Slice> getSlicesMap() {
     return slices;
   }
 
   /**
-   * Get the map of active slices (sliceName->Slice) for this collection.
+   * Get the map of active slices (sliceName-&gt;Slice) for this collection.
    */
   public Map<String, Slice> getActiveSlicesMap() {
     return activeSlices;

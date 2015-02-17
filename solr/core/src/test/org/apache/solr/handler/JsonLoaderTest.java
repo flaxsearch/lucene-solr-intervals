@@ -31,6 +31,7 @@ import org.apache.solr.update.DeleteUpdateCommand;
 import org.apache.solr.update.processor.BufferingRequestProcessor;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.noggit.ObjectBuilder;
 import org.xml.sax.SAXException;
 
 import java.math.BigDecimal;
@@ -276,7 +277,8 @@ public class JsonLoaderTest extends SolrTestCaseJ4 {
         "  \"f1\": \"v2\",\n" +
         "   \"f2\": null\n" +
         "  }\n";
-    SolrQueryRequest req = req("json.command","false");
+    SolrQueryRequest req = req("srcField","_src_");
+    req.getContext().put("path","/update/json/docs");
     SolrQueryResponse rsp = new SolrQueryResponse();
     BufferingRequestProcessor p = new BufferingRequestProcessor(null);
     JsonLoader loader = new JsonLoader();
@@ -284,25 +286,26 @@ public class JsonLoaderTest extends SolrTestCaseJ4 {
     assertEquals( 2, p.addCommands.size() );
      doc = "\n" +
         "\n" +
-        "{bool: true,\n" +
-        " f0: \"v0\",\n" +
-        " f2: {\n" +
+        "{\"bool\": true,\n" +
+        " \"f0\": \"v0\",\n" +
+        " \"f2\": {\n" +
         "    \t  \"boost\": 2.3,\n" +
         "    \t  \"value\": \"test\"\n" +
         "    \t   },\n" +
-        "array: [ \"aaa\", \"bbb\" ],\n" +
-        "boosted: {\n" +
+        "\"array\": [ \"aaa\", \"bbb\" ],\n" +
+        "\"boosted\": {\n" +
         "    \t      \"boost\": 6.7,\n" +
         "    \t      \"value\": [ \"aaa\", \"bbb\" ]\n" +
         "    \t    }\n" +
         " }\n" +
         "\n" +
         "\n" +
-        " {f1: \"v1\",\n" +
-        "  f1: \"v2\",\n" +
-        "   f2: null\n" +
+        " {\"f1\": \"v1\",\n" +
+        "  \"f2\": \"v2\",\n" +
+        "   \"f3\": null\n" +
         "  }\n";
-    req = req("json.command","false");
+    req = req("srcField","_src_");
+    req.getContext().put("path","/update/json/docs");
     rsp = new SolrQueryResponse();
     p = new BufferingRequestProcessor(null);
     loader = new JsonLoader();
@@ -310,14 +313,39 @@ public class JsonLoaderTest extends SolrTestCaseJ4 {
 
     assertEquals( 2, p.addCommands.size() );
 
+    String content = (String) p.addCommands.get(0).solrDoc.getFieldValue("_src_");
+    assertNotNull(content);
+    Map obj = (Map) ObjectBuilder.fromJSON(content);
+    assertEquals(Boolean.TRUE, obj.get("bool"));
+    assertEquals("v0", obj.get("f0"));
+    assertNotNull(obj.get("f0"));
+    assertNotNull(obj.get("array"));
+    assertNotNull(obj.get("boosted"));
+
+    content = (String) p.addCommands.get(1).solrDoc.getFieldValue("_src_");
+    assertNotNull(content);
+    obj = (Map) ObjectBuilder.fromJSON(content);
+    assertEquals("v1", obj.get("f1"));
+    assertEquals("v2", obj.get("f2"));
+    assertTrue(obj.containsKey("f3"));
 
     doc = "[{'id':'1'},{'id':'2'}]".replace('\'', '"');
-    req = req("json.command","false");
+    req = req("srcField","_src_");
+    req.getContext().put("path","/update/json/docs");
     rsp = new SolrQueryResponse();
     p = new BufferingRequestProcessor(null);
     loader = new JsonLoader();
     loader.load(req, rsp, new ContentStreamBase.StringStream(doc), p);
     assertEquals( 2, p.addCommands.size() );
+
+    content = (String) p.addCommands.get(0).solrDoc.getFieldValue("_src_");
+    assertNotNull(content);
+    obj = (Map) ObjectBuilder.fromJSON(content);
+    assertEquals("1", obj.get("id"));
+    content = (String) p.addCommands.get(1).solrDoc.getFieldValue("_src_");
+    assertNotNull(content);
+    obj = (Map) ObjectBuilder.fromJSON(content);
+    assertEquals("2", obj.get("id"));
 
 
   }
@@ -561,6 +589,7 @@ public class JsonLoaderTest extends SolrTestCaseJ4 {
         +"\n ,'delete':['30','40']"
         +"\n ,'delete':{'id':50, '_version_':12345}"
         +"\n ,'delete':[{'id':60, '_version_':67890}, {'id':70, '_version_':77777}, {'query':'id:80', '_version_':88888}]"
+        +"\n ,'delete':{'id':90, '_route_':'shard1', '_version_':88888}"
         + "\n}\n";
     str = str.replace('\'', '"');
     SolrQueryRequest req = req();
@@ -570,7 +599,7 @@ public class JsonLoaderTest extends SolrTestCaseJ4 {
     loader.load(req, rsp, new ContentStreamBase.StringStream(str), p);
 
     // DELETE COMMANDS
-    assertEquals( 8, p.deleteCommands.size() );
+    assertEquals( 9, p.deleteCommands.size() );
     DeleteUpdateCommand delete = p.deleteCommands.get( 0 );
     assertEquals( delete.id, "10" );
     assertEquals( delete.query, null );
@@ -609,7 +638,13 @@ public class JsonLoaderTest extends SolrTestCaseJ4 {
     delete = p.deleteCommands.get( 7 );
     assertEquals( delete.id, null );
     assertEquals( delete.query, "id:80" );
-    assertEquals( delete.getVersion(), 88888L);
+    assertEquals(delete.getVersion(), 88888L);
+
+    delete = p.deleteCommands.get(8);
+    assertEquals(delete.id, "90");
+    assertEquals(delete.query, null);
+    assertEquals(delete.getRoute(), "shard1");
+    assertEquals(delete.getVersion(), 88888L);
 
     req.close();
   }

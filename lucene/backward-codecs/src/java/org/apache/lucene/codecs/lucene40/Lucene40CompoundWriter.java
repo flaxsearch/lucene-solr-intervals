@@ -306,7 +306,7 @@ final class Lucene40CompoundWriter implements Closeable{
 
     DirectCFSIndexOutput(IndexOutput delegate, FileEntry entry,
         boolean isSeparate) {
-      super();
+      super("DirectCFSIndexOutput("+delegate.toString()+",entry=\""+entry.toString()+"\",isSeparate=\""+isSeparate+")");
       this.delegate = delegate;
       this.entry = entry;
       entry.offset = offset = delegate.getFilePointer();

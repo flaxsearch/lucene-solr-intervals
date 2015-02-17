@@ -17,6 +17,8 @@ package org.apache.lucene.store;
  * limitations under the License.
  */
 
+import java.io.IOException;
+
 import org.apache.lucene.util.ThreadInterruptedException;
 
 /** Abstract base class to rate limit IO.  Typically implementations are
@@ -27,14 +29,14 @@ import org.apache.lucene.util.ThreadInterruptedException;
 public abstract class RateLimiter {
 
   /**
-   * Sets an updated mb per second rate limit.
+   * Sets an updated MB per second rate limit.
    */
-  public abstract void setMbPerSec(double mbPerSec);
+  public abstract void setMBPerSec(double mbPerSec);
 
   /**
-   * The current mb per second rate limit.
+   * The current MB per second rate limit.
    */
-  public abstract double getMbPerSec();
+  public abstract double getMBPerSec();
   
   /** Pauses, if necessary, to keep the instantaneous IO
    *  rate at or below the target. 
@@ -43,7 +45,7 @@ public abstract class RateLimiter {
    *  </p>
    *  @return the pause time in nano seconds 
    * */
-  public abstract long pause(long bytes);
+  public abstract long pause(long bytes) throws IOException;
   
   /** How many bytes caller should add up itself before invoking {@link #pause}. */
   public abstract long getMinPauseCheckBytes();
@@ -65,7 +67,7 @@ public abstract class RateLimiter {
 
     /** mbPerSec is the MB/sec max IO rate */
     public SimpleRateLimiter(double mbPerSec) {
-      setMbPerSec(mbPerSec);
+      setMBPerSec(mbPerSec);
       lastNS = System.nanoTime();
     }
 
@@ -73,7 +75,7 @@ public abstract class RateLimiter {
      * Sets an updated mb per second rate limit.
      */
     @Override
-    public void setMbPerSec(double mbPerSec) {
+    public void setMBPerSec(double mbPerSec) {
       this.mbPerSec = mbPerSec;
       minPauseCheckBytes = (long) ((MIN_PAUSE_CHECK_MSEC / 1000.0) * mbPerSec * 1024 * 1024);
     }
@@ -87,13 +89,13 @@ public abstract class RateLimiter {
      * The current mb per second rate limit.
      */
     @Override
-    public double getMbPerSec() {
+    public double getMBPerSec() {
       return this.mbPerSec;
     }
     
     /** Pauses, if necessary, to keep the instantaneous IO
      *  rate at or below the target.  Be sure to only call
-     *  this method when bytes > {@link #getMinPauseCheckBytes},
+     *  this method when bytes &gt; {@link #getMinPauseCheckBytes},
      *  otherwise it will pause way too long!
      *
      *  @return the pause time in nano seconds */  
@@ -138,7 +140,17 @@ public abstract class RateLimiter {
             // NOTE: except maybe on real-time JVMs, minimum realistic sleep time
             // is 1 msec; if you pass just 1 nsec the default impl rounds
             // this up to 1 msec:
-            Thread.sleep((int) (pauseNS/1000000), (int) (pauseNS % 1000000));
+            int sleepNS;
+            int sleepMS;
+            if (pauseNS > 100000L * Integer.MAX_VALUE) {
+              // Not really practical (sleeping for 25 days) but we shouldn't overflow int:
+              sleepMS = Integer.MAX_VALUE;
+              sleepNS = 0;
+            } else {
+              sleepMS = (int) (pauseNS/1000000);
+              sleepNS = (int) (pauseNS % 1000000);
+            }
+            Thread.sleep(sleepMS, sleepNS);
           } catch (InterruptedException ie) {
             throw new ThreadInterruptedException(ie);
           }

@@ -178,7 +178,7 @@ class DocumentsWriterFlushQueue {
     /**
      * Publishes the flushed segment, segment private deletes (if any) and its
      * associated global delete (if present) to IndexWriter.  The actual
-     * publishing operation is synced on IW -> BDS so that the {@link SegmentInfo}'s
+     * publishing operation is synced on {@code IW -> BDS} so that the {@link SegmentInfo}'s
      * delete generation is always GlobalPacket_deleteGeneration + 1
      */
     protected final void publishFlushedSegment(IndexWriter indexWriter, FlushedSegment newSegment, FrozenBufferedUpdates globalPacket)
@@ -224,7 +224,7 @@ class DocumentsWriterFlushQueue {
     protected void publish(IndexWriter writer) throws IOException {
       assert !published : "ticket was already publised - can not publish twice";
       published = true;
-      // its a global ticket - no segment to publish
+      // it's a global ticket - no segment to publish
       finishFlush(writer, null, frozenUpdates);
     }
 

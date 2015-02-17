@@ -40,6 +40,7 @@ import org.apache.lucene.search.TopFieldCollector;
 import org.apache.lucene.search.TopFieldDocs;
 import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.util.ArrayUtil;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.FixedBitSet;
 
 /** Collects hits for subsequent faceting.  Once you've run
@@ -48,7 +49,8 @@ import org.apache.lucene.util.FixedBitSet;
  *  counting.  Use the {@code search} utility methods to
  *  perform an "ordinary" search but also collect into a
  *  {@link Collector}. */
-public class FacetsCollector extends SimpleCollector {
+// redundant 'implements Collector' to workaround javadocs bugs
+public class FacetsCollector extends SimpleCollector implements Collector {
 
   private LeafReaderContext context;
   private Scorer scorer;
@@ -128,7 +130,7 @@ public class FacetsCollector extends SimpleCollector {
       
       @Override
       public DocIdSet getDocIdSet() {
-        return bits;
+        return new BitDocIdSet(bits);
       }
     };
   }
@@ -154,14 +156,6 @@ public class FacetsCollector extends SimpleCollector {
   }
 
   @Override
-  public final boolean acceptsDocsOutOfOrder() {
-    // If we are keeping scores then we require in-order
-    // because we append each score to the float[] and
-    // expect that they correlate in order to the hits:
-    return keepScores == false;
-  }
-
-  @Override
   public final void collect(int doc) throws IOException {
     docs.addDoc(doc);
     if (keepScores) {
@@ -173,6 +167,11 @@ public class FacetsCollector extends SimpleCollector {
       scores[totalHits] = scorer.score();
     }
     totalHits++;
+  }
+
+  @Override
+  public boolean needsScores() {
+    return true;
   }
 
   @Override
@@ -283,14 +282,9 @@ public class FacetsCollector extends SimpleCollector {
                                                (FieldDoc) after,
                                                fillFields,
                                                doDocScores,
-                                               doMaxScore,
-                                               false);
+                                               doMaxScore);
     } else {
-      // TODO: can we pass the right boolean for
-      // in-order instead of hardwired to false...?  we'd
-      // need access to the protected IS.search methods
-      // taking Weight... could use reflection...
-      hitsCollector = TopScoreDocCollector.create(n, after, false);
+      hitsCollector = TopScoreDocCollector.create(n, after);
     }
     searcher.search(q, MultiCollector.wrap(hitsCollector, fc));
     return hitsCollector.topDocs();

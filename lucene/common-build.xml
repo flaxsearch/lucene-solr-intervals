@@ -120,11 +120,15 @@
   <property name="tests.monster" value="false" />
   <property name="tests.slow" value="true" />
   <property name="tests.cleanthreads.sysprop" value="perMethod"/>
-  <property name="tests.asserts.gracious" value="false"/>
   <property name="tests.verbose" value="false"/>
   <property name="tests.infostream" value="${tests.verbose}"/>
   <property name="tests.filterstacks" value="true"/>
   <property name="tests.luceneMatchVersion" value="${version.base}"/>
+  <property name="tests.asserts" value="true" />
+
+  <condition property="tests.asserts.args" value="-ea -esa" else="">
+    <istrue value="${tests.asserts}"/>
+  </condition>
 
   <condition property="tests.heapsize" value="768M" else="512M">
     <isset property="run.clover"/>
@@ -171,6 +175,10 @@
   <property name="javadoc.maxmemory" value="512m" />
   <property name="javadoc.noindex" value="true"/>
 
+  <!-- used only with Java 8: -->
+  <property name="javadoc.doclint.args" value="-Xdoclint:all -Xdoclint:-missing"/>
+  <property name="javac.doclint.args" value="-Xdoclint:all/protected -Xdoclint:-missing"/>
+  
   <!-- detect bootclasspath from given bootjdk path (including crazy AppleJDK special case) -->
   <first id="-boot-rt.jar">
     <fileset dir="${bootjdk}" erroronmissingdir="false" followsymlinks="true">
@@ -377,11 +385,12 @@
     <echo level="warning" message="WARN: Linting documentation HTML is not supported on this Java version (${build.java.runtime}) / JVM (${java.vm.name}). NOTHING DONE!"/>
   </target>
 
-  <!-- for now disable doclint on JDK 8+: -->
-  <condition property="javadoc.args" value="-Xdoclint:none" else="">
-    <not>
-      <equals arg1="${build.java.runtime}" arg2="1.7"/>
-    </not>
+  <!-- enable doclint only on JDK 8+ (disable on Java 7, so its inverse): -->
+  <condition property="-javadoc.doclint.args" value="" else="${javadoc.doclint.args}">
+    <equals arg1="${build.java.runtime}" arg2="1.7"/>
+  </condition>
+  <condition property="-javac.doclint.args" value="" else="${javac.doclint.args}">
+    <equals arg1="${build.java.runtime}" arg2="1.7"/>
   </condition>
 
   <!-- Import custom ANT tasks. -->
@@ -407,10 +416,14 @@
     <!-- <property name="ivy.settings.uptodate" value="true"/> -->
   </target>
 
+  <condition property="ivy.symlink">
+    <os family="unix"/>
+  </condition>
+
   <target name="resolve" depends="ivy-availability-check,ivy-configure">
     <!-- todo, make this a property or something. 
          only special cases need bundles -->
-    <ivy:retrieve type="jar,bundle,test,test-jar,tests" log="download-only"
+    <ivy:retrieve type="jar,bundle,test,test-jar,tests" log="download-only" symlink="${ivy.symlink}"
                   conf="${ivy.default.configuration}" sync="${ivy.sync}"/>
   </target>
 
@@ -964,16 +977,11 @@
             <classpath refid="@{junit.classpath}"/>
             <classpath refid="clover.classpath" />
 
-            <!-- Assertions. -->
-            <assertions>
-              <enable package="org.apache.lucene"/>
-              <enable package="org.apache.solr"/>
-            </assertions>  
-
             <!-- JVM arguments and system properties. -->
             <jvmarg line="${args}"/>
             <jvmarg line="${tests.heapdump.args}"/>
             <jvmarg line="${tests.clover.args}"/>
+            <jvmarg line="${tests.asserts.args}"/>
 
             <!-- set the number of times tests should run -->
             <sysproperty key="tests.iters" value="${tests.iters}"/>
@@ -1011,7 +1019,7 @@
             <sysproperty key="tests.slow" value="@{tests.slow}"/>
               
             <!-- set whether tests framework should not require java assertions enabled -->
-            <sysproperty key="tests.asserts.gracious" value="${tests.asserts.gracious}"/>
+            <sysproperty key="tests.asserts" value="${tests.asserts}"/>
 
             <!-- TODO: create propertyset for test properties, so each project can have its own set -->
             <sysproperty key="tests.multiplier" value="@{tests.multiplier}"/>
@@ -1362,6 +1370,11 @@ ${tests-output}/junit4-*.suites     - per-JVM executed suites
 
   <!-- Beast the actual tests (must be wrapped with -init-totals, -check-totals) -->
   <target name="-beast" depends="resolve-groovy">
+    <fail message="The Beast only works inside of individual modules (where 'junit.classpath' is defined)">
+      <condition>
+        <not><isreference refid="junit.classpath"/></not>
+      </condition>
+    </fail>
     <groovy taskname="beaster"><![CDATA[
       import org.apache.tools.ant.BuildException;
       import org.apache.tools.ant.BuildLogger;
@@ -1870,6 +1883,7 @@ ${ant.project.name}.test.dependencies=${test.classpath.list}
         <compilerarg line="-Xmaxerrs 10000000"/> -->
         <!-- for generics in Java 1.5: -->
         <compilerarg line="${javac.args}"/>
+        <compilerarg line="${-javac.doclint.args}"/>
       </javac>
     </sequential>
   </macrodef>
@@ -1914,7 +1928,7 @@ ${ant.project.name}.test.dependencies=${test.classpath.list}
   </target>
   
   <target name="-ecj-resolve" unless="ecj.loaded" depends="ivy-availability-check,ivy-configure" if="ecj-javadoc-lint.supported">
-    <ivy:cachepath organisation="org.eclipse.jdt.core.compiler" module="ecj" revision="4.4"
+    <ivy:cachepath organisation="org.eclipse.jdt.core.compiler" module="ecj" revision="4.4.1"
      inline="true" conf="master" type="jar" pathid="ecj.classpath" />
     <componentdef classname="org.eclipse.jdt.core.JDTCompilerAdapter"
      classpathref="ecj.classpath" name="ecj-component"/>
@@ -1930,21 +1944,29 @@ ${ant.project.name}.test.dependencies=${test.classpath.list}
     <element name="nested" implicit="yes" optional="yes"/>
 
     <sequential>
+      <!-- hack: we can tell ECJ not to create classfiles, but it still creates
+           package-info.class files. so redirect output to a tempdir -->
+      <tempfile property="ecj.trash.out" destdir="${java.io.tmpdir}" prefix="ecj"/>
+      <mkdir dir="${ecj.trash.out}"/>
       <javac
         includeAntRuntime="@{includeantruntime}"
         encoding="${build.encoding}"
         srcdir="@{srcdir}"
+        destdir="${ecj.trash.out}"
         source="@{javac.source}"
         target="@{javac.source}"
         taskname="ecj-lint">
         <ecj-component/>
         <nested/>
+      <!-- hack: we can't disable classfile creation right now, because we need
+           to specify a destination for buggy package-info.class files
         <compilerarg value="-d"/>
-        <compilerarg value="none"/>
+        <compilerarg value="none"/> -->
         <compilerarg value="-enableJavadoc"/>
         <compilerarg value="-properties"/>
         <compilerarg value="@{configuration}"/>
       </javac>
+      <delete dir="${ecj.trash.out}"/>
     </sequential>
   </macrodef>
 
@@ -2028,7 +2050,7 @@ ${ant.project.name}.test.dependencies=${test.classpath.list}
       	<sources />
       	      	
         <classpath refid="javadoc.classpath"/>
-        <arg line="${javadoc.args}"/>
+        <arg line="${-javadoc.doclint.args}"/>
       </javadoc>
       <record name="@{destdir}/log_javadoc.txt" action="stop"/>
       
@@ -2341,7 +2363,7 @@ ${ant.project.name}.test.dependencies=${test.classpath.list}
   <property name="forbidden-sysout-excludes" value=""/>
   
   <target name="-install-forbidden-apis" unless="forbidden-apis.loaded" depends="ivy-availability-check,ivy-configure">
-    <ivy:cachepath organisation="de.thetaphi" module="forbiddenapis" revision="1.6.1"
+    <ivy:cachepath organisation="de.thetaphi" module="forbiddenapis" revision="1.7"
       inline="true" conf="default" transitive="true" pathid="forbidden-apis.classpath"/>
     <taskdef name="forbidden-apis" classname="de.thetaphi.forbiddenapis.AntTask" classpathref="forbidden-apis.classpath"/>
     <property name="forbidden-apis.loaded" value="true"/>

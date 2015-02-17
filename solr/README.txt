@@ -28,10 +28,72 @@ http://lucene.apache.org/solr
 Getting Started
 ---------------
 
-See the "example" directory for an example Solr setup.  A tutorial
-using the example setup can be found at
-   http://lucene.apache.org/solr/tutorial.html
+To start Solr for the first time after installation, simply do:
+
+  bin/solr start
+
+This will launch a standalone Solr server in the background of your shell,
+listening on port 8983. Alternatively, you can launch Solr in "cloud" mode,
+which allows you to scale out using sharding and replication. To launch Solr
+in cloud mode, do:
+
+  bin/solr start -cloud
+
+To see all available options for starting Solr, please do:
+
+  bin/solr start -help
+
+After starting Solr, create either a core or collection depending on whether
+Solr is running in standalone (core) or SolrCloud mode (collection) by doing:
+
+  bin/solr create -c <name>
+
+This will create a collection that uses a data-driven schema which tries to guess
+the correct field type when you add documents to the index. To see all available
+options for creating a new collection, execute:
+
+  bin/solr create -help
+
+After starting Solr, direct your Web browser to the Solr Admin Console at:
+
+  http://localhost:8983/solr/
+
+
+Solr Examples
+---------------
+
+Solr includes a few examples to help you get started. To run a specific example, do:
+
+  bin/solr -e <EXAMPLE> where <EXAMPLE> is one of:
+
+    cloud        : SolrCloud example
+    dih          : Data Import Handler (rdbms, mail, rss, tika)
+    schemaless   : Schema-less example (schema is inferred from data during indexing)
+    techproducts : Kitchen sink example providing comprehensive examples of Solr features
+
+For instance, if you want to run the Solr Data Import Handler example, do:
+
+  bin/solr -e dih
+
+
+Indexing Documents
+---------------
+
+To add documents to the index, use bin/post.  For example:
+
+     bin/post -c <collection_name> example/exampledocs/*.xml
+
+For more information about Solr examples please read...
+
+ * example/solr/README.txt
+   For more information about the "Solr Home" and Solr specific configuration
+ * http://lucene.apache.org/solr/quickstart.html
+   For a Quick Start guide
+ * http://lucene.apache.org/solr/resources.html
+   For a list of other tutorials and introductory articles.
+
 or linked from "docs/index.html" in a binary distribution.
+
 Also, there are Solr clients for many programming languages, see 
    http://wiki.apache.org/solr/IntegratingSolr
 
@@ -39,11 +101,10 @@ Also, there are Solr clients for many programming languages, see
 Files included in an Apache Solr binary distribution
 ----------------------------------------------------
 
-example/
-  A self-contained example Solr instance, complete with a sample
-  configuration, documents to index, and the Jetty Servlet container.
-  Please see example/README.txt for information about running this
-  example.
+server/
+  A self-contained Solr instance, complete with a sample
+  configuration and documents to index. Please see: bin/solr start -help
+  for more information about starting a Solr server.
 
 dist/solr-XX.war
   The Apache Solr Application.  Deploy this WAR file to any servlet
@@ -88,8 +149,8 @@ Instructions for Building Apache Solr from Source
    for building, testing, and packaging Solr.
   
    NOTE: 
-   To see Solr in action, you may want to use the "ant example" command to build
-   and package Solr into the example/webapps directory. See also example/README.txt.
+   To see Solr in action, you may want to use the "ant server" command to build
+   and package Solr into the server/webapps directory. See also server/README.txt.
 
 
 Export control

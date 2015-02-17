@@ -21,9 +21,11 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
+import java.nio.channels.ClosedChannelException; // javadoc @link
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.concurrent.Future;
 
 /** A straightforward implementation of {@link FSDirectory}
  *  using {@link Files#newByteChannel(Path, java.nio.file.OpenOption...)}.  
@@ -31,27 +33,39 @@ import java.nio.file.StandardOpenOption;
  *  poor concurrent performance (multiple threads will
  *  bottleneck) as it synchronizes when multiple threads
  *  read from the same file.  It's usually better to use
- *  {@link NIOFSDirectory} or {@link MMapDirectory} instead. */
+ *  {@link NIOFSDirectory} or {@link MMapDirectory} instead.
+ * <p>
+ * <b>NOTE:</b> Accessing this class either directly or
+ * indirectly from a thread while it's interrupted can close the
+ * underlying file descriptor immediately if at the same time the thread is
+ * blocked on IO. The file descriptor will remain closed and subsequent access
+ * to {@link SimpleFSDirectory} will throw a {@link ClosedChannelException}. If
+ * your application uses either {@link Thread#interrupt()} or
+ * {@link Future#cancel(boolean)} you should use the legacy {@code RAFDirectory}
+ * from the Lucene {@code misc} module in favor of {@link SimpleFSDirectory}.
+ * </p>
+ */
 public class SimpleFSDirectory extends FSDirectory {
     
   /** Create a new SimpleFSDirectory for the named location.
+   *  The directory is created at the named location if it does not yet exist.
    *
    * @param path the path of the directory
-   * @param lockFactory the lock factory to use, or null for the default
-   * ({@link NativeFSLockFactory});
+   * @param lockFactory the lock factory to use
    * @throws IOException if there is a low-level I/O error
    */
   public SimpleFSDirectory(Path path, LockFactory lockFactory) throws IOException {
     super(path, lockFactory);
   }
   
-  /** Create a new SimpleFSDirectory for the named location and {@link NativeFSLockFactory}.
+  /** Create a new SimpleFSDirectory for the named location and {@link FSLockFactory#getDefault()}.
+   *  The directory is created at the named location if it does not yet exist.
    *
    * @param path the path of the directory
    * @throws IOException if there is a low-level I/O error
    */
   public SimpleFSDirectory(Path path) throws IOException {
-    super(path, null);
+    this(path, FSLockFactory.getDefault());
   }
 
   /** Creates an IndexInput for the file with the given name. */

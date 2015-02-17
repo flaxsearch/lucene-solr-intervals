@@ -19,13 +19,9 @@ package org.apache.lucene.queries;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
-import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.DocIdSet;
-import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
@@ -50,34 +46,6 @@ public class TermFilterTest extends LuceneTestCase {
     assertTrue("Must be cached", cachedFilters.contains(termFilter("field1", "a")));
     assertFalse("Must not be cached", cachedFilters.contains(termFilter("field1", "b")));
     assertFalse("Must not be cached", cachedFilters.contains(termFilter("field2", "a")));
-  }
-
-  public void testMissingTermAndField() throws Exception {
-    String fieldName = "field1";
-    Directory rd = newDirectory();
-    RandomIndexWriter w = new RandomIndexWriter(random(), rd);
-    Document doc = new Document();
-    doc.add(newStringField(fieldName, "value1", Field.Store.NO));
-    w.addDocument(doc);
-    IndexReader reader = SlowCompositeReaderWrapper.wrap(w.getReader());
-    assertTrue(reader.getContext() instanceof LeafReaderContext);
-    LeafReaderContext context = (LeafReaderContext) reader.getContext();
-    w.close();
-
-    DocIdSet idSet = termFilter(fieldName, "value1").getDocIdSet(context, context.reader().getLiveDocs());
-    assertNotNull("must not be null", idSet);
-    DocIdSetIterator iter = idSet.iterator();
-    assertEquals(iter.nextDoc(), 0);
-    assertEquals(iter.nextDoc(), DocIdSetIterator.NO_MORE_DOCS);
-
-    idSet = termFilter(fieldName, "value2").getDocIdSet(context, context.reader().getLiveDocs());
-    assertNull("must be null", idSet);
-
-    idSet = termFilter("field2", "value1").getDocIdSet(context, context.reader().getLiveDocs());
-    assertNull("must be null", idSet);
-
-    reader.close();
-    rd.close();
   }
   
   public void testRandom() throws IOException {
@@ -154,18 +122,6 @@ public class TermFilterTest extends LuceneTestCase {
     }
   }
   
-  public void testNoTerms() {
-    try {
-      new TermFilter(null);
-      fail("must fail - no term!");
-    } catch (IllegalArgumentException e) {}
-    
-    try {
-      new TermFilter(new Term(null));
-      fail("must fail - no field!");
-    } catch (IllegalArgumentException e) {}
-  }
-
   public void testToString() {
     TermFilter termsFilter = new TermFilter(new Term("field1", "a"));
     assertEquals("field1:a", termsFilter.toString());

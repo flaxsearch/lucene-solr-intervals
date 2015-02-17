@@ -22,7 +22,7 @@ import java.io.IOException;
 
 /**
  * An IntervalIterator based on minimum interval semantics for the
- * AND< operator
+ * AND&lt; operator
  *
  * See <a href=
  * "http://vigna.dsi.unimi.it/ftp/papers/EfficientAlgorithmsMinimalIntervalSemantics"

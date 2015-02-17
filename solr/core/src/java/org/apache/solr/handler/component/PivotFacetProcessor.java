@@ -23,20 +23,26 @@ import org.apache.solr.schema.FieldType;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.DocSet;
 import org.apache.solr.search.SyntaxError;
+import org.apache.solr.util.PivotListEntry;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.params.FacetParams;
+import org.apache.solr.common.params.StatsParams;
 import org.apache.solr.request.SimpleFacets;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.lucene.search.Query;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +61,7 @@ public class PivotFacetProcessor extends SimpleFacets
   
   /**
    * Processes all of the specified {@link FacetParams#FACET_PIVOT} strings, generating 
-   * a completel response tree for each pivot.  The values in this response will either 
+   * a complete response tree for each pivot.  The values in this response will either
    * be the complete tree of fields and values for the specified pivot in the local index, 
    * or the requested refinements if the pivot params include the {@link PivotFacet#REFINE_PARAM}
    */
@@ -63,9 +69,15 @@ public class PivotFacetProcessor extends SimpleFacets
     if (!rb.doFacets || pivots == null) 
       return null;
     
+    // rb._statsInfo may be null if stats=false, ie: refine requests
+    // if that's the case, but we need to refine w/stats, then we'll lazy init our 
+    // own instance of StatsInfo
+    StatsInfo statsInfo = rb._statsInfo; 
+
     SimpleOrderedMap<List<NamedList<Object>>> pivotResponse = new SimpleOrderedMap<>();
     for (String pivotList : pivots) {
       try {
+        // NOTE: this sets localParams (SimpleFacets is stateful)
         this.parseParams(FacetParams.FACET_PIVOT, pivotList);
       } catch (SyntaxError e) {
         throw new SolrException(ErrorCode.BAD_REQUEST, e);
@@ -84,15 +96,37 @@ public class PivotFacetProcessor extends SimpleFacets
         }
       } 
 
-      //REFINEMENT
-      String fieldValueKey = localParams == null ? null : localParams.get(PivotFacet.REFINE_PARAM);
-      if(fieldValueKey != null ){
-        String[] refinementValuesByField = params.getParams(PivotFacet.REFINE_PARAM+fieldValueKey);
+      // start by assuming no local params...
+
+      String refineKey = null; // no local => no refinement
+      List<StatsField> statsFields = Collections.emptyList(); // no local => no stats
+      
+      if (null != localParams) {
+        // we might be refining..
+        refineKey = localParams.get(PivotFacet.REFINE_PARAM);
+        
+        String statsLocalParam = localParams.get(StatsParams.STATS);
+        if (null != refineKey
+            && null != statsLocalParam
+            && null == statsInfo) {
+          // we are refining and need to compute stats, 
+          // but stats component hasn't inited StatsInfo (because we
+          // don't need/want top level stats when refining) so we lazy init
+          // our own copy of StatsInfo
+          statsInfo = new StatsInfo(rb);
+        }
+        statsFields = getTaggedStatsFields(statsInfo, statsLocalParam);
+      }
+
+      if (null != refineKey) {
+        String[] refinementValuesByField 
+          = params.getParams(PivotFacet.REFINE_PARAM + refineKey);
+
         for(String refinements : refinementValuesByField){
-          pivotResponse.addAll(processSingle(pivotFields, refinements));
+          pivotResponse.addAll(processSingle(pivotFields, refinements, statsFields));
         }
       } else{
-        pivotResponse.addAll(processSingle(pivotFields, null));
+        pivotResponse.addAll(processSingle(pivotFields, null, statsFields));
       }
     }
     return pivotResponse;
@@ -101,10 +135,14 @@ public class PivotFacetProcessor extends SimpleFacets
   /**
    * Process a single branch of refinement values for a specific pivot
    * @param pivotFields the ordered list of fields in this pivot
-   * @param refinements the comma seperate list of refinement values corrisponding to each field in the pivot, or null if there are no refinements
+   * @param refinements the comma separate list of refinement values corresponding to each field in the pivot, or null if there are no refinements
+   * @param statsFields List of {@link StatsField} instances to compute for each pivot value
    */
-  private SimpleOrderedMap<List<NamedList<Object>>> processSingle(List<String> pivotFields,
-                                                                  String refinements) throws IOException {
+  private SimpleOrderedMap<List<NamedList<Object>>> processSingle
+    (List<String> pivotFields,
+     String refinements,
+     List<StatsField> statsFields) throws IOException {
+
     SolrIndexSearcher searcher = rb.req.getSearcher();
     SimpleOrderedMap<List<NamedList<Object>>> pivotResponse = new SimpleOrderedMap<>();
 
@@ -130,7 +168,7 @@ public class PivotFacetProcessor extends SimpleFacets
 
       String firstFieldsValues = refinementValuesByField.get(0);
 
-      facetCounts = new NamedList<Integer>();
+      facetCounts = new NamedList<>();
       facetCounts.add(firstFieldsValues,
                       getSubsetSize(this.docs, sfield, firstFieldsValues));
     } else {
@@ -141,18 +179,54 @@ public class PivotFacetProcessor extends SimpleFacets
     if(pivotFields.size() > 1) {
       String subField = pivotFields.get(1);
       pivotResponse.add(key,
-                        doPivots(facetCounts, field, subField, fnames, vnames, this.docs));
+                        doPivots(facetCounts, field, subField, fnames, vnames, this.docs, statsFields));
     } else {
-      pivotResponse.add(key, doPivots(facetCounts, field, null, fnames, vnames, this.docs));
+      pivotResponse.add(key, doPivots(facetCounts, field, null, fnames, vnames, this.docs, statsFields));
     }
     return pivotResponse;
   }
   
   /**
-   * Recursive function to compute all the pivot counts for the values under teh specified field
+   * returns the {@link StatsField} instances that should be computed for a pivot
+   * based on the 'stats' local params used.
+   *
+   * @return A list of StatsFields to compute for this pivot, or the empty list if none
+   */
+  private static List<StatsField> getTaggedStatsFields(StatsInfo statsInfo, 
+                                                       String statsLocalParam) {
+    if (null == statsLocalParam || null == statsInfo) {
+      return Collections.emptyList();
+    }
+    
+    List<StatsField> fields = new ArrayList<>(7);
+    List<String> statsAr = StrUtils.splitSmart(statsLocalParam, ',');
+
+    // TODO: for now, we only support a single tag name - we reserve using 
+    // ',' as a possible delimiter for logic related to only computing stats
+    // at certain levels -- see SOLR-6663
+    if (1 < statsAr.size()) {
+      String msg = StatsParams.STATS + " local param of " + FacetParams.FACET_PIVOT + 
+        "may not include tags separated by a comma - please use a common tag on all " + 
+        StatsParams.STATS_FIELD + " params you wish to compute under this pivot";
+      throw new SolrException(ErrorCode.BAD_REQUEST, msg);
+    }
+
+    for(String stat : statsAr) {
+      fields.addAll(statsInfo.getStatsFieldsByTag(stat));
+    }
+    return fields;
+  }
+
+  /**
+   * Recursive function to compute all the pivot counts for the values under the specified field
    */
   protected List<NamedList<Object>> doPivots(NamedList<Integer> superFacets,
-      String field, String subField, Deque<String> fnames,Deque<String> vnames,DocSet docs) throws IOException {
+                                             String field, String subField, 
+                                             Deque<String> fnames, Deque<String> vnames, 
+                                             DocSet docs, List<StatsField> statsFields) 
+    throws IOException {
+
+    boolean isShard = rb.req.getParams().getBool(ShardParams.IS_SHARD, false);
 
     SolrIndexSearcher searcher = rb.req.getSearcher();
     // TODO: optimize to avoid converting to an external string and then having to convert back to internal below
@@ -161,7 +235,7 @@ public class PivotFacetProcessor extends SimpleFacets
 
     String nextField = fnames.poll();
 
-    // re-useable BytesRefBuilder for conversion of term values to Objects
+    // re-usable BytesRefBuilder for conversion of term values to Objects
     BytesRefBuilder termval = new BytesRefBuilder(); 
 
     List<NamedList<Object>> values = new ArrayList<>( superFacets.size() );
@@ -169,6 +243,7 @@ public class PivotFacetProcessor extends SimpleFacets
       // Only sub-facet if parent facet has positive count - still may not be any values for the sub-field though
       if (kv.getValue() >= getMinCountForField(field)) {  
         final String fieldValue = kv.getKey();
+        final int pivotCount = kv.getValue();
 
         SimpleOrderedMap<Object> pivot = new SimpleOrderedMap<>();
         pivot.add( "field", field );
@@ -178,7 +253,7 @@ public class PivotFacetProcessor extends SimpleFacets
           ftype.readableToIndexed(fieldValue, termval);
           pivot.add( "value", ftype.toObject(sfield, termval.get()) );
         }
-        pivot.add( "count", kv.getValue() );
+        pivot.add( "count", pivotCount );
 
         DocSet subset = getSubset(docs, sfield, fieldValue);
         
@@ -186,7 +261,7 @@ public class PivotFacetProcessor extends SimpleFacets
           NamedList<Integer> facetCounts;
           if(!vnames.isEmpty()){
             String val = vnames.pop();
-            facetCounts = new NamedList<Integer>();
+            facetCounts = new NamedList<>();
             facetCounts.add(val, getSubsetSize(subset,
                                                searcher.getSchema().getField(subField),
                                                val));
@@ -195,8 +270,16 @@ public class PivotFacetProcessor extends SimpleFacets
           }
 
           if (facetCounts.size() >= 1) {
-            pivot.add( "pivot", doPivots( facetCounts, subField, nextField, fnames, vnames, subset) );
+            pivot.add( "pivot", doPivots( facetCounts, subField, nextField, fnames, vnames, subset, statsFields ) );
           }
+        }
+        if ((isShard || 0 < pivotCount) && ! statsFields.isEmpty()) {
+          Map<String, StatsValues> stv = new LinkedHashMap<>();
+          for (StatsField statsField : statsFields) {
+            stv.put(statsField.getOutputKey(), statsField.computeLocalStatsValues(subset));
+          }
+          // for pivots, we *always* include requested stats - even if 'empty'
+          pivot.add("stats", StatsComponent.convertToResponse(true, stv));
         }
         values.add( pivot );
       }
@@ -208,9 +291,9 @@ public class PivotFacetProcessor extends SimpleFacets
   }
   
   /**
-   * Given a base docset, computes the size of the subset of documents corrisponding to the specified pivotValue
+   * Given a base docset, computes the size of the subset of documents corresponding to the specified pivotValue
    *
-   * @param base the set of documents to evalute relative to
+   * @param base the set of documents to evaluate relative to
    * @param field the field type used by the pivotValue
    * @param pivotValue String representation of the value, may be null (ie: "missing")
    */
@@ -227,9 +310,9 @@ public class PivotFacetProcessor extends SimpleFacets
   }
 
   /**
-   * Given a base docset, computes the subset of documents corrisponding to the specified pivotValue
+   * Given a base docset, computes the subset of documents corresponding to the specified pivotValue
    *
-   * @param base the set of documents to evalute relative to
+   * @param base the set of documents to evaluate relative to
    * @param field the field type used by the pivotValue
    * @param pivotValue String representation of the value, may be null (ie: "missing")
    */

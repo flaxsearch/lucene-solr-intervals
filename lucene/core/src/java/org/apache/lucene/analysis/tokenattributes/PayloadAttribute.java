@@ -17,7 +17,6 @@ package org.apache.lucene.analysis.tokenattributes;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.DocsAndPositionsEnum; // javadocs
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.BytesRef;
 
@@ -29,11 +28,11 @@ import org.apache.lucene.util.BytesRef;
  * in the {@link org.apache.lucene.search.payloads} and
  * {@link org.apache.lucene.search.spans} packages.
  * <p>
- * NOTE: because the payload will be stored at each position, its usually
+ * NOTE: because the payload will be stored at each position, it's usually
  * best to use the minimum number of bytes necessary. Some codec implementations
  * may optimize payload storage when all payloads have the same length.
  * 
- * @see DocsAndPositionsEnum
+ * @see org.apache.lucene.index.PostingsEnum
  */
 public interface PayloadAttribute extends Attribute {
   /**

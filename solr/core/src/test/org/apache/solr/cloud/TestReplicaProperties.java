@@ -18,15 +18,10 @@ package org.apache.solr.cloud;
  */
 
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.CloudSolrServer;
+import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.cloud.ClusterState;
@@ -36,7 +31,12 @@ import org.apache.solr.common.params.CollectionParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.zookeeper.KeeperException;
-import org.junit.Before;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 @Slow
 public class TestReplicaProperties extends ReplicaPropertiesBase {
@@ -45,21 +45,14 @@ public class TestReplicaProperties extends ReplicaPropertiesBase {
 
   public TestReplicaProperties() {
     schemaString = "schema15.xml";      // we need a string id
-  }
-
-  @Override
-  @Before
-  public void setUp() throws Exception {
-    fixShardCount = true;
     sliceCount = 2;
-    shardCount = 4;
-    super.setUp();
   }
 
-  @Override
-  public void doTest() throws Exception {
-    CloudSolrServer client = createCloudClient(null);
-    try {
+  @Test
+  @ShardsFixed(num = 4)
+  public void test() throws Exception {
+
+    try (CloudSolrClient client = createCloudClient(null)) {
       // Mix up a bunch of different combinations of shards and replicas in order to exercise boundary cases.
       // shards, replicationfactor, maxreplicaspernode
       int shards = random().nextInt(7);
@@ -67,9 +60,6 @@ public class TestReplicaProperties extends ReplicaPropertiesBase {
       int rFactor = random().nextInt(4);
       if (rFactor < 2) rFactor = 2;
       createCollection(null, COLLECTION_NAME, shards, rFactor, shards * rFactor + 1, client, null, "conf1");
-    } finally {
-      //remove collections
-      client.shutdown();
     }
 
     waitForCollection(cloudClient.getZkStateReader(), COLLECTION_NAME, 2);
@@ -81,8 +71,8 @@ public class TestReplicaProperties extends ReplicaPropertiesBase {
   }
 
   private void listCollection() throws IOException, SolrServerException {
-    CloudSolrServer client = createCloudClient(null);
-    try {
+
+    try (CloudSolrClient client = createCloudClient(null)) {
       ModifiableSolrParams params = new ModifiableSolrParams();
       params.set("action", CollectionParams.CollectionAction.LIST.toString());
       SolrRequest request = new QueryRequest(params);
@@ -93,20 +83,17 @@ public class TestReplicaProperties extends ReplicaPropertiesBase {
       assertTrue("control_collection was not found in list", collections.contains("control_collection"));
       assertTrue(DEFAULT_COLLECTION + " was not found in list", collections.contains(DEFAULT_COLLECTION));
       assertTrue(COLLECTION_NAME + " was not found in list", collections.contains(COLLECTION_NAME));
-    } finally {
-      //remove collections
-      client.shutdown();
     }
   }
 
 
   private void clusterAssignPropertyTest() throws Exception {
-    CloudSolrServer client = createCloudClient(null);
-    try {
+
+    try (CloudSolrClient client = createCloudClient(null)) {
       client.connect();
       try {
         doPropertyAction(client,
-            "action", CollectionParams.CollectionAction.BALANCESLICEUNIQUE.toString(),
+            "action", CollectionParams.CollectionAction.BALANCESHARDUNIQUE.toString(),
             "property", "preferredLeader");
       } catch (SolrException se) {
         assertTrue("Should have seen missing required parameter 'collection' error",
@@ -114,30 +101,30 @@ public class TestReplicaProperties extends ReplicaPropertiesBase {
       }
 
       doPropertyAction(client,
-          "action", CollectionParams.CollectionAction.BALANCESLICEUNIQUE.toString(),
+          "action", CollectionParams.CollectionAction.BALANCESHARDUNIQUE.toString(),
           "collection", COLLECTION_NAME,
           "property", "preferredLeader");
 
       verifyUniqueAcrossCollection(client, COLLECTION_NAME, "property.preferredleader");
 
       doPropertyAction(client,
-          "action", CollectionParams.CollectionAction.BALANCESLICEUNIQUE.toString(),
+          "action", CollectionParams.CollectionAction.BALANCESHARDUNIQUE.toString(),
           "collection", COLLECTION_NAME,
           "property", "property.newunique",
-          "sliceUnique", "true");
+          "shardUnique", "true");
       verifyUniqueAcrossCollection(client, COLLECTION_NAME, "property.newunique");
 
       try {
         doPropertyAction(client,
-            "action", CollectionParams.CollectionAction.BALANCESLICEUNIQUE.toString(),
+            "action", CollectionParams.CollectionAction.BALANCESHARDUNIQUE.toString(),
             "collection", COLLECTION_NAME,
             "property", "whatever",
-            "sliceUnique", "false");
+            "shardUnique", "false");
         fail("Should have thrown an exception here.");
       } catch (SolrException se) {
         assertTrue("Should have gotten a specific error message here",
             se.getMessage().contains("Balancing properties amongst replicas in a slice requires that the " +
-                "property be pre-defined as a unique property (e.g. 'preferredLeader') or that 'sliceUnique' be set to 'true'"));
+                "property be pre-defined as a unique property (e.g. 'preferredLeader') or that 'shardUnique' be set to 'true'"));
       }
       // Should be able to set non-unique-per-slice values in several places.
       Map<String, Slice> slices = client.getZkStateReader().getClusterState().getCollection(COLLECTION_NAME).getSlicesMap();
@@ -165,24 +152,24 @@ public class TestReplicaProperties extends ReplicaPropertiesBase {
 
       try {
         doPropertyAction(client,
-            "action", CollectionParams.CollectionAction.BALANCESLICEUNIQUE.toString(),
+            "action", CollectionParams.CollectionAction.BALANCESHARDUNIQUE.toString(),
             "collection", COLLECTION_NAME,
             "property", "bogus1",
-            "sliceUnique", "false");
+            "shardUnique", "false");
         fail("Should have thrown parameter error here");
       } catch (SolrException se) {
         assertTrue("Should have caught specific exception ",
             se.getMessage().contains("Balancing properties amongst replicas in a slice requires that the property be " +
-                "pre-defined as a unique property (e.g. 'preferredLeader') or that 'sliceUnique' be set to 'true'"));
+                "pre-defined as a unique property (e.g. 'preferredLeader') or that 'shardUnique' be set to 'true'"));
       }
 
-      // Should have no effect despite the "sliceUnique" param being set.
+      // Should have no effect despite the "shardUnique" param being set.
 
       doPropertyAction(client,
-          "action", CollectionParams.CollectionAction.BALANCESLICEUNIQUE.toString(),
+          "action", CollectionParams.CollectionAction.BALANCESHARDUNIQUE.toString(),
           "collection", COLLECTION_NAME,
           "property", "property.bogus1",
-          "sliceUnique", "true");
+          "shardUnique", "true");
 
       verifyPropertyVal(client, COLLECTION_NAME,
           c1_s1_r1, "property.bogus1", "true");
@@ -193,18 +180,16 @@ public class TestReplicaProperties extends ReplicaPropertiesBase {
       // leaders _also_ have the preferredLeader property set.
 
 
-      doPropertyAction(client,
+      NamedList<Object> res = doPropertyAction(client,
           "action", CollectionParams.CollectionAction.REBALANCELEADERS.toString(),
           "collection", COLLECTION_NAME);
 
       verifyLeaderAssignment(client, COLLECTION_NAME);
 
-    } finally {
-      client.shutdown();
     }
   }
 
-  private void verifyLeaderAssignment(CloudSolrServer client, String collectionName)
+  private void verifyLeaderAssignment(CloudSolrClient client, String collectionName)
       throws InterruptedException, KeeperException {
     String lastFailMsg = "";
     for (int idx = 0; idx < 300; ++idx) { // Keep trying while Overseer writes the ZK state for up to 30 seconds.
@@ -239,7 +224,7 @@ public class TestReplicaProperties extends ReplicaPropertiesBase {
     fail(lastFailMsg);
   }
 
-  private void addProperty(CloudSolrServer client, String... paramsIn) throws IOException, SolrServerException {
+  private void addProperty(CloudSolrClient client, String... paramsIn) throws IOException, SolrServerException {
     assertTrue("paramsIn must be an even multiple of 2, it is: " + paramsIn.length, (paramsIn.length % 2) == 0);
     ModifiableSolrParams params = new ModifiableSolrParams();
     for (int idx = 0; idx < paramsIn.length; idx += 2) {

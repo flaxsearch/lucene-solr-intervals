@@ -17,11 +17,11 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
+
+import java.io.IOException;
 
 /** Implements a {@link TermsEnum} wrapping a provided
  * {@link SortedSetDocValues}. */
@@ -29,7 +29,6 @@ import org.apache.lucene.util.BytesRefBuilder;
 class SortedSetDocValuesTermsEnum extends TermsEnum {
   private final SortedSetDocValues values;
   private long currentOrd = -1;
-  private BytesRef term;
   private final BytesRefBuilder scratch;
 
   /** Creates a new TermsEnum over the provided values */
@@ -44,7 +43,6 @@ class SortedSetDocValuesTermsEnum extends TermsEnum {
     if (ord >= 0) {
       currentOrd = ord;
       scratch.copyBytes(text);
-      term = scratch.get();
       return SeekStatus.FOUND;
     } else {
       currentOrd = -ord-1;
@@ -52,7 +50,7 @@ class SortedSetDocValuesTermsEnum extends TermsEnum {
         return SeekStatus.END;
       } else {
         // TODO: hmm can we avoid this "extra" lookup?:
-        term = values.lookupOrd(currentOrd);
+        scratch.copyBytes(values.lookupOrd(currentOrd));
         return SeekStatus.NOT_FOUND;
       }
     }
@@ -64,7 +62,6 @@ class SortedSetDocValuesTermsEnum extends TermsEnum {
     if (ord >= 0) {
       currentOrd = ord;
       scratch.copyBytes(text);
-      term = scratch.get();
       return true;
     } else {
       return false;
@@ -75,7 +72,7 @@ class SortedSetDocValuesTermsEnum extends TermsEnum {
   public void seekExact(long ord) throws IOException {
     assert ord >= 0 && ord < values.getValueCount();
     currentOrd = (int) ord;
-    term = values.lookupOrd(currentOrd);
+    scratch.copyBytes(values.lookupOrd(currentOrd));
   }
 
   @Override
@@ -84,13 +81,13 @@ class SortedSetDocValuesTermsEnum extends TermsEnum {
     if (currentOrd >= values.getValueCount()) {
       return null;
     }
-    term = values.lookupOrd(currentOrd);
-    return term;
+    scratch.copyBytes(values.lookupOrd(currentOrd));
+    return scratch.get();
   }
 
   @Override
   public BytesRef term() throws IOException {
-    return term;
+    return scratch.get();
   }
 
   @Override
@@ -109,12 +106,7 @@ class SortedSetDocValuesTermsEnum extends TermsEnum {
   }
 
   @Override
-  public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException {
+  public PostingsEnum postings(Bits liveDocs, PostingsEnum reuse, int flags) throws IOException {
     throw new UnsupportedOperationException();
   }
 

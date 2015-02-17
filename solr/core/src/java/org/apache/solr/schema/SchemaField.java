@@ -78,7 +78,7 @@ public final class SchemaField extends FieldProperties {
     this.properties = properties;
     this.defaultValue = defaultValue;
     
-    // initalize with the required property flag
+    // initialize with the required property flag
     required = (properties & REQUIRED) !=0;
 
     type.checkSchemaField(this);
@@ -95,10 +95,6 @@ public final class SchemaField extends FieldProperties {
   public boolean storeTermPositions() { return (properties & STORE_TERMPOSITIONS)!=0; }
   public boolean storeTermOffsets() { return (properties & STORE_TERMOFFSETS)!=0; }
   public boolean omitNorms() { return (properties & OMIT_NORMS)!=0; }
-
-  /** @deprecated Use {@link #omitTermFreqAndPositions} */
-  @Deprecated
-  public boolean omitTf() { return omitTermFreqAndPositions(); }
 
   public boolean omitTermFreqAndPositions() { return (properties & OMIT_TF_POSITIONS)!=0; }
   public boolean omitPositions() { return (properties & OMIT_POSITIONS)!=0; }
@@ -308,7 +304,7 @@ public final class SchemaField extends FieldProperties {
   }
 
   /**
-   * Get a map of property name -> value for this field.  If showDefaults is true,
+   * Get a map of property name -&gt; value for this field.  If showDefaults is true,
    * include default properties (those inherited from the declared property type and
    * not overridden in the field declaration).
    */

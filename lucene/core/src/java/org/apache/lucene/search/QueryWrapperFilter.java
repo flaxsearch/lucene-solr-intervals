@@ -18,6 +18,7 @@ package org.apache.lucene.search;
  */
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.util.Bits;
 
 import java.io.IOException;
@@ -52,11 +53,11 @@ public class QueryWrapperFilter extends Filter {
   public DocIdSet getDocIdSet(final LeafReaderContext context, final Bits acceptDocs) throws IOException {
     // get a private context that is used to rewrite, createWeight and score eventually
     final LeafReaderContext privateContext = context.reader().getContext();
-    final Weight weight = new IndexSearcher(privateContext).createNormalizedWeight(query);
+    final Weight weight = new IndexSearcher(privateContext).createNormalizedWeight(query, false, PostingsEnum.FLAG_NONE);
     return new DocIdSet() {
       @Override
       public DocIdSetIterator iterator() throws IOException {
-        return weight.scorer(privateContext, Weight.PostingFeatures.DOCS_AND_FREQS, acceptDocs);
+        return weight.scorer(privateContext, acceptDocs);
       }
 
       @Override
@@ -67,8 +68,8 @@ public class QueryWrapperFilter extends Filter {
   }
 
   @Override
-  public String toString() {
-    return "QueryWrapperFilter(" + query + ")";
+  public String toString(String field) {
+    return "QueryWrapperFilter(" + query.toString(field) + ")";
   }
 
   @Override

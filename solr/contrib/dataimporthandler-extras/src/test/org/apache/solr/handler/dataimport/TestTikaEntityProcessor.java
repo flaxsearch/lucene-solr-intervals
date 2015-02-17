@@ -30,6 +30,7 @@ import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.util.Locale;
 
 /**Testcase for TikaEntityProcessor
  *
@@ -47,6 +48,19 @@ public class TestTikaEntityProcessor extends AbstractDataImportHandlerTestCase {
   "     </entity>" +
   "  </document>" +
   "</dataConfig>";
+
+  private String skipOnErrConf =
+      "<dataConfig>" +
+          "  <dataSource type=\"BinFileDataSource\"/>" +
+          "  <document>" +
+          "    <entity name=\"Tika\" onError=\"skip\"  processor=\"TikaEntityProcessor\" url=\"" + getFile("dihextras/bad.doc").getAbsolutePath() + "\" >" +
+          "<field column=\"content\" name=\"text\"/>" +
+          " </entity>" +
+          " <entity name=\"Tika\" processor=\"TikaEntityProcessor\" url=\"" + getFile("dihextras/solr-word.pdf").getAbsolutePath() + "\" >" +
+          "      <field column=\"text\"/>" +
+          "</entity>" +
+          "  </document>" +
+          "</dataConfig>";
 
   private String[] tests = {
       "//*[@numFound='1']"
@@ -73,6 +87,8 @@ public class TestTikaEntityProcessor extends AbstractDataImportHandlerTestCase {
 
   @BeforeClass
   public static void beforeClass() throws Exception {
+    assumeFalse("This test fails on UNIX with Turkish default locale (https://issues.apache.org/jira/browse/SOLR-6387)",
+        new Locale("tr").getLanguage().equals(Locale.getDefault().getLanguage()));
     initCore("dataimport-solrconfig.xml", "dataimport-schema-no-unique-key.xml", getFile("dihextras/solr").getAbsolutePath());
   }
 
@@ -80,6 +96,12 @@ public class TestTikaEntityProcessor extends AbstractDataImportHandlerTestCase {
   public void testIndexingWithTikaEntityProcessor() throws Exception {
     runFullImport(conf);
     assertQ(req("*:*"), tests );
+  }
+
+  @Test
+  public void testSkip() throws Exception {
+    runFullImport(skipOnErrConf);
+    assertQ(req("*:*"), "//*[@numFound='1']");
   }
 
   @Test

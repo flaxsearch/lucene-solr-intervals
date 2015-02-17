@@ -72,11 +72,6 @@ public class BooleanQueryTst {
     }
 
     @Override
-    public boolean acceptsDocsOutOfOrder() {
-      return true;
-    }
-
-    @Override
     protected void doSetNextReader(LeafReaderContext context) throws IOException {
       docBase = context.docBase;
     }
@@ -99,6 +94,11 @@ public class BooleanQueryTst {
         Assert.assertTrue(queryText + ": doc nr for hit not expected: " + docNr, false);
       }
       totalMatched++;
+    }
+    
+    @Override
+    public boolean needsScores() {
+      return true;
     }
 
     void checkNrHits() {

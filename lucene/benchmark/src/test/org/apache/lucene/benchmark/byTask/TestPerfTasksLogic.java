@@ -40,7 +40,7 @@ import org.apache.lucene.benchmark.byTask.tasks.WriteLineDocTask;
 import org.apache.lucene.collation.CollationKeyAnalyzer;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
@@ -497,9 +497,9 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
         continue;
       }
       TermsEnum termsEnum = terms.iterator(null);
-      DocsEnum docs = null;
+      PostingsEnum docs = null;
       while(termsEnum.next() != null) {
-        docs = TestUtil.docs(random(), termsEnum, MultiFields.getLiveDocs(reader), docs, DocsEnum.FLAG_FREQS);
+        docs = TestUtil.docs(random(), termsEnum, MultiFields.getLiveDocs(reader), docs, PostingsEnum.FLAG_FREQS);
         while(docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
           totalTokenCount2 += docs.freq();
         }
@@ -532,7 +532,6 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
         "{ [ AddDoc]: 4} : * ",
         "ResetInputs ",
         "{ [ AddDoc]: 4} : * ",
-        "WaitForMerges",
         "CloseIndex",
     };
     
@@ -568,7 +567,6 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
         "  ResetSystemErase",
         "  CreateIndex",
         "  { \"AddDocs\"  AddDoc > : * ",
-        "  WaitForMerges",
         "  CloseIndex",
         "} : 2",
     };
@@ -833,8 +831,7 @@ public class TestPerfTasksLogic extends BenchmarkTestCase {
     ir.close();
 
     // Make sure we have 3 segments:
-    SegmentInfos infos = new SegmentInfos();
-    infos.read(benchmark.getRunData().getDirectory());
+    SegmentInfos infos = SegmentInfos.readLatestCommit(benchmark.getRunData().getDirectory());
     assertEquals(3, infos.size());
   }
   

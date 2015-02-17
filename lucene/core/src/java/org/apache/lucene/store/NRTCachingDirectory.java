@@ -58,7 +58,7 @@ import org.apache.lucene.util.IOUtils;
  * </pre>
  *
  * <p>This will cache all newly flushed segments, all merges
- * whose expected segment size is <= 5 MB, unless the net
+ * whose expected segment size is {@code <= 5 MB}, unless the net
  * cached bytes exceeds 60 MB at which point all writes will
  * not be cached (until the net bytes falls below 60 MB).</p>
  *
@@ -77,9 +77,9 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
 
   /**
    *  We will cache a newly created output if 1) it's a
-   *  flush or a merge and the estimated size of the merged segment is <=
-   *  maxMergeSizeMB, and 2) the total cached bytes is <=
-   *  maxCachedMB */
+   *  flush or a merge and the estimated size of the merged segment is 
+   *  {@code <= maxMergeSizeMB}, and 2) the total cached bytes is 
+   *  {@code <= maxCachedMB} */
   public NRTCachingDirectory(Directory delegate, double maxMergeSizeMB, double maxCachedMB) {
     super(delegate);
     maxMergeSizeBytes = (long) (maxMergeSizeMB*1024*1024);
@@ -200,11 +200,21 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
     // it for defensive reasons... or in case the app is
     // doing something custom (creating outputs directly w/o
     // using IndexWriter):
-    for(String fileName : cache.listAll()) {
-      unCache(fileName);
+    boolean success = false;
+    try {
+      if (cache.isOpen) {
+        for(String fileName : cache.listAll()) {
+          unCache(fileName);
+        }
+      }
+      success = true;
+    } finally {
+      if (success) {
+        IOUtils.close(cache, in);
+      } else {
+        IOUtils.closeWhileHandlingException(cache, in);
+      }
     }
-    cache.close();
-    in.close();
   }
 
   /** Subclass can override this to customize logic; return
@@ -260,7 +270,7 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
   }
   
   @Override
-  public Iterable<? extends Accountable> getChildResources() {
+  public Collection<Accountable> getChildResources() {
     return Collections.singleton(Accountables.namedAccountable("cache", cache));
   }
 }

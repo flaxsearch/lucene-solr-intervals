@@ -25,7 +25,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 public class TestDocIdSetBuilder extends LuceneTestCase {
 
   public void testEmpty() throws IOException {
-    assertEquals(null, new DocIdSetBuilder(1 + random().nextInt(1000)).build());
+    assertEquals(null, new BitDocIdSet.Builder(1 + random().nextInt(1000)).build());
   }
 
   private void assertEquals(DocIdSet d1, DocIdSet d2) throws IOException {
@@ -45,9 +45,19 @@ public class TestDocIdSetBuilder extends LuceneTestCase {
     }
   }
 
+  public void testFull() throws IOException {
+    final int maxDoc = 1 + random().nextInt(1000);
+    BitDocIdSet.Builder builder = new BitDocIdSet.Builder(maxDoc, true);
+    DocIdSet set = builder.build();
+    DocIdSetIterator it = set.iterator();
+    for (int i = 0; i < maxDoc; ++i) {
+      assertEquals(i, it.nextDoc());
+    }
+  }
+
   public void testSparse() throws IOException {
     final int maxDoc = 1000000 + random().nextInt(1000000);
-    DocIdSetBuilder builder = new DocIdSetBuilder(maxDoc);
+    BitDocIdSet.Builder builder = new BitDocIdSet.Builder(maxDoc);
     final int numIterators = 1 + random().nextInt(10);
     final FixedBitSet ref = new FixedBitSet(maxDoc);
     for (int i = 0; i < numIterators; ++i) {
@@ -60,13 +70,13 @@ public class TestDocIdSetBuilder extends LuceneTestCase {
       builder.or(b.build().iterator());
     }
     DocIdSet result = builder.build();
-    assertTrue(result instanceof SparseFixedBitSet);
-    assertEquals(ref, result);
+    assertTrue(result instanceof BitDocIdSet);
+    assertEquals(new BitDocIdSet(ref), result);
   }
 
   public void testDense() throws IOException {
     final int maxDoc = 1000000 + random().nextInt(1000000);
-    DocIdSetBuilder builder = new DocIdSetBuilder(maxDoc);
+    BitDocIdSet.Builder builder = new BitDocIdSet.Builder(maxDoc);
     final int numIterators = 1 + random().nextInt(10);
     final FixedBitSet ref = new FixedBitSet(maxDoc);
     if (random().nextBoolean()) {
@@ -76,17 +86,16 @@ public class TestDocIdSetBuilder extends LuceneTestCase {
       builder.or(new RoaringDocIdSet.Builder(maxDoc).add(doc).build().iterator());
     }
     for (int i = 0; i < numIterators; ++i) {
-      final int baseInc = 2 + random().nextInt(10);
       RoaringDocIdSet.Builder b = new RoaringDocIdSet.Builder(maxDoc);
-      for (int doc = random().nextInt(10000); doc < maxDoc; doc += baseInc + random().nextInt(2000)) {
+      for (int doc = random().nextInt(1000); doc < maxDoc; doc += 1 + random().nextInt(1000)) {
         b.add(doc);
         ref.set(doc);
       }
       builder.or(b.build().iterator());
     }
     DocIdSet result = builder.build();
-    assertTrue(result instanceof FixedBitSet);
-    assertEquals(ref, result);
+    assertTrue(result instanceof BitDocIdSet);
+    assertEquals(new BitDocIdSet(ref), result);
   }
 
 }

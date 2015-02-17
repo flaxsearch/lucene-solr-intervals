@@ -45,15 +45,19 @@ public class HdfsDirectory extends BaseDirectory {
   public static final int BUFFER_SIZE = 8192;
   
   private static final String LF_EXT = ".lf";
-  protected Path hdfsDirPath;
-  protected Configuration configuration;
+  protected final Path hdfsDirPath;
+  protected final Configuration configuration;
   
   private final FileSystem fileSystem;
   private final FileContext fileContext;
   
+  public HdfsDirectory(Path hdfsDirPath, Configuration configuration) throws IOException {
+    this(hdfsDirPath, HdfsLockFactory.INSTANCE, configuration);
+  }
+
   public HdfsDirectory(Path hdfsDirPath, LockFactory lockFactory, Configuration configuration)
       throws IOException {
-    setLockFactory(lockFactory);
+    super(lockFactory);
     this.hdfsDirPath = hdfsDirPath;
     this.configuration = configuration;
     fileSystem = FileSystem.newInstance(hdfsDirPath.toUri(), configuration);
@@ -81,11 +85,11 @@ public class HdfsDirectory extends BaseDirectory {
           }
           continue;
         }
-        org.apache.solr.util.IOUtils.closeQuietly(fileSystem);
+        org.apache.solr.common.util.IOUtils.closeQuietly(fileSystem);
         throw new RuntimeException(
             "Problem creating directory: " + hdfsDirPath, e);
       } catch (Exception e) {
-        org.apache.solr.util.IOUtils.closeQuietly(fileSystem);
+        org.apache.solr.common.util.IOUtils.closeQuietly(fileSystem);
         throw new RuntimeException(
             "Problem creating directory: " + hdfsDirPath, e);
       }
@@ -164,13 +168,11 @@ public class HdfsDirectory extends BaseDirectory {
       return new String[] {};
     }
     for (FileStatus status : listStatus) {
-      if (!status.isDirectory()) {
-        files.add(status.getPath().getName());
-      }
+      files.add(status.getPath().getName());
     }
     return getNormalNames(files);
   }
-  
+
   public Path getHdfsDirPath() {
     return hdfsDirPath;
   }

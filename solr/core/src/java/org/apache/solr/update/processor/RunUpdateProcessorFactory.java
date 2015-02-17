@@ -60,7 +60,7 @@ class RunUpdateProcessor extends UpdateRequestProcessor
   @Override
   public void processAdd(AddUpdateCommand cmd) throws IOException {
     
-    if (DistributedUpdateProcessor.isAtomicUpdate(cmd)) {
+    if (AtomicUpdateDocumentMerger.isAtomicUpdate(cmd)) {
       throw new SolrException
         (SolrException.ErrorCode.BAD_REQUEST,
          "RunUpdateProcessor has received an AddUpdateCommand containing a document that appears to still contain Atomic document update operations, most likely because DistributedUpdateProcessorFactory was explicitly disabled from this updateRequestProcessorChain");
@@ -94,7 +94,10 @@ class RunUpdateProcessor extends UpdateRequestProcessor
   {
     updateHandler.commit(cmd);
     super.processCommit(cmd);
-    changesSinceCommit = false;
+    if (!cmd.softCommit) {
+      // a hard commit means we don't need to flush the transaction log
+      changesSinceCommit = false;
+    }
   }
 
   /**

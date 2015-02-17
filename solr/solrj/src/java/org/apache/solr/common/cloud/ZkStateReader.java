@@ -62,6 +62,7 @@ public class ZkStateReader implements Closeable {
   public static final String STATE_PROP = "state";
   public static final String CORE_NAME_PROP = "core";
   public static final String COLLECTION_PROP = "collection";
+  public static final String ELECTION_NODE_PROP = "election_node";
   public static final String SHARD_ID_PROP = "shard";
   public static final String REPLICA_PROP = "replica";
   public static final String SHARD_RANGE_PROP = "shard_range";
@@ -78,6 +79,7 @@ public class ZkStateReader implements Closeable {
   public static final String ALIASES = "/aliases.json";
   public static final String CLUSTER_STATE = "/clusterstate.json";
   public static final String CLUSTER_PROPS = "/clusterprops.json";
+  public static final String REJOIN_AT_HEAD_PROP = "rejoinAtHead";
 
   public static final String REPLICATION_FACTOR = "replicationFactor";
   public static final String MAX_SHARDS_PER_NODE = "maxShardsPerNode";
@@ -102,9 +104,10 @@ public class ZkStateReader implements Closeable {
 
   private static final long SOLRCLOUD_UPDATE_DELAY = Long.parseLong(System.getProperty("solrcloud.update.delay", "5000"));
 
-  public static final String LEADER_ELECT_ZKNODE = "/leader_elect";
+  public static final String LEADER_ELECT_ZKNODE = "leader_elect";
 
   public static final String SHARD_LEADERS_ZKNODE = "leaders";
+  public static final String ELECTION_NODE = "election";
 
   private final Set<String> watchedCollections = new HashSet<String>();
 
@@ -270,6 +273,7 @@ public class ZkStateReader implements Closeable {
     if (collection.getZNodeVersion() < version) {
       log.debug("server older than client {}<{}", collection.getZNodeVersion(), version);
       DocCollection nu = getCollectionLive(this, coll);
+      if (nu == null) return null;
       if (nu.getZNodeVersion() > collection.getZNodeVersion()) {
         updateWatchedCollection(nu);
         collection = nu;
@@ -448,20 +452,30 @@ public class ZkStateReader implements Closeable {
                                                     // collections in
                                                     // clusterstate.json
     for (String s : getIndividualColls()) {
-      DocCollection watched = watchedCollectionStates.get(s);
-      if (watched != null) {
-        // if it is a watched collection, add too
-        result.put(s, new ClusterState.CollectionRef(watched));
-      } else {
-        // if it is not collection, then just create a reference which can fetch 
-        // the collection object just in time from ZK
-        final String collName = s;
-        result.put(s, new ClusterState.CollectionRef(null) {
-          @Override
-          public DocCollection get() {
-            return getCollectionLive(ZkStateReader.this, collName);
+      synchronized (this) {
+        if (watchedCollections.contains(s)) {
+          DocCollection live = getCollectionLive(this, s);
+          if (live != null) {
+            watchedCollectionStates.put(s, live);
+            // if it is a watched collection, add too
+            result.put(s, new ClusterState.CollectionRef(live));
           }
-        });
+        } else {
+          // if it is not collection, then just create a reference which can fetch
+          // the collection object just in time from ZK
+          // this is also cheap (lazy loaded) so we put it inside the synchronized
+          // block although it is not required
+          final String collName = s;
+          result.put(s, new ClusterState.CollectionRef(null) {
+            @Override
+            public DocCollection get() {
+              return getCollectionLive(ZkStateReader.this, collName);
+            }
+
+            @Override
+            public boolean isLazilyLoaded() { return true; }
+          });
+        }
       }
     }
     return new ClusterState(ln, result, stat.getVersion());
@@ -519,7 +533,10 @@ public class ZkStateReader implements Closeable {
       }
       synchronized (ZkStateReader.this) {
         for (String watchedCollection : watchedCollections) {
-          updateWatchedCollection(getCollectionLive(this, watchedCollection));
+          DocCollection live = getCollectionLive(this, watchedCollection);
+          if (live != null) {
+            updateWatchedCollection(live);
+          }
         }
       }
 
@@ -577,7 +594,11 @@ public class ZkStateReader implements Closeable {
 
             synchronized (ZkStateReader.this) {
               for (String watchedCollection : watchedCollections) {
-                updateWatchedCollection(getCollectionLive(ZkStateReader.this, watchedCollection));
+                DocCollection live = getCollectionLive(ZkStateReader.this, watchedCollection);
+                assert live != null;
+                if (live != null) {
+                  updateWatchedCollection(live);
+                }
               }
             }
           }
@@ -652,6 +673,16 @@ public class ZkStateReader implements Closeable {
         + SHARD_LEADERS_ZKNODE + (shardId != null ? ("/" + shardId)
         : "");
   }
+
+  /**
+   * Get path where shard leader elections ephemeral nodes are.
+   */
+  public static String getShardLeadersElectPath(String collection, String shardId) {
+    return COLLECTIONS_ZKNODE + "/" + collection + "/"
+        + LEADER_ELECT_ZKNODE  + (shardId != null ? ("/" + shardId + "/" + ELECTION_NODE)
+        : "");
+  }
+
 
   public List<ZkCoreNodeProps> getReplicaProps(String collection,
       String shardId, String thisCoreNodeName) {
@@ -810,8 +841,8 @@ public class ZkStateReader implements Closeable {
           if (EventType.None.equals(event.getType())) {
             return;
           }
-          log.info("A cluster state change: {}, has occurred - updating... ",
-              (event), ZkStateReader.this.clusterState == null ? 0
+          log.info("A cluster state change: {} for collection {} has occurred - updating... (live nodes size: {})",
+              (event), coll, ZkStateReader.this.clusterState == null ? 0
                   : ZkStateReader.this.clusterState.getLiveNodes().size());
           try {
             
@@ -860,7 +891,10 @@ public class ZkStateReader implements Closeable {
       };
       zkClient.exists(fullpath, watcher, true);
     }
-    updateWatchedCollection(getCollectionLive(this, coll));
+    DocCollection collection = getCollectionLive(this, coll);
+    if (collection != null) {
+      updateWatchedCollection(collection);
+    }
   }
   
   private void updateWatchedCollection(DocCollection newState) {
@@ -868,16 +902,22 @@ public class ZkStateReader implements Closeable {
     log.info("Updating data for {} to ver {} ", newState.getName(),
         newState.getZNodeVersion());
     
-    this.clusterState = clusterState.copyWith(Collections.singletonMap(
-        newState.getName(), newState));
+    this.clusterState = clusterState.copyWith(newState.getName(), newState);
   }
   
   /** This is not a public API. Only used by ZkController */
   public void removeZKWatch(final String coll) {
     synchronized (this) {
       watchedCollections.remove(coll);
-      clusterState = clusterState.copyWith(Collections
-          .<String,DocCollection> singletonMap(coll, null));
+      watchedCollectionStates.remove(coll);
+      try {
+        updateClusterState(true);
+      } catch (KeeperException e) {
+        log.error("Error updating state",e);
+      } catch (InterruptedException e) {
+        log.error("Error updating state",e);
+        Thread.currentThread().interrupt();
+      }
     }
   }
 

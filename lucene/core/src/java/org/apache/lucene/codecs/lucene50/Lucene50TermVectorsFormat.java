@@ -48,7 +48,7 @@ import org.apache.lucene.util.packed.PackedInts;
  * Looking up term vectors for any document requires at most 1 disk seek.
  * <p><b>File formats</b>
  * <ol>
- * <li><a name="vector_data" id="vector_data"></a>
+ * <li><a name="vector_data"></a>
  * <p>A vector data file (extension <tt>.tvd</tt>). This file stores terms,
  * frequencies, positions, offsets and payloads for every document. Upon writing
  * a new segment, it accumulates data into memory until the buffer used to store
@@ -58,8 +58,8 @@ import org.apache.lucene.util.packed.PackedInts;
  * {@link BlockPackedWriter blocks of packed ints} for positions.</p>
  * <p>Here is a more detailed description of the field data file format:</p>
  * <ul>
- * <li>VectorData (.tvd) --&gt; &lt;Header&gt;, PackedIntsVersion, ChunkSize, &lt;Chunk&gt;<sup>ChunkCount</sup>, Footer</li>
- * <li>Header --&gt; {@link CodecUtil#writeSegmentHeader SegmentHeader}</li>
+ * <li>VectorData (.tvd) --&gt; &lt;Header&gt;, PackedIntsVersion, ChunkSize, &lt;Chunk&gt;<sup>ChunkCount</sup>, ChunkCount, DirtyChunkCount, Footer</li>
+ * <li>Header --&gt; {@link CodecUtil#writeIndexHeader IndexHeader}</li>
  * <li>PackedIntsVersion --&gt; {@link PackedInts#VERSION_CURRENT} as a {@link DataOutput#writeVInt VInt}</li>
  * <li>ChunkSize is the number of bytes of terms to accumulate before flushing, as a {@link DataOutput#writeVInt VInt}</li>
  * <li>ChunkCount is not known in advance and is the number of chunks necessary to store all document of the segment</li>
@@ -106,14 +106,16 @@ import org.apache.lucene.util.packed.PackedInts;
  * <li>FieldTermsAndPayLoads --&gt; Terms (Payloads)</li>
  * <li>Terms: term bytes</li>
  * <li>Payloads: payload bytes (if the field has payloads)</li>
+ * <li>ChunkCount --&gt; the number of chunks in this file</li>
+ * <li>DirtyChunkCount --&gt; the number of prematurely flushed chunks in this file</li>
  * <li>Footer --&gt; {@link CodecUtil#writeFooter CodecFooter}</li>
  * </ul>
  * </li>
- * <li><a name="vector_index" id="vector_index"></a>
- * <p>An index file (extension <tt>.tvx</tt>).</p>
+ * <li><a name="vector_index"></a>
+ * <p>An index file (extension <tt>.tvx</tt>).
  * <ul>
  * <li>VectorIndex (.tvx) --&gt; &lt;Header&gt;, &lt;ChunkIndex&gt;, Footer</li>
- * <li>Header --&gt; {@link CodecUtil#writeSegmentHeader SegmentHeader}</li>
+ * <li>Header --&gt; {@link CodecUtil#writeIndexHeader IndexHeader}</li>
  * <li>ChunkIndex: See {@link CompressingStoredFieldsIndexWriter}</li>
  * <li>Footer --&gt; {@link CodecUtil#writeFooter CodecFooter}</li>
  * </ul>
@@ -125,7 +127,7 @@ public final class Lucene50TermVectorsFormat extends CompressingTermVectorsForma
 
   /** Sole constructor. */
   public Lucene50TermVectorsFormat() {
-    super("Lucene50TermVectors", "", CompressionMode.FAST, 1 << 12);
+    super("Lucene50TermVectors", "", CompressionMode.FAST, 1 << 12, 1024);
   }
 
 }

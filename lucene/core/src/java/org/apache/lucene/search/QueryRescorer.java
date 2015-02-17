@@ -17,12 +17,13 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.LeafReaderContext;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-
-import org.apache.lucene.index.LeafReaderContext;
 
 /** A {@link Rescorer} that uses a provided Query to assign
  *  scores to the first-pass hits.
@@ -60,7 +61,7 @@ public abstract class QueryRescorer extends Rescorer {
 
     List<LeafReaderContext> leaves = searcher.getIndexReader().leaves();
 
-    Weight weight = searcher.createNormalizedWeight(query);
+    Weight weight = searcher.createNormalizedWeight(query, true, PostingsEnum.FLAG_FREQS);
 
     // Now merge sort docIDs from hits, with reader's leaves:
     int hitUpto = 0;
@@ -82,7 +83,7 @@ public abstract class QueryRescorer extends Rescorer {
       if (readerContext != null) {
         // We advanced to another segment:
         docBase = readerContext.docBase;
-        scorer = weight.scorer(readerContext, Weight.PostingFeatures.DOCS_AND_FREQS, null);
+        scorer = weight.scorer(readerContext, null);
       }
 
       if(scorer != null) {

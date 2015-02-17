@@ -32,11 +32,12 @@ import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.asserting.AssertingCodec;
 import org.apache.lucene.codecs.asserting.AssertingDocValuesFormat;
 import org.apache.lucene.codecs.asserting.AssertingPostingsFormat;
-import org.apache.lucene.codecs.blocktreeords.Ords41PostingsFormat;
+import org.apache.lucene.codecs.blockterms.LuceneFixedGap;
+import org.apache.lucene.codecs.blockterms.LuceneVarGapDocFreqInterval;
+import org.apache.lucene.codecs.blockterms.LuceneVarGapFixedInterval;
+import org.apache.lucene.codecs.blocktreeords.BlockTreeOrdsPostingsFormat;
 import org.apache.lucene.codecs.bloom.TestBloomFilteredLucenePostings;
-import org.apache.lucene.codecs.lucene41ords.Lucene41WithOrds;
-import org.apache.lucene.codecs.lucene41vargap.Lucene41VarGapDocFreqInterval;
-import org.apache.lucene.codecs.lucene41vargap.Lucene41VarGapFixedInterval;
+import org.apache.lucene.codecs.memory.DirectDocValuesFormat;
 import org.apache.lucene.codecs.memory.DirectPostingsFormat;
 import org.apache.lucene.codecs.memory.FSTOrdPostingsFormat;
 import org.apache.lucene.codecs.memory.FSTPostingsFormat;
@@ -72,8 +73,8 @@ public class RandomCodec extends AssertingCodec {
 
   public final Set<String> avoidCodecs;
 
-  /** memorized field->postingsformat mappings */
-  // note: we have to sync this map even though its just for debugging/toString, 
+  /** memorized field to postingsformat mappings */
+  // note: we have to sync this map even though it's just for debugging/toString, 
   // otherwise DWPT's .toString() calls that iterate over the map can 
   // cause concurrentmodificationexception if indexwriter's infostream is on
   private Map<String,PostingsFormat> previousMappings = Collections.synchronizedMap(new HashMap<String,PostingsFormat>());
@@ -127,24 +128,25 @@ public class RandomCodec extends AssertingCodec {
         new FSTOrdPostingsFormat(),
         new DirectPostingsFormat(LuceneTestCase.rarely(random) ? 1 : (LuceneTestCase.rarely(random) ? Integer.MAX_VALUE : maxItemsPerBlock),
                                  LuceneTestCase.rarely(random) ? 1 : (LuceneTestCase.rarely(random) ? Integer.MAX_VALUE : lowFreqCutoff)),
-        //TODO as a PostingsFormat which wraps others, we should allow TestBloomFilteredLucene41Postings to be constructed 
+        //TODO as a PostingsFormat which wraps others, we should allow TestBloomFilteredLucenePostings to be constructed 
         //with a choice of concrete PostingsFormats. Maybe useful to have a generic means of marking and dealing 
         //with such "wrapper" classes?
         new TestBloomFilteredLucenePostings(),                
         new MockRandomPostingsFormat(random),
-        new Ords41PostingsFormat(minItemsPerBlock, maxItemsPerBlock),
-        new Lucene41WithOrds(TestUtil.nextInt(random, 1, 1000)),
-        new Lucene41VarGapFixedInterval(TestUtil.nextInt(random, 1, 1000)),
-        new Lucene41VarGapDocFreqInterval(TestUtil.nextInt(random, 1, 100), TestUtil.nextInt(random, 1, 1000)),
-        new SimpleTextPostingsFormat(),
+        new BlockTreeOrdsPostingsFormat(minItemsPerBlock, maxItemsPerBlock),
+        new LuceneFixedGap(TestUtil.nextInt(random, 1, 1000)),
+        new LuceneVarGapFixedInterval(TestUtil.nextInt(random, 1, 1000)),
+        new LuceneVarGapDocFreqInterval(TestUtil.nextInt(random, 1, 100), TestUtil.nextInt(random, 1, 1000)),
+        random.nextInt(10) == 0 ? new SimpleTextPostingsFormat() : TestUtil.getDefaultPostingsFormat(),
         new AssertingPostingsFormat(),
         new MemoryPostingsFormat(true, random.nextFloat()),
         new MemoryPostingsFormat(false, random.nextFloat()));
     
     addDocValues(avoidCodecs,
         TestUtil.getDefaultDocValuesFormat(),
+        new DirectDocValuesFormat(), // maybe not a great idea...
         new MemoryDocValuesFormat(),
-        new SimpleTextDocValuesFormat(),
+        random.nextInt(10) == 0 ? new SimpleTextDocValuesFormat() : TestUtil.getDefaultDocValuesFormat(),
         new AssertingDocValuesFormat());
 
     Collections.shuffle(formats, random);

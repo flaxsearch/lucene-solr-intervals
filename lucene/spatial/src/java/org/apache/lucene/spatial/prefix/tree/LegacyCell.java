@@ -25,7 +25,7 @@ import org.apache.lucene.util.StringHelper;
 
 import java.util.Collection;
 
-/** The base for the original two SPT's: Geohash & Quad. Don't subclass this for new SPTs.
+/** The base for the original two SPT's: Geohash and Quad. Don't subclass this for new SPTs.
  * @lucene.internal */
 //public for RPT pruneLeafyBranches code
 public abstract class LegacyCell implements Cell {
@@ -154,7 +154,7 @@ public abstract class LegacyCell implements Cell {
   /**
    * Performant implementations are expected to implement this efficiently by
    * considering the current cell's boundary.
-   * <p/>
+   * <p>
    * Precondition: Never called when getLevel() == maxLevel.
    * Precondition: this.getShape().relate(p) != DISJOINT.
    */
@@ -169,7 +169,7 @@ public abstract class LegacyCell implements Cell {
   protected abstract Collection<Cell> getSubCells();
 
   /**
-   * {@link #getSubCells()}.size() -- usually a constant. Should be >=2
+   * {@link #getSubCells()}.size() -- usually a constant. Should be &gt;=2
    */
   public abstract int getSubCellsSize();
 

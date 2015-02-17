@@ -18,14 +18,19 @@ package org.apache.lucene.codecs.asserting;
  */
 
 import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.index.BaseDocValuesFormatTestCase;
+import org.apache.lucene.index.BasePostingsFormatTestCase;
 
-/** Test AssertingDocValuesFormat directly */
-public class TestAssertingPostingsFormat extends BaseDocValuesFormatTestCase {
+/** Test AssertingPostingsFormat directly */
+public class TestAssertingPostingsFormat extends BasePostingsFormatTestCase {
   private final Codec codec = new AssertingCodec();
   
   @Override
   protected Codec getCodec() {
     return codec;
-  } 
+  }
+
+  @Override
+  protected boolean isPostingsEnumReuseImplemented() {
+    return false;
+  }
 }

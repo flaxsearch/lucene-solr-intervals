@@ -17,28 +17,6 @@
 
 package org.apache.solr.client.solrj.embedded;
 
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.EnumSet;
-import java.util.LinkedList;
-import java.util.Random;
-import java.util.SortedMap;
-import java.util.TreeMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-
-import javax.servlet.DispatcherType;
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
 import org.apache.solr.servlet.SolrDispatchFilter;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
@@ -57,12 +35,36 @@ import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 
+import javax.servlet.DispatcherType;
+import javax.servlet.Filter;
+import javax.servlet.FilterChain;
+import javax.servlet.FilterConfig;
+import javax.servlet.ServletException;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.EnumSet;
+import java.util.LinkedList;
+import java.util.Random;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
  * Run solr using jetty
  * 
  * @since solr 1.3
  */
 public class JettySolrRunner {
+
+  private static final AtomicLong JETTY_ID_COUNTER = new AtomicLong();
+
   Server server;
 
   FilterHolder dispatchFilter;
@@ -72,6 +74,7 @@ public class JettySolrRunner {
 
   private String solrConfigFilename;
   private String schemaFilename;
+  private final String coreRootDirectory;
 
   private boolean waitOnSolr = false;
 
@@ -89,6 +92,8 @@ public class JettySolrRunner {
   private boolean stopAtShutdown;
 
   private String coreNodeName;
+
+  private final String name;
 
   /** Maps servlet holders (i.e. factories: class + init params) to path specs */
   private SortedMap<ServletHolder,String> extraServlets = new TreeMap<>();
@@ -148,12 +153,16 @@ public class JettySolrRunner {
 
   public JettySolrRunner(String solrHome, String context, int port) {
     this.init(solrHome, context, port, true);
+    this.name = "jetty-" + JETTY_ID_COUNTER.incrementAndGet();
+    this.coreRootDirectory = System.getProperty("coreRootDirectory", null);
   }
 
   public JettySolrRunner(String solrHome, String context, int port, String solrConfigFilename, String schemaFileName) {
     this.init(solrHome, context, port, true);
     this.solrConfigFilename = solrConfigFilename;
     this.schemaFilename = schemaFileName;
+    this.name = "jetty-" + JETTY_ID_COUNTER.incrementAndGet();
+    this.coreRootDirectory = System.getProperty("coreRootDirectory", null);
   }
   
   public JettySolrRunner(String solrHome, String context, int port,
@@ -161,10 +170,12 @@ public class JettySolrRunner {
     this.init(solrHome, context, port, stopAtShutdown);
     this.solrConfigFilename = solrConfigFilename;
     this.schemaFilename = schemaFileName;
+    this.name = "jetty-" + JETTY_ID_COUNTER.incrementAndGet();
+    this.coreRootDirectory = System.getProperty("coreRootDirectory", null);
   }
 
   /**
-   * Constructor taking an ordered list of additional (servlet holder -> path spec) mappings
+   * Constructor taking an ordered list of additional (servlet holder -&gt; path spec) mappings
    * to add to the servlet context
    */
   public JettySolrRunner(String solrHome, String context, int port,
@@ -182,7 +193,7 @@ public class JettySolrRunner {
   }
 
   /**
-   * Constructor taking an ordered list of additional (filter holder -> path spec) mappings.
+   * Constructor taking an ordered list of additional (filter holder -&gt; path spec) mappings.
    * Filters are placed after the DebugFilter but before the SolrDispatchFilter.
    */
   public JettySolrRunner(String solrHome, String context, int port,
@@ -198,6 +209,9 @@ public class JettySolrRunner {
     this.schemaFilename = schemaFileName;
     this.sslConfig = sslConfig;
 
+    this.name = "jetty-" + JETTY_ID_COUNTER.incrementAndGet();
+    this.coreRootDirectory = System.getProperty("coreRootDirectory", null);
+
     this.init(solrHome, context, port, stopAtShutdown);
   }
   
@@ -211,6 +225,7 @@ public class JettySolrRunner {
     if (!stopAtShutdown) {
       server.setGracefulShutdown(0);
     }
+
     System.setProperty("solr.solr.home", solrHome);
     if (System.getProperty("jetty.testMode") != null) {
       final String connectorName = System.getProperty("tests.jettyConnector", "SelectChannel");
@@ -254,7 +269,7 @@ public class JettySolrRunner {
       // Connectors by default inherit server's thread pool.
       QueuedThreadPool qtp = new QueuedThreadPool();
       qtp.setMaxThreads(10000);
-      qtp.setMaxIdleTimeMs((int) TimeUnit.SECONDS.toMillis(5));
+      qtp.setMaxIdleTimeMs((int) TimeUnit.MILLISECONDS.toMillis(200));
       qtp.setMaxStopTimeMs((int) TimeUnit.MINUTES.toMillis(1));
       server.setThreadPool(qtp);
 
@@ -300,6 +315,8 @@ public class JettySolrRunner {
             solrConfigFilename);
         if (schemaFilename != null) System.setProperty("schema", 
             schemaFilename);
+        if (coreRootDirectory != null)
+          System.setProperty("coreRootDirectory", coreRootDirectory);
 //        SolrDispatchFilter filter = new SolrDispatchFilter();
 //        FilterHolder fh = new FilterHolder(filter);
         debugFilter = root.addFilter(DebugFilter.class, "*", EnumSet.of(DispatcherType.REQUEST) );

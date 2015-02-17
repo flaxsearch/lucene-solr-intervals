@@ -46,7 +46,7 @@ public final class BitUtil {
   // packed inside a 32 bit integer (8 4 bit numbers).  That
   // should be faster than accessing an array for each index, and
   // the total array size is kept smaller (256*sizeof(int))=1K
-  /***** the python code that generated bitlist
+  /* the python code that generated bitlist
   def bits2int(val):
   arr=0
   for shift in range(8,0,-1):
@@ -58,7 +58,7 @@ public final class BitUtil {
   def int_table():
     tbl = [ hex(bits2int(val)).strip('L') for val in range(256) ]
     return ','.join(tbl)
-  ******/
+  */
   private static final int[] BIT_LISTS = {
     0x0, 0x1, 0x2, 0x21, 0x3, 0x31, 0x32, 0x321, 0x4, 0x41, 0x42, 0x421, 0x43, 
     0x431, 0x432, 0x4321, 0x5, 0x51, 0x52, 0x521, 0x53, 0x531, 0x532, 0x5321, 
@@ -98,12 +98,12 @@ public final class BitUtil {
   }
 
   /** Return the list of bits which are set in b encoded as followed:
-   * <code>(i >>> (4 * n)) & 0x0F</code> is the offset of the n-th set bit of
+   * {@code (i >>> (4 * n)) & 0x0F} is the offset of the n-th set bit of
    * the given byte plus one, or 0 if there are n or less bits set in the given
    * byte. For example <code>bitList(12)</code> returns 0x43:<ul>
-   * <li><code>0x43 & 0x0F</code> is 3, meaning the the first bit set is at offset 3-1 = 2,</li>
-   * <li><code>(0x43 >>> 4) & 0x0F</code> is 4, meaning there is a second bit set at offset 4-1=3,</li>
-   * <li><code>(0x43 >>> 8) & 0x0F</code> is 0, meaning there is no more bit set in this byte.</li>
+   * <li>{@code 0x43 & 0x0F} is 3, meaning the the first bit set is at offset 3-1 = 2,</li>
+   * <li>{@code (0x43 >>> 4) & 0x0F} is 4, meaning there is a second bit set at offset 4-1=3,</li>
+   * <li>{@code (0x43 >>> 8) & 0x0F} is 0, meaning there is no more bit set in this byte.</li>
    * </ul>*/
   public static int bitList(byte b) {
     return BIT_LISTS[b & 0xFF];
@@ -142,7 +142,7 @@ public final class BitUtil {
      return popCount;
    }
 
-  /** Returns the popcount or cardinality of A & ~B.
+  /** Returns the popcount or cardinality of {@code A & ~B}.
    *  Neither array is modified. */
   public static long pop_andnot(long[] arr1, long[] arr2, int wordOffset, int numWords) {
     long popCount = 0;
@@ -212,4 +212,64 @@ public final class BitUtil {
      return ((l >>> 1) ^ -(l & 1));
    }
 
+
+  /** Select a 1-bit from a long. See also LUCENE-6040.
+   * @return The index of the r-th 1 bit in x. This bit must exist.
+   */
+  public static int select(long x, int r) {
+    long s = x - ((x & 0xAAAAAAAAAAAAAAAAL) >>> 1); // pairwise bitsums
+    s = (s & 0x3333333333333333L) + ((s >>> 2) & 0x3333333333333333L); // nibblewise bitsums
+    s = ((s + (s >>> 4)) & 0x0F0F0F0F0F0F0F0FL) * L8_L; // bytewise bitsums, cumulative
+
+    int b = (Long.numberOfTrailingZeros((s + psOverflow[r-1]) & (L8_L << 7)) >> 3) << 3; // bit position of byte with r-th 1 bit.
+    long l = r - (((s << 8) >>> b) & 0xFFL); // bit rank in byte at b
+
+    // Select bit l from byte (x >>> b):
+    int selectIndex = (int) (((x >>> b) & 0xFFL) | ((l-1) << 8));
+    int res = b + select256[selectIndex];
+    return res;
+  }
+
+  private final static long L8_L = 0x0101010101010101L;
+
+  private static final long[] psOverflow = new long[64];
+  static {
+    for (int s = 1; s <= 64; s++) {
+      psOverflow[s-1] = (128-s) * L8_L;
+    }
+  }
+
+  private static final byte[] select256 = new byte[8 * 256];
+  static {
+    for (int b = 0; b <= 0xFF; b++) {
+      for (int s = 1; s <= 8; s++) {
+        int byteIndex = b | ((s-1) << 8);
+        int bitIndex = selectNaive(b, s);
+        if (bitIndex < 0) {
+          bitIndex = 127; // positive as byte
+        }
+        assert bitIndex >= 0;
+        assert ((byte) bitIndex) >= 0; // non negative as byte, no need to mask the sign
+        select256[byteIndex] = (byte) bitIndex;
+      }
+    }
+  }
+
+  /**
+   * Naive implementation of {@link #select(long,int)}, using {@link Long#numberOfTrailingZeros} repetitively.
+   * Works relatively fast for low ranks.
+   * @return The index of the r-th 1 bit in x, or -1 if no such bit exists.
+   */
+  public static int selectNaive(long x, int r) {
+    assert r >= 1;
+    int s = -1;
+    while ((x != 0L) && (r > 0)) {
+      int ntz = Long.numberOfTrailingZeros(x);
+      x >>>= (ntz + 1);
+      s += (ntz + 1);
+      r -= 1;
+    }
+    int res = (r > 0) ? -1 : s;
+    return res;
+  }
 }

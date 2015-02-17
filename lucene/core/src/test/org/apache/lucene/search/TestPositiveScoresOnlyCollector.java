@@ -17,13 +17,15 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.document.Document;
 
 import java.io.IOException;
 
@@ -42,6 +44,26 @@ public class TestPositiveScoresOnlyCollector extends LuceneTestCase {
     
     @Override public int freq() {
       return 1;
+    }
+
+    @Override
+    public int nextPosition() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return null;
     }
 
     @Override public int docID() { return idx; }
@@ -92,9 +114,9 @@ public class TestPositiveScoresOnlyCollector extends LuceneTestCase {
     IndexReader ir = writer.getReader();
     writer.close();
     IndexSearcher searcher = newSearcher(ir);
-    Weight fake = new TermQuery(new Term("fake", "weight")).createWeight(searcher);
+    Weight fake = new TermQuery(new Term("fake", "weight")).createWeight(searcher, true, PostingsEnum.FLAG_FREQS);
     Scorer s = new SimpleScorer(fake);
-    TopDocsCollector<ScoreDoc> tdc = TopScoreDocCollector.create(scores.length, true);
+    TopDocsCollector<ScoreDoc> tdc = TopScoreDocCollector.create(scores.length);
     Collector c = new PositiveScoresOnlyCollector(tdc);
     LeafCollector ac = c.getLeafCollector(ir.leaves().get(0));
     ac.setScorer(s);

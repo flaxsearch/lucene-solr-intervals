@@ -70,7 +70,10 @@ public abstract class CompressionMode {
 
     @Override
     public Compressor newCompressor() {
-      return new DeflateCompressor(Deflater.BEST_COMPRESSION);
+      // notes:
+      // 3 is the highest level that doesn't have lazy match evaluation
+      // 6 is the default, higher than that is just a waste of cpu
+      return new DeflateCompressor(6);
     }
 
     @Override
@@ -185,7 +188,7 @@ public abstract class CompressionMode {
     byte[] compressed;
 
     DeflateDecompressor() {
-      decompressor = new Inflater();
+      decompressor = new Inflater(true);
       compressed = new byte[0];
     }
 
@@ -197,29 +200,27 @@ public abstract class CompressionMode {
         return;
       }
       final int compressedLength = in.readVInt();
-      if (compressedLength > compressed.length) {
-        compressed = new byte[ArrayUtil.oversize(compressedLength, 1)];
-      }
+      // pad with extra "dummy byte": see javadocs for using Inflater(true)
+      // we do it for compliance, but it's unnecessary for years in zlib.
+      final int paddedLength = compressedLength + 1;
+      compressed = ArrayUtil.grow(compressed, paddedLength);
       in.readBytes(compressed, 0, compressedLength);
+      compressed[compressedLength] = 0; // explicitly set dummy byte to 0
 
       decompressor.reset();
-      decompressor.setInput(compressed, 0, compressedLength);
+      // extra "dummy byte"
+      decompressor.setInput(compressed, 0, paddedLength);
 
       bytes.offset = bytes.length = 0;
-      while (true) {
-        final int count;
-        try {
-          final int remaining = bytes.bytes.length - bytes.length;
-          count = decompressor.inflate(bytes.bytes, bytes.length, remaining);
-        } catch (DataFormatException e) {
-          throw new IOException(e);
-        }
-        bytes.length += count;
-        if (decompressor.finished()) {
-          break;
-        } else {
-          bytes.bytes = ArrayUtil.grow(bytes.bytes);
-        }
+      bytes.bytes = ArrayUtil.grow(bytes.bytes, originalLength);
+      try {
+        bytes.length = decompressor.inflate(bytes.bytes, bytes.length, originalLength);
+      } catch (DataFormatException e) {
+        throw new IOException(e);
+      }
+      if (!decompressor.finished()) {
+        throw new CorruptIndexException("Invalid decoder state: needsInput=" + decompressor.needsInput() 
+                                                            + ", needsDict=" + decompressor.needsDictionary(), in);
       }
       if (bytes.length != originalLength) {
         throw new CorruptIndexException("Lengths mismatch: " + bytes.length + " != " + originalLength, in);
@@ -241,7 +242,7 @@ public abstract class CompressionMode {
     byte[] compressed;
 
     DeflateCompressor(int level) {
-      compressor = new Deflater(level);
+      compressor = new Deflater(level, true);
       compressed = new byte[64];
     }
 

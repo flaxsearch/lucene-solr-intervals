@@ -19,12 +19,12 @@ package org.apache.solr.cloud;
 
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.common.params.CollectionParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
-import org.junit.Before;
+import org.junit.Test;
 
 import java.io.IOException;
 
@@ -36,14 +36,8 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
     schemaString = "schema15.xml";      // we need a string id
   }
 
-  @Override
-  @Before
-  public void setUp() throws Exception {
-    super.setUp();
-
-  }
-
-  public void doTest() {
+  @Test
+  public void test() throws Exception {
     ModifiableSolrParams params = new ModifiableSolrParams();
 
     params.set(CollectionParams.ACTION, CollectionParams.CollectionAction.CREATE.toString());
@@ -55,9 +49,7 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
     params.set("async", "1000");
     try {
       sendRequest(params);
-    } catch (SolrServerException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
+    } catch (SolrServerException | IOException e) {
       e.printStackTrace();
     }
 
@@ -74,9 +66,7 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
 
     try {
       message = sendStatusRequestWithRetry(params, MAX_WAIT_TIMEOUT_SECONDS);
-    } catch (SolrServerException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
+    } catch (SolrServerException | IOException e) {
       e.printStackTrace();
     }
 
@@ -90,9 +80,7 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
       r = sendRequest(params);
       status = (NamedList) r.get("status");
       message = (String) status.get("msg");
-    } catch (SolrServerException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
+    } catch (SolrServerException | IOException e) {
       e.printStackTrace();
     }
 
@@ -105,9 +93,7 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
     params.set("async", "1001");
     try {
       sendRequest(params);
-    } catch (SolrServerException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
+    } catch (SolrServerException | IOException e) {
       e.printStackTrace();
     }
 
@@ -117,9 +103,7 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
       params.set(OverseerCollectionProcessor.REQUESTID, "1001");
     try {
       message = sendStatusRequestWithRetry(params, MAX_WAIT_TIMEOUT_SECONDS);
-    } catch (SolrServerException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
+    } catch (SolrServerException | IOException e) {
       e.printStackTrace();
     }
 
@@ -135,9 +119,7 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
       params.set("async", "1002");
     try {
       sendRequest(params);
-    } catch (SolrServerException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
+    } catch (SolrServerException | IOException e) {
       e.printStackTrace();
     }
 
@@ -149,9 +131,7 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
 
     try {
       message = sendStatusRequestWithRetry(params, MAX_WAIT_TIMEOUT_SECONDS);
-    } catch (SolrServerException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
+    } catch (SolrServerException | IOException e) {
       e.printStackTrace();
     }
 
@@ -168,9 +148,7 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
       params.set("async", "1002");
     try {
       r = sendRequest(params);
-    } catch (SolrServerException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
+    } catch (SolrServerException | IOException e) {
       e.printStackTrace();
     }
 
@@ -214,12 +192,14 @@ public class TestRequestStatusCollectionAPI extends BasicDistributedZkTest {
     SolrRequest request = new QueryRequest(params);
     request.setPath("/admin/collections");
 
-    String baseUrl = ((HttpSolrServer) shardToJetty.get(SHARD1).get(0).client.solrClient)
+    String baseUrl = ((HttpSolrClient) shardToJetty.get(SHARD1).get(0).client.solrClient)
         .getBaseURL();
     baseUrl = baseUrl.substring(0, baseUrl.length() - "collection1".length());
 
-    HttpSolrServer baseServer = new HttpSolrServer(baseUrl);
-    baseServer.setConnectionTimeout(15000);
-    return baseServer.request(request);
+    try (HttpSolrClient baseServer = new HttpSolrClient(baseUrl)) {
+      baseServer.setConnectionTimeout(15000);
+      return baseServer.request(request);
+    }
+
   }
 }

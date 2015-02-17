@@ -109,7 +109,7 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
     }
   }
 
-  /** Sets an index term when docFreq >= docFreqThresh, or
+  /** Sets an index term when docFreq &gt;= docFreqThresh, or
    *  every interval terms.  This should reduce seek time
    *  to high docFreq terms.  */
   public static final class EveryNOrDocFreqTermSelector extends IndexTermSelector {
@@ -182,7 +182,7 @@ public class VariableGapTermsIndexWriter extends TermsIndexWriterBase {
     try {
       fieldInfos = state.fieldInfos;
       this.policy = policy;
-      CodecUtil.writeSegmentHeader(out, CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+      CodecUtil.writeIndexHeader(out, CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
       success = true;
     } finally {
       if (!success) {

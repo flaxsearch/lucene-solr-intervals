@@ -17,6 +17,8 @@ package org.apache.lucene.spatial.prefix;
  * limitations under the License.
  */
 
+import java.io.IOException;
+
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.distance.DistanceUtils;
 import com.spatial4j.core.shape.Circle;
@@ -29,10 +31,9 @@ import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.spatial.prefix.tree.Cell;
 import org.apache.lucene.spatial.prefix.tree.CellIterator;
 import org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
-
-import java.io.IOException;
 
 /**
  * Finds docs where its indexed shape is {@link org.apache.lucene.spatial.query.SpatialOperation#IsWithin
@@ -59,18 +60,46 @@ public class WithinPrefixTreeFilter extends AbstractVisitingPrefixTreeFilter {
   private final Shape bufferedQueryShape;//if null then the whole world
 
   /**
-   * See {@link AbstractVisitingPrefixTreeFilter#AbstractVisitingPrefixTreeFilter(com.spatial4j.core.shape.Shape, String, org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree, int, int)}.
+   * See {@link AbstractVisitingPrefixTreeFilter#AbstractVisitingPrefixTreeFilter(com.spatial4j.core.shape.Shape, String, org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree, int, int, boolean)}.
    * {@code queryBuffer} is the (minimum) distance beyond the query shape edge
    * where non-matching documents are looked for so they can be excluded. If
    * -1 is used then the whole world is examined (a good default for correctness).
    */
   public WithinPrefixTreeFilter(Shape queryShape, String fieldName, SpatialPrefixTree grid,
-                                int detailLevel, int prefixGridScanLevel, double queryBuffer) {
-    super(queryShape, fieldName, grid, detailLevel, prefixGridScanLevel);
-    if (queryBuffer == -1)
-      this.bufferedQueryShape = null;
-    else
-      this.bufferedQueryShape = bufferShape(queryShape, queryBuffer);
+                                int detailLevel, int prefixGridScanLevel, boolean hasIndexedLeaves,
+                                double queryBuffer) {
+    super(queryShape, fieldName, grid, detailLevel, prefixGridScanLevel, hasIndexedLeaves);
+    this.bufferedQueryShape = queryBuffer == -1 ? null : bufferShape(queryShape, queryBuffer);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (!super.equals(o)) return false;//checks getClass == o.getClass & instanceof
+
+    WithinPrefixTreeFilter that = (WithinPrefixTreeFilter) o;
+
+    if (bufferedQueryShape != null ? !bufferedQueryShape.equals(that.bufferedQueryShape) : that.bufferedQueryShape != null)
+      return false;
+
+    return true;
+  }
+
+  @Override
+  public int hashCode() {
+    int result = super.hashCode();
+    result = 31 * result + (bufferedQueryShape != null ? bufferedQueryShape.hashCode() : 0);
+    return result;
+  }
+  
+  @Override
+  public String toString(String field) {
+    return "WithinPrefixTreeFilter(" +
+             // TODO: print something about the shape?
+             "fieldName=" + fieldName + "," +
+             "detailLevel=" + detailLevel + "," +
+             "prefixGridScanLevel=" + prefixGridScanLevel + "," +
+             "hasIndexedLeaves=" + hasIndexedLeaves +
+           ")";
   }
 
   /** Returns a new shape that is larger than shape by at distErr.
@@ -120,7 +149,7 @@ public class WithinPrefixTreeFilter extends AbstractVisitingPrefixTreeFilter {
 
   @Override
   public DocIdSet getDocIdSet(LeafReaderContext context, Bits acceptDocs) throws IOException {
-    return new VisitorTemplate(context, acceptDocs, true) {
+    return new VisitorTemplate(context, acceptDocs) {
       private FixedBitSet inside;
       private FixedBitSet outside;
       private SpatialRelation visitRelation;
@@ -134,7 +163,7 @@ public class WithinPrefixTreeFilter extends AbstractVisitingPrefixTreeFilter {
       @Override
       protected DocIdSet finish() {
         inside.andNot(outside);
-        return inside;
+        return new BitDocIdSet(inside);
       }
 
       @Override
@@ -163,7 +192,10 @@ public class WithinPrefixTreeFilter extends AbstractVisitingPrefixTreeFilter {
 
       @Override
       protected void visitLeaf(Cell cell) throws IOException {
-        //visitRelation is declared as a field, populated by visit() so we don't recompute it
+        //visitRelation is declared as a field, populated by visit() so we don't recompute it.
+        // We have a specialized visitScanned() which doesn't call this. If we didn't, we would
+        // not be able to assume visitRelation is from a prior visit() call since in scanning,
+        // parent cells aren't visited.
         assert detailLevel != cell.getLevel();
         assert visitRelation == cell.getShape().relate(queryShape);
         if (allCellsIntersectQuery(cell, visitRelation))
@@ -197,6 +229,7 @@ public class WithinPrefixTreeFilter extends AbstractVisitingPrefixTreeFilter {
 
       @Override
       protected void visitScanned(Cell cell) throws IOException {
+        //slightly optimize over default impl; required for our 'visitRelation' field re-use above
         if (allCellsIntersectQuery(cell, null)) {
           collectDocs(inside);
         } else {

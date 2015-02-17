@@ -17,15 +17,28 @@
 
 package org.apache.solr.search;
 
+import com.carrotsearch.hppc.IntFloatOpenHashMap;
 import com.carrotsearch.hppc.IntIntOpenHashMap;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.MatchAllDocsQuery;
-import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryRescorer;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopDocsCollector;
 import org.apache.lucene.search.TopFieldCollector;
 import org.apache.lucene.search.TopScoreDocCollector;
+import org.apache.lucene.search.Weight;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.SolrParams;
@@ -33,26 +46,13 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.handler.component.MergeStrategy;
 import org.apache.solr.handler.component.QueryElevationComponent;
 import org.apache.solr.request.SolrQueryRequest;
-
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.Weight;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Sort;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.search.ScoreDoc;
-import com.carrotsearch.hppc.IntFloatOpenHashMap;
-
-import org.apache.lucene.util.Bits;
 import org.apache.solr.request.SolrRequestInfo;
 
 import java.io.IOException;
-import java.util.Map;
-import java.util.Set;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Map;
+import java.util.Set;
 
 /*
 *
@@ -151,15 +151,12 @@ public class ReRankQParserPlugin extends QParserPlugin {
       return new ReRankCollector(reRankDocs, length, reRankQuery, reRankWeight, cmd, searcher, boostedPriority);
     }
 
+    @Override
     public String toString(String s) {
       return "{!rerank mainQuery='"+mainQuery.toString()+
              "' reRankQuery='"+reRankQuery.toString()+
              "' reRankDocs="+reRankDocs+
              " reRankWeigh="+reRankWeight+"}";
-    }
-
-    public String toString() {
-      return toString(null);
     }
 
     public Query rewrite(IndexReader reader) throws IOException {
@@ -172,8 +169,8 @@ public class ReRankQParserPlugin extends QParserPlugin {
 
     }
 
-    public Weight createWeight(IndexSearcher searcher) throws IOException{
-      return new ReRankWeight(mainQuery, reRankQuery, reRankWeight, searcher);
+    public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException{
+      return new ReRankWeight(mainQuery, reRankQuery, reRankWeight, searcher, needsScores);
     }
   }
 
@@ -183,23 +180,20 @@ public class ReRankQParserPlugin extends QParserPlugin {
     private Weight mainWeight;
     private double reRankWeight;
 
-    public ReRankWeight(Query mainQuery, Query reRankQuery, double reRankWeight, IndexSearcher searcher) throws IOException {
+    public ReRankWeight(Query mainQuery, Query reRankQuery, double reRankWeight, IndexSearcher searcher, boolean needsScores) throws IOException {
+      super(mainQuery);
       this.reRankQuery = reRankQuery;
       this.searcher = searcher;
       this.reRankWeight = reRankWeight;
-      this.mainWeight = mainQuery.createWeight(searcher);
+      this.mainWeight = mainQuery.createWeight(searcher, needsScores, PostingsEnum.FLAG_FREQS);
     }
 
     public float getValueForNormalization() throws IOException {
       return mainWeight.getValueForNormalization();
     }
 
-    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits bits) throws IOException {
-      return mainWeight.scorer(context, flags, bits);
-    }
-
-    public Query getQuery() {
-      return mainWeight.getQuery();
+    public Scorer scorer(LeafReaderContext context, Bits bits) throws IOException {
+      return mainWeight.scorer(context, bits);
     }
 
     public void normalize(float norm, float topLevelBoost) {
@@ -246,33 +240,27 @@ public class ReRankQParserPlugin extends QParserPlugin {
       this.boostedPriority = boostedPriority;
       Sort sort = cmd.getSort();
       if(sort == null) {
-        this.mainCollector = TopScoreDocCollector.create(Math.max(this.reRankDocs, length),true);
+        this.mainCollector = TopScoreDocCollector.create(Math.max(this.reRankDocs, length));
       } else {
         sort = sort.rewrite(searcher);
-        this.mainCollector = TopFieldCollector.create(sort, Math.max(this.reRankDocs, length), false, true, true, true);
+        this.mainCollector = TopFieldCollector.create(sort, Math.max(this.reRankDocs, length), false, true, true);
       }
       this.searcher = searcher;
       this.reRankWeight = reRankWeight;
     }
 
-    public boolean acceptsDocsOutOfOrder() {
-      return false;
-    }
-
-    public void collect(int doc) throws IOException {
-      mainCollector.collect(doc);
-    }
-
-    public void setScorer(Scorer scorer) throws IOException{
-      mainCollector.setScorer(scorer);
-    }
-
-    public void doSetNextReader(LeafReaderContext context) throws IOException{
-      mainCollector.getLeafCollector(context);
-    }
-
     public int getTotalHits() {
       return mainCollector.getTotalHits();
+    }
+
+    @Override
+    public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+      return mainCollector.getLeafCollector(context);
+    }
+
+    @Override
+    public boolean needsScores() {
+      return true;
     }
 
     public TopDocs topDocs(int start, int howMany) {
@@ -387,6 +375,7 @@ public class ReRankQParserPlugin extends QParserPlugin {
         throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
       }
     }
+
   }
 
   public class BoostedComp implements Comparator {

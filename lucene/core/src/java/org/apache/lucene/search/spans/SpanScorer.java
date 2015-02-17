@@ -21,6 +21,7 @@ import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
 
@@ -97,7 +98,27 @@ public class SpanScorer extends Scorer {
   public int freq() throws IOException {
     return numMatches;
   }
-  
+
+  @Override
+  public int nextPosition() throws IOException {
+    throw new UnsupportedOperationException("SpanQueries do not support nextPosition() iteration");
+  }
+
+  @Override
+  public int startOffset() throws IOException {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public int endOffset() throws IOException {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public BytesRef getPayload() throws IOException {
+    throw new UnsupportedOperationException();
+  }
+
   /** Returns the intermediate "sloppy freq" adjusted for edit distance 
    *  @lucene.internal */
   // only public so .payloads can see it.
@@ -114,4 +135,5 @@ public class SpanScorer extends Scorer {
   public long cost() {
     return spans.cost();
   }
+
 }

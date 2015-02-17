@@ -29,7 +29,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.impl.HttpClientUtil;
-import org.apache.solr.client.solrj.impl.LBHttpSolrServer;
+import org.apache.solr.client.solrj.impl.LBHttpSolrClient;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.Replica;
@@ -41,6 +41,7 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.util.SSLTestConfig;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.junit.Test;
 
 /**
  * We want to make sure that when migrating between http and https modes the
@@ -51,9 +52,9 @@ import org.apache.lucene.util.LuceneTestCase.Slow;
 @SuppressSSL
 @BadApple(bugUrl = "https://issues.apache.org/jira/browse/SOLR-6213")
 public class SSLMigrationTest extends AbstractFullDistribZkTestBase {
-  
-  @Override
-  public void doTest() throws Exception {
+
+  @Test
+  public void test() throws Exception {
     //Migrate from HTTP -> HTTPS -> HTTP
     assertReplicaInformation("http");
     testMigrateSSL(new SSLTestConfig(true, false));
@@ -115,7 +116,7 @@ public class SSLMigrationTest extends AbstractFullDistribZkTestBase {
       urls.add(replica.getStr(ZkStateReader.BASE_URL_PROP));
     }
     //Create new SolrServer to configure new HttpClient w/ SSL config
-    new LBHttpSolrServer(urls.toArray(new String[]{})).request(request);
+    new LBHttpSolrClient(urls.toArray(new String[]{})).request(request);
   }
   
 }

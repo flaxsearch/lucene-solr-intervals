@@ -252,7 +252,7 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
    * <p>
    * Returns a ValueSource over this field in which the numeric value for 
    * each document represents the indexed value as converted to the default 
-   * currency for the field, normalized to it's most granular form based 
+   * currency for the field, normalized to its most granular form based 
    * on the default fractional digits.
    * </p>
    * <p>
@@ -836,13 +836,7 @@ class FileExchangeRateProvider implements ExchangeRateProvider {
           
           addRate(tmpRates, fromCurrency, toCurrency, exchangeRate);
         }
-      } catch (SAXException e) {
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error parsing currency config.", e);
-      } catch (IOException e) {
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error parsing currency config.", e);
-      } catch (ParserConfigurationException e) {
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error parsing currency config.", e);
-      } catch (XPathExpressionException e) {
+      } catch (SAXException | XPathExpressionException | ParserConfigurationException | IOException e) {
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error parsing currency config.", e);
       }
     } catch (IOException e) {

@@ -80,7 +80,7 @@ public class ExportQParserPlugin extends QParserPlugin {
     }
 
     public Weight createWeight(IndexSearcher searcher) throws IOException {
-      return mainQuery.createWeight(searcher);
+      return mainQuery.createWeight(searcher, true, PostingsEnum.FLAG_FREQS);
     }
 
     public Query rewrite(IndexReader reader) throws IOException {
@@ -128,29 +128,35 @@ public class ExportQParserPlugin extends QParserPlugin {
   private class ExportCollector extends TopDocsCollector  {
 
     private FixedBitSet[] sets;
-    private FixedBitSet set;
 
     public ExportCollector(FixedBitSet[] sets) {
       super(null);
       this.sets = sets;
     }
-    
-    public void doSetNextReader(LeafReaderContext context) throws IOException {
-      this.set = new FixedBitSet(context.reader().maxDoc());
-      this.sets[context.ord] = set;
 
-    }
-    
-    public void collect(int docId) throws IOException{
-      ++totalHits;
-      set.set(docId);
+    @Override
+    public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+      final FixedBitSet set = new FixedBitSet(context.reader().maxDoc());
+      this.sets[context.ord] = set;
+      return new LeafCollector() {
+        
+        @Override
+        public void setScorer(Scorer scorer) throws IOException {}
+        
+        @Override
+        public void collect(int docId) throws IOException{
+          ++totalHits;
+          set.set(docId);
+        }
+      };
     }
 
     private ScoreDoc[] getScoreDocs(int howMany) {
-      ScoreDoc[] docs = new ScoreDoc[howMany];
+      ScoreDoc[] docs = new ScoreDoc[Math.min(totalHits, howMany)];
       for(int i=0; i<docs.length; i++) {
         docs[i] = new ScoreDoc(i,0);
       }
+
       return docs;
     }
 
@@ -161,17 +167,16 @@ public class ExportQParserPlugin extends QParserPlugin {
         Map context = req.getContext();
         context.put("export", sets);
         context.put("totalHits", totalHits);
-
       }
-      return new TopDocs(totalHits, getScoreDocs(howMany), 0.0f);
+
+      ScoreDoc[] scoreDocs = getScoreDocs(howMany);
+      assert scoreDocs.length <= totalHits;
+      return new TopDocs(totalHits, scoreDocs, 0.0f);
     }
 
-    public void setScorer(Scorer scorer) throws IOException {
-
-    }
-    
-    public boolean acceptsDocsOutOfOrder() {
-      return false;
+    @Override
+    public boolean needsScores() {
+      return true; // TODO: is this the case?
     }
   }
 }

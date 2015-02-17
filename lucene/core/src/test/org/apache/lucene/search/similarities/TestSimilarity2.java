@@ -24,7 +24,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -71,7 +71,7 @@ public class TestSimilarity2 extends LuceneTestCase {
     sims.add(new LMJelinekMercerSimilarity(0.7f));
   }
   
-  /** because of stupid things like querynorm, its possible we computeStats on a field that doesnt exist at all
+  /** because of stupid things like querynorm, it's possible we computeStats on a field that doesnt exist at all
    *  test this against a totally empty index, to make sure sims handle it
    */
   public void testEmptyIndex() throws Exception {
@@ -163,7 +163,7 @@ public class TestSimilarity2 extends LuceneTestCase {
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir);
     Document doc = new Document();
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
-    ft.setIndexOptions(IndexOptions.DOCS_ONLY);
+    ft.setIndexOptions(IndexOptions.DOCS);
     ft.freeze();
     Field f = newField("foo", "bar", ft);
     doc.add(f);
@@ -188,7 +188,7 @@ public class TestSimilarity2 extends LuceneTestCase {
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir);
     Document doc = new Document();
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
-    ft.setIndexOptions(IndexOptions.DOCS_ONLY);
+    ft.setIndexOptions(IndexOptions.DOCS);
     ft.setOmitNorms(true);
     ft.freeze();
     Field f = newField("foo", "bar", ft);

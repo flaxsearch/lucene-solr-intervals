@@ -73,12 +73,12 @@ public class DirectSpellChecker {
   private int maxInspections = 5;
   /** minimum accuracy for a term to match */
   private float accuracy = SpellChecker.DEFAULT_ACCURACY;
-  /** value in [0..1] (or absolute number >=1) representing the minimum
+  /** value in [0..1] (or absolute number &gt;= 1) representing the minimum
     * number of documents (of the total) where a term should appear. */
   private float thresholdFrequency = 0f;
   /** minimum length of a query word to return suggestions */
   private int minQueryLength = 4;
-  /** value in [0..1] (or absolute number >=1) representing the maximum
+  /** value in [0..1] (or absolute number &gt;= 1) representing the maximum
    *  number of documents (of the total) a query term can appear in to
    *  be corrected. */
   private float maxQueryFrequency = 0.01f;
@@ -236,7 +236,7 @@ public class DirectSpellChecker {
    * True if the spellchecker should lowercase terms (default: true)
    * <p>
    * This is a convenience method, if your index field has more complicated
-   * analysis (such as StandardTokenizer removing punctuation), its probably
+   * analysis (such as StandardTokenizer removing punctuation), it's probably
    * better to turn this off, and instead run your query terms through your
    * Analyzer first.
    * <p>

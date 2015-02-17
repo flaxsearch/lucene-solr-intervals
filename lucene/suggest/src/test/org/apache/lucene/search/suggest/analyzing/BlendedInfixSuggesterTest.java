@@ -137,12 +137,12 @@ public class BlendedInfixSuggesterTest extends LuceneTestCase {
 
 
     // we don't find it for in the 2 first
-    assertEquals(2, suggester.lookup("the", null, 2, true, false).size());
+    assertEquals(2, suggester.lookup("the", 2, true, false).size());
     long w0 = getInResults(suggester, "the", ret, 2);
     assertTrue(w0 < 0);
 
     // but it's there if we search for 3 elements
-    assertEquals(3, suggester.lookup("the", null, 3, true, false).size());
+    assertEquals(3, suggester.lookup("the", 3, true, false).size());
     long w1 = getInResults(suggester, "the", ret, 3);
     assertTrue(w1 > 0);
 
@@ -161,6 +161,33 @@ public class BlendedInfixSuggesterTest extends LuceneTestCase {
     // but we don't have the other
     long w3 = getInResults(suggester, "the", star, 2);
     assertTrue(w3 < 0);
+
+    suggester.close();
+  }
+
+  /**
+   * Handle trailing spaces that result in no prefix token LUCENE-6093
+   */
+  public void testNullPrefixToken() throws IOException {
+
+    BytesRef payload = new BytesRef("lake");
+
+    Input keys[] = new Input[]{
+        new Input("top of the lake", 8, payload)
+    };
+
+    Path tempDir = createTempDir("BlendedInfixSuggesterTest");
+
+    Analyzer a = new StandardAnalyzer(CharArraySet.EMPTY_SET);
+    BlendedInfixSuggester suggester = new BlendedInfixSuggester(newFSDirectory(tempDir), a, a,
+                                                                AnalyzingInfixSuggester.DEFAULT_MIN_PREFIX_CHARS,
+                                                                BlendedInfixSuggester.BlenderType.POSITION_LINEAR,
+                                                                BlendedInfixSuggester.DEFAULT_NUM_FACTOR, false);
+    suggester.build(new InputArrayIterator(keys));
+
+    getInResults(suggester, "of ", payload, 1);
+    getInResults(suggester, "the ", payload, 1);
+    getInResults(suggester, "lake ", payload, 1);
 
     suggester.close();
   }
@@ -188,7 +215,7 @@ public class BlendedInfixSuggesterTest extends LuceneTestCase {
     suggester.build(new InputArrayIterator(keys));
 
 
-    List<Lookup.LookupResult> responses = suggester.lookup("the", null, 4, true, false);
+    List<Lookup.LookupResult> responses = suggester.lookup("the", 4, true, false);
 
     for (Lookup.LookupResult response : responses) {
       System.out.println(response);
@@ -199,7 +226,7 @@ public class BlendedInfixSuggesterTest extends LuceneTestCase {
 
   private static long getInResults(BlendedInfixSuggester suggester, String prefix, BytesRef payload, int num) throws IOException {
 
-    List<Lookup.LookupResult> responses = suggester.lookup(prefix, null, num, true, false);
+    List<Lookup.LookupResult> responses = suggester.lookup(prefix, num, true, false);
 
     for (Lookup.LookupResult response : responses) {
       if (response.payload.equals(payload)) {

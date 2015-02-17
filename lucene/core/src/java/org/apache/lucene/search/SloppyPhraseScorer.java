@@ -17,7 +17,7 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.DocsAndPositionsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.intervals.Interval;
 import org.apache.lucene.search.intervals.IntervalCollector;
@@ -25,6 +25,7 @@ import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.search.intervals.SloppyIntervalIterator;
 import org.apache.lucene.search.intervals.TermIntervalIterator;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 
 import java.io.IOException;
@@ -61,13 +62,15 @@ final class SloppyPhraseScorer extends Scorer {
   
   private int numMatches;
   private final long cost;
+  final boolean needsScores;
   
   SloppyPhraseScorer(Weight weight, PhraseQuery.PostingsAndFreq[] postings,
-      int slop, Similarity.SimScorer docScorer, String field) {
+      int slop, Similarity.SimScorer docScorer, boolean needsScores, String field) {
     super(weight);
     this.docScorer = docScorer;
     this.postings = postings;
     this.field = field;
+    this.needsScores = needsScores;
     this.slop = slop;
     this.numPostings = postings==null ? 0 : postings.length;
     pq = new PhraseQueue(postings.length);
@@ -127,6 +130,9 @@ final class SloppyPhraseScorer extends Scorer {
         if (matchLength <= slop) {
           freq += docScorer.computeSlopFactor(matchLength); // score match
           numMatches++;
+          if (!needsScores) {
+            return freq;
+          }
         }      
         pq.add(pp);
         pp = pq.pop();
@@ -523,9 +529,8 @@ final class SloppyPhraseScorer extends Scorer {
     HashMap<Term,Integer> tg = new HashMap<>();
     Term[] t = tord.keySet().toArray(new Term[0]);
     for (int i=0; i<bb.size(); i++) { // i is the group no.
-      DocIdSetIterator bits = bb.get(i).iterator();
-      int ord;
-      while ((ord=bits.nextDoc())!=NO_MORE_DOCS) {
+      FixedBitSet bits = bb.get(i);
+      for (int ord = bits.nextSetBit(0); ord != DocIdSetIterator.NO_MORE_DOCS; ord = ord + 1 >= bits.length() ? DocIdSetIterator.NO_MORE_DOCS : bits.nextSetBit(ord + 1)) {
         tg.put(t[ord],i);
       }
     }
@@ -536,7 +541,27 @@ final class SloppyPhraseScorer extends Scorer {
   public int freq() {
     return numMatches;
   }
-  
+
+  @Override
+  public int nextPosition() throws IOException {
+    return -1;
+  }
+
+  @Override
+  public int startOffset() throws IOException {
+    return -1;
+  }
+
+  @Override
+  public int endOffset() throws IOException {
+    return -1;
+  }
+
+  @Override
+  public BytesRef getPayload() throws IOException {
+    return null;
+  }
+
   float sloppyFreq() {
     return sloppyFreq;
   }
@@ -619,7 +644,7 @@ final class SloppyPhraseScorer extends Scorer {
   @Override
   public IntervalIterator intervals(boolean collectIntervals) throws IOException {
     Map<Term, IterAndOffsets> map = new HashMap<Term, IterAndOffsets>();
-    List<DocsAndPositionsEnum> enums = new ArrayList<DocsAndPositionsEnum>();
+    List<PostingsEnum> enums = new ArrayList<PostingsEnum>();
 
     for (int i = 0; i < postings.length; i++) {
       if (postings[i].terms.length > 1) {
@@ -628,8 +653,7 @@ final class SloppyPhraseScorer extends Scorer {
       Term term = postings[i].terms[0];
       IterAndOffsets iterAndOffset;
       if (!map.containsKey(term)) {
-        DocsAndPositionsEnum docsAndPosEnum = postings[i].factory
-            .docsAndPositionsEnum();
+        PostingsEnum docsAndPosEnum = postings[i].postings;
         enums.add(docsAndPosEnum);
         iterAndOffset = new IterAndOffsets(new TermIntervalIterator(this, docsAndPosEnum, false,
             collectIntervals, field));
@@ -645,7 +669,7 @@ final class SloppyPhraseScorer extends Scorer {
     for (IterAndOffsets iterAndOffsets : values) {
       iters[i++] = SloppyIntervalIterator.create(this, collectIntervals, iterAndOffsets.iter, iterAndOffsets.toIntArray());
     }
-    return new AdvancingIntervalIterator(this, collectIntervals, enums.toArray(new DocsAndPositionsEnum[enums.size()]), new SloppyIntervalIterator(this, slop, collectIntervals, iters));
+    return new AdvancingIntervalIterator(this, collectIntervals, enums.toArray(new PostingsEnum[enums.size()]), new SloppyIntervalIterator(this, slop, collectIntervals, iters));
   }
 
   private final static class IterAndOffsets {
@@ -667,18 +691,18 @@ final class SloppyPhraseScorer extends Scorer {
 
   final static class AdvancingIntervalIterator extends IntervalIterator {
 
-    public AdvancingIntervalIterator(Scorer scorer, boolean collectIntervals, final DocsAndPositionsEnum[] enums, final IntervalIterator delegate) {
+    public AdvancingIntervalIterator(Scorer scorer, boolean collectIntervals, final PostingsEnum[] enums, final IntervalIterator delegate) {
       super(scorer, collectIntervals);
       this.enums = enums;
       this.delegate = delegate;
     }
 
-    private final DocsAndPositionsEnum[] enums;
+    private final PostingsEnum[] enums;
     private final IntervalIterator delegate;
     @Override
     public int scorerAdvanced(int docId) throws IOException {
       assert docId == docID();
-      for (DocsAndPositionsEnum oneEnum : enums) {
+      for (PostingsEnum oneEnum : enums) {
         int advance = oneEnum.advance(docId);
         assert advance == docId;
       }

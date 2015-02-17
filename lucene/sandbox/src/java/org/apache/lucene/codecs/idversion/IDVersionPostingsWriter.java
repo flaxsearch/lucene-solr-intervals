@@ -23,9 +23,11 @@ import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.PushPostingsWriterBase;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.IndexOutput;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 
 final class IDVersionPostingsWriter extends PushPostingsWriterBase {
@@ -43,10 +45,10 @@ final class IDVersionPostingsWriter extends PushPostingsWriterBase {
   private int lastPosition;
   private long lastVersion;
 
-  private final SegmentWriteState state;
+  private final Bits liveDocs;
 
-  public IDVersionPostingsWriter(SegmentWriteState state) {
-    this.state = state;
+  public IDVersionPostingsWriter(Bits liveDocs) {
+    this.liveDocs = liveDocs;
   }
 
   @Override
@@ -55,14 +57,14 @@ final class IDVersionPostingsWriter extends PushPostingsWriterBase {
   }
 
   @Override
-  public void init(IndexOutput termsOut) throws IOException {
-    CodecUtil.writeSegmentHeader(termsOut, TERMS_CODEC, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+  public void init(IndexOutput termsOut, SegmentWriteState state) throws IOException {
+    CodecUtil.writeIndexHeader(termsOut, TERMS_CODEC, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
   }
 
   @Override
   public int setField(FieldInfo fieldInfo) {
     super.setField(fieldInfo);
-    if (fieldInfo.getIndexOptions() != FieldInfo.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
+    if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
       throw new IllegalArgumentException("field must be index using IndexOptions.DOCS_AND_FREQS_AND_POSITIONS");
     }
     // LUCENE-5693: because CheckIndex cross-checks term vectors with postings even for deleted docs, and because our PF only indexes the
@@ -82,7 +84,7 @@ final class IDVersionPostingsWriter extends PushPostingsWriterBase {
   @Override
   public void startDoc(int docID, int termDocFreq) throws IOException {
     // TODO: LUCENE-5693: we don't need this check if we fix IW to not send deleted docs to us on flush:
-    if (state.liveDocs != null && state.liveDocs.get(docID) == false) {
+    if (liveDocs != null && liveDocs.get(docID) == false) {
       return;
     }
     if (lastDocID != -1) {

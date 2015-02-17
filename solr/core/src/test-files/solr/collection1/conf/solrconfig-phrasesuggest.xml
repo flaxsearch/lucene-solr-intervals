@@ -40,7 +40,7 @@
       <str name="sourceLocation">phrasesuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -61,7 +61,7 @@
       <str name="sourceLocation">jasuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -79,10 +79,46 @@
       <str name="sourceLocation">analyzingInfixSuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
-
+  
+  <!-- AnalyzingInfixLookup suggest component (SolrSuggester - default) -->
+  <searchComponent class="solr.SuggestComponent" name="analyzing_infix_suggest">
+    <!-- Default: highlight - true, allTermsRequired - true -->
+    <lst name="suggester">
+      <str name="name">analyzing_infix_suggest_default</str>
+      <str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+      <str name="dictionaryImpl">FileDictionaryFactory</str>
+      <str name="buildOnCommit">false</str>
+      <str name="indexPath">analyzing_infix_suggest_default</str>
+      <str name="sourceLocation">analyzingInfixSuggest.txt</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+    </lst>
+    
+    <lst name="suggester">
+      <str name="name">analyzing_infix_suggest_without_highlight</str>
+      <str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+      <str name="dictionaryImpl">FileDictionaryFactory</str>
+      <str name="buildOnCommit">false</str>
+      <str name="indexPath">analyzing_infix_suggest_without_highlight</str>
+      <str name="sourceLocation">analyzingInfixSuggest.txt</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+      <bool name="highlight">false</bool>
+    </lst>
+    
+    <lst name="suggester">
+      <str name="name">analyzing_infix_suggest_not_all_terms_required</str>
+      <str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+      <str name="dictionaryImpl">FileDictionaryFactory</str>
+      <str name="buildOnCommit">false</str>
+      <str name="indexPath">analyzing_infix_suggest_not_all_terms_required</str>
+      <str name="sourceLocation">analyzingInfixSuggest.txt</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+      <bool name="allTermsRequired">false</bool>
+    </lst>
+  </searchComponent>
+  
   
   <!-- FuzzyLookup suggest component with HighFrequencyDictionary -->
   <searchComponent class="solr.SuggestComponent" name="fuzzy_suggest_analyzing_with_high_freq_dict">
@@ -182,7 +218,7 @@
       <str name="sourceLocation">fuzzysuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -204,7 +240,7 @@
       <str name="sourceLocation">fuzzysuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -226,7 +262,7 @@
       <str name="sourceLocation">fuzzysuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -248,7 +284,7 @@
       <str name="sourceLocation">fuzzysuggest.txt</str>
     </lst>
  
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -306,6 +342,14 @@
     </arr>
   </requestHandler>
   
+  <requestHandler class="org.apache.solr.handler.component.SearchHandler" name="/analyzing_infix_suggest">
+    <lst name="defaults">
+      <str name="suggest">true</str>
+    </lst>
+    <arr name="components">
+      <str>analyzing_infix_suggest</str>
+    </arr>
+  </requestHandler>
   
   <requestHandler class="org.apache.solr.handler.component.SearchHandler" name="/blended_infix_suggest">
     <lst name="defaults">

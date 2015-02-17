@@ -50,11 +50,11 @@ public class RandomIndexWriter implements Closeable {
   private boolean getReaderCalled;
   private final Codec codec; // sugar
 
-  
+  /** Returns an indexwriter that randomly mixes up thread scheduling (by yielding at test points) */
   public static IndexWriter mockIndexWriter(Directory dir, IndexWriterConfig conf, Random r) throws IOException {
     // Randomly calls Thread.yield so we mixup thread scheduling
     final Random random = new Random(r.nextLong());
-    return mockIndexWriter(dir, conf,  new TestPoint() {
+    return mockIndexWriter(dir, conf, new TestPoint() {
       @Override
       public void apply(String message) {
         if (random.nextInt(4) == 2)
@@ -63,9 +63,12 @@ public class RandomIndexWriter implements Closeable {
     });
   }
   
+  /** Returns an indexwriter that enables the specified test point */
   public static IndexWriter mockIndexWriter(Directory dir, IndexWriterConfig conf, TestPoint testPoint) throws IOException {
     conf.setInfoStream(new TestPointInfoStream(conf.getInfoStream(), testPoint));
-    return new IndexWriter(dir, conf);
+    IndexWriter iw = new IndexWriter(dir, conf);
+    iw.enableTestPoints = true;
+    return iw;
   }
 
   /** create a RandomIndexWriter with a random config: Uses MockAnalyzer */
@@ -101,11 +104,6 @@ public class RandomIndexWriter implements Closeable {
    */
   public <T extends IndexableField> void addDocument(final Iterable<T> doc) throws IOException {
     LuceneTestCase.maybeChangeLiveIndexWriterConfig(r, w.getConfig());
-    addDocument(doc, w.getAnalyzer());
-  }
-
-  public <T extends IndexableField> void addDocument(final Iterable<T> doc, Analyzer a) throws IOException {
-    LuceneTestCase.maybeChangeLiveIndexWriterConfig(r, w.getConfig());
     if (r.nextInt(5) == 3) {
       // TODO: maybe, we should simply buffer up added docs
       // (but we need to clone them), and only when
@@ -138,9 +136,9 @@ public class RandomIndexWriter implements Closeable {
             }
           };
         }
-        }, a);
+        });
     } else {
-      w.addDocument(doc, a);
+      w.addDocument(doc);
     }
     
     maybeCommit();
@@ -219,7 +217,7 @@ public class RandomIndexWriter implements Closeable {
     w.addIndexes(dirs);
   }
 
-  public void addIndexes(IndexReader... readers) throws IOException {
+  public void addIndexes(CodecReader... readers) throws IOException {
     LuceneTestCase.maybeChangeLiveIndexWriterConfig(r, w.getConfig());
     w.addIndexes(readers);
   }

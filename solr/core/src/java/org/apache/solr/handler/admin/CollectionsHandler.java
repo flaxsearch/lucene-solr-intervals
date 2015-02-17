@@ -21,14 +21,16 @@ import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang.StringUtils;
 import org.apache.solr.client.solrj.SolrResponse;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.request.CoreAdminRequest.RequestSyncShard;
 import org.apache.solr.cloud.DistributedQueue;
 import org.apache.solr.cloud.DistributedQueue.QueueEvent;
+import org.apache.solr.cloud.LeaderElector;
 import org.apache.solr.cloud.Overseer;
 import org.apache.solr.cloud.OverseerCollectionProcessor;
 import org.apache.solr.cloud.OverseerSolrResponse;
+import org.apache.solr.cloud.overseer.SliceMutator;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.ClusterState;
@@ -36,6 +38,7 @@ import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.ImplicitDocRouter;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
+import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
@@ -47,17 +50,21 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.core.CoreContainer;
+import org.apache.solr.handler.BlobHandler;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
+import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -67,6 +74,7 @@ import static org.apache.solr.cloud.Overseer.QUEUE_OPERATION;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.ASYNC;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.COLL_CONF;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.CREATE_NODE_SET;
+import static org.apache.solr.cloud.OverseerCollectionProcessor.CREATE_NODE_SET_SHUFFLE;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.ONLY_ACTIVE_NODES;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.ONLY_IF_DOWN;
@@ -74,25 +82,27 @@ import static org.apache.solr.cloud.OverseerCollectionProcessor.REPLICATION_FACT
 import static org.apache.solr.cloud.OverseerCollectionProcessor.REQUESTID;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.ROUTER;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.SHARDS_PROP;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.SLICE_UNIQUE;
+import static org.apache.solr.cloud.OverseerCollectionProcessor.SHARD_UNIQUE;
 import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
 import static org.apache.solr.common.cloud.ZkStateReader.ACTIVE;
 import static org.apache.solr.common.cloud.ZkStateReader.AUTO_ADD_REPLICAS;
-import static org.apache.solr.common.cloud.ZkStateReader.BASE_URL_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.COLLECTION_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.CORE_NAME_PROP;
+import static org.apache.solr.common.cloud.ZkStateReader.ELECTION_NODE_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.LEADER_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.MAX_AT_ONCE_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.common.cloud.ZkStateReader.MAX_WAIT_SECONDS_PROP;
+import static org.apache.solr.common.cloud.ZkStateReader.NODE_NAME_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.PROPERTY_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.PROPERTY_VALUE_PROP;
+import static org.apache.solr.common.cloud.ZkStateReader.REJOIN_AT_HEAD_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.REPLICA_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.SHARD_ID_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.STATE_PROP;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.ADDREPLICAPROP;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.ADDROLE;
-import static org.apache.solr.common.params.CollectionParams.CollectionAction.BALANCESLICEUNIQUE;
+import static org.apache.solr.common.params.CollectionParams.CollectionAction.BALANCESHARDUNIQUE;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.CLUSTERPROP;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.CREATE;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.CREATEALIAS;
@@ -257,8 +267,8 @@ public class CollectionsHandler extends RequestHandlerBase {
         this.handleDeleteReplicaProp(req, rsp);
         break;
       }
-      case BALANCESLICEUNIQUE: {
-        this.handleBalanceSliceUnique(req, rsp);
+      case BALANCESHARDUNIQUE: {
+        this.handleBalanceShardUnique(req, rsp);
         break;
       }
       case REBALANCELEADERS: {
@@ -288,78 +298,25 @@ public class CollectionsHandler extends RequestHandlerBase {
     if (dc == null) {
       throw new SolrException(ErrorCode.BAD_REQUEST, "Collection '" + collectionName + "' does not exist, no action taken.");
     }
-    Map<String, String> current = new HashMap<>();
+    Map<String, String> currentRequests = new HashMap<>();
     int max = req.getParams().getInt(MAX_AT_ONCE_PROP, Integer.MAX_VALUE);
     if (max <= 0) max = Integer.MAX_VALUE;
     int maxWaitSecs = req.getParams().getInt(MAX_WAIT_SECONDS_PROP, 60);
     NamedList<Object> results = new NamedList<>();
-    SolrQueryResponse rspIgnore = new SolrQueryResponse();
-    final String inactivePreferreds = "inactivePreferreds";
-    final String alreadyLeaders = "alreadyLeaders";
+
     boolean keepGoing = true;
     for (Slice slice : dc.getSlices()) {
-      for (Replica replica : slice.getReplicas()) {
-        // Tell the replica to become the leader if we're the preferred leader AND active AND not the leader already
-        if (replica.getBool(Overseer.preferredLeaderProp, false) == false) {
-          continue;
-        }
-        if (StringUtils.equalsIgnoreCase(replica.getStr(STATE_PROP), ACTIVE) == false) {
-          NamedList<Object> inactives = (NamedList<Object>) results.get(inactivePreferreds);
-          if (inactives == null) {
-            inactives = new NamedList<>();
-            results.add(inactivePreferreds, inactives);
-          }
-          NamedList<Object> res = new NamedList<>();
-          res.add("status", "skipped");
-          res.add("msg", "Node is a referredLeader, but it's inactive. Skipping");
-          res.add("nodeName", replica.getNodeName());
-          inactives.add(replica.getName(), res);
-          break; // Don't try to assign if we're not active!
-        }        // OK, we're the one, get in the queue to become the leader.
-        if (replica.getBool(LEADER_PROP, false)) {
-          NamedList<Object> noops = (NamedList<Object>) results.get(alreadyLeaders);
-          if (noops == null) {
-            noops = new NamedList<>();
-            results.add(alreadyLeaders, noops);
-          }
-          NamedList<Object> res = new NamedList<>();
-          res.add("status", "success");
-          res.add("msg", "Already leader");
-          res.add("nodeName", replica.getNodeName());
-          noops.add(replica.getName(), res);
-          break; // already the leader, do nothing.
-        }
-        Map<String, Object> propMap = new HashMap<>();
-        propMap.put(Overseer.QUEUE_OPERATION, REBALANCELEADERS.toLower());
-        propMap.put(COLLECTION_PROP, collectionName);
-        propMap.put(SHARD_ID_PROP, slice.getName());
-        propMap.put(BASE_URL_PROP, replica.get(BASE_URL_PROP));
-
-        String coreName = (String) replica.get(CORE_NAME_PROP);
-        // Put it in the waiting list.
-        String asyncId = REBALANCELEADERS.toLower() + "_" + coreName;
-        current.put(asyncId, String.format(Locale.ROOT, "Collection: '%s', Shard: '%s', Core: '%s', BaseUrl: '%s'",
-            collectionName, slice.getName(), coreName, replica.get(BASE_URL_PROP)));
-
-        propMap.put(CORE_NAME_PROP, coreName);
-        propMap.put(ASYNC, asyncId);
-
-        ZkNodeProps m = new ZkNodeProps(propMap);
-        log.info("Queueing collection '" + collectionName + "' slice '" + slice.getName() + "' replica '" +
-                coreName + "' to become leader.");
-        handleResponse(REBALANCELEADERS.toLower(), m, rspIgnore); // Want to construct my own response here.
-        break; // Done with this slice, skip the rest of the replicas.
-      }
-      if (current.size() == max) {
-        log.info("Queued " + max + " leader reassgnments, waiting for some to complete.");
-        keepGoing = waitForLeaderChange(current, maxWaitSecs, false, results);
+      insurePreferredIsLeader(req, results, slice, currentRequests);
+      if (currentRequests.size() == max) {
+        log.info("Queued " + max + " leader reassignments, waiting for some to complete.");
+        keepGoing = waitForLeaderChange(currentRequests, maxWaitSecs, false, results);
         if (keepGoing == false) {
           break; // If we've waited longer than specified, don't continue to wait!
         }
       }
     }
     if (keepGoing == true) {
-      keepGoing = waitForLeaderChange(current, maxWaitSecs, true, results);
+      keepGoing = waitForLeaderChange(currentRequests, maxWaitSecs, true, results);
     }
     if (keepGoing == true) {
       log.info("All leader reassignments completed.");
@@ -368,6 +325,166 @@ public class CollectionsHandler extends RequestHandlerBase {
     }
 
     rsp.getValues().addAll(results);
+  }
+
+  private void insurePreferredIsLeader(SolrQueryRequest req, NamedList<Object> results,
+                                              Slice slice, Map<String, String> currentRequests) throws KeeperException, InterruptedException {
+    final String inactivePreferreds = "inactivePreferreds";
+    final String alreadyLeaders = "alreadyLeaders";
+    String collectionName = req.getParams().get(COLLECTION_PROP);
+
+    for (Replica replica : slice.getReplicas()) {
+      // Tell the replica to become the leader if we're the preferred leader AND active AND not the leader already
+      if (replica.getBool(SliceMutator.PREFERRED_LEADER_PROP, false) == false) {
+        continue;
+      }
+      // OK, we are the preferred leader, are we the actual leader?
+      if (replica.getBool(LEADER_PROP, false)) {
+        //We're a preferred leader, but we're _also_ the leader, don't need to do anything.
+        NamedList<Object> noops = (NamedList<Object>) results.get(alreadyLeaders);
+        if (noops == null) {
+          noops = new NamedList<>();
+          results.add(alreadyLeaders, noops);
+        }
+        NamedList<Object> res = new NamedList<>();
+        res.add("status", "success");
+        res.add("msg", "Already leader");
+        res.add("shard", slice.getName());
+        res.add("nodeName", replica.getNodeName());
+        noops.add(replica.getName(), res);
+        return; // already the leader, do nothing.
+      }
+
+      // We're the preferred leader, but someone else is leader. Only become leader if we're active.
+      if (StringUtils.equalsIgnoreCase(replica.getStr(STATE_PROP), ACTIVE) == false) {
+        NamedList<Object> inactives = (NamedList<Object>) results.get(inactivePreferreds);
+        if (inactives == null) {
+          inactives = new NamedList<>();
+          results.add(inactivePreferreds, inactives);
+        }
+        NamedList<Object> res = new NamedList<>();
+        res.add("status", "skipped");
+        res.add("msg", "Node is a referredLeader, but it's inactive. Skipping");
+        res.add("shard", slice.getName());
+        res.add("nodeName", replica.getNodeName());
+        inactives.add(replica.getName(), res);
+        return; // Don't try to become the leader if we're not active!
+      }
+
+      // Replica is the preferred leader but not the actual leader, do something about that.
+      // "Something" is
+      // 1> if the preferred leader isn't first in line, tell it to re-queue itself.
+      // 2> tell the actual leader to re-queue itself.
+
+      ZkStateReader zkStateReader = coreContainer.getZkController().getZkStateReader();
+
+      List<String> electionNodes = OverseerCollectionProcessor.getSortedElectionNodes(zkStateReader.getZkClient(),
+          ZkStateReader.getShardLeadersElectPath(collectionName, slice.getName()));
+
+      if (electionNodes.size() < 2) { // if there's only one node in the queue, should already be leader and we shouldn't be here anyway.
+        log.warn("Rebalancing leaders and slice " + slice.getName() + " has less than two elements in the leader " +
+            "election queue, but replica " + replica.getName() + " doesn't think it's the leader. Do nothing");
+        return;
+      }
+
+      // Ok, the sorting for election nodes is a bit strange. If the sequence numbers are the same, then the whole
+      // string is used, but that sorts nodes with the same sequence number by their session IDs from ZK.
+      // While this is determinate, it's not quite what we need, so re-queue nodes that aren't us and are
+      // watching the leader node..
+
+      String firstWatcher = electionNodes.get(1);
+
+      if (LeaderElector.getNodeName(firstWatcher).equals(replica.getName()) == false) {
+        makeReplicaFirstWatcher(collectionName, slice, replica);
+      }
+
+      String coreName = slice.getReplica(LeaderElector.getNodeName(electionNodes.get(0))).getStr(CORE_NAME_PROP);
+      rejoinElection(collectionName, slice, electionNodes.get(0), coreName, false);
+      waitForNodeChange(collectionName, slice, electionNodes.get(0));
+
+
+      return; // Done with this slice, skip the rest of the replicas.
+    }
+  }
+  // Put the replica in at the head of the queue and send all nodes with the same sequence number to the back of the list
+  void makeReplicaFirstWatcher(String collectionName, Slice slice, Replica replica)
+      throws KeeperException, InterruptedException {
+
+    ZkStateReader zkStateReader = coreContainer.getZkController().getZkStateReader();
+    List<String> electionNodes = OverseerCollectionProcessor.getSortedElectionNodes(zkStateReader.getZkClient(),
+        ZkStateReader.getShardLeadersElectPath(collectionName, slice.getName()));
+
+    // First, queue up the preferred leader at the head of the queue.
+    int newSeq = -1;
+    for (String electionNode : electionNodes) {
+      if (LeaderElector.getNodeName(electionNode).equals(replica.getName())) {
+        String coreName = slice.getReplica(LeaderElector.getNodeName(electionNode)).getStr(CORE_NAME_PROP);
+        rejoinElection(collectionName, slice, electionNode, coreName, true);
+        newSeq = waitForNodeChange(collectionName, slice, electionNode);
+        break;
+      }
+    }
+    if (newSeq == -1) {
+      return; // let's not continue if we didn't get what we expect. Possibly we're offline etc..
+    }
+
+    List<String> electionNodesTmp = OverseerCollectionProcessor.getSortedElectionNodes(zkStateReader.getZkClient(),
+        ZkStateReader.getShardLeadersElectPath(collectionName, slice.getName()));
+
+
+    // Now find other nodes that have the same sequence number as this node and re-queue them at the end of the queue.
+    electionNodes = OverseerCollectionProcessor.getSortedElectionNodes(zkStateReader.getZkClient(),
+        ZkStateReader.getShardLeadersElectPath(collectionName, slice.getName()));
+
+    for (String thisNode : electionNodes) {
+      if (LeaderElector.getSeq(thisNode) > newSeq) {
+        break;
+      }
+      if (LeaderElector.getNodeName(thisNode).equals(replica.getName())) {
+        continue;
+      }
+      if (LeaderElector.getSeq(thisNode) == newSeq) {
+        String coreName = slice.getReplica(LeaderElector.getNodeName(thisNode)).getStr(CORE_NAME_PROP);
+        rejoinElection(collectionName, slice, thisNode, coreName, false);
+        waitForNodeChange(collectionName, slice, thisNode);
+      }
+    }
+  }
+
+  int waitForNodeChange(String collectionName, Slice slice, String electionNode) throws InterruptedException, KeeperException {
+    String nodeName = LeaderElector.getNodeName(electionNode);
+    int oldSeq = LeaderElector.getSeq(electionNode);
+     for (int idx = 0; idx < 600; ++idx) {
+      ZkStateReader zkStateReader = coreContainer.getZkController().getZkStateReader();
+      List<String> electionNodes = OverseerCollectionProcessor.getSortedElectionNodes(zkStateReader.getZkClient(),
+          ZkStateReader.getShardLeadersElectPath(collectionName, slice.getName()));
+      for (String testNode : electionNodes) {
+        if (LeaderElector.getNodeName(testNode).equals(nodeName) && oldSeq != LeaderElector.getSeq(testNode)) {
+          return LeaderElector.getSeq(testNode);
+        }
+      }
+
+      Thread.sleep(100);
+    }
+    return -1;
+  }
+  private void rejoinElection(String collectionName, Slice slice, String electionNode, String core,
+                              boolean rejoinAtHead) throws KeeperException, InterruptedException {
+    Replica replica = slice.getReplica(LeaderElector.getNodeName(electionNode));
+    Map<String, Object> propMap = new HashMap<>();
+    propMap.put(COLLECTION_PROP, collectionName);
+    propMap.put(SHARD_ID_PROP, slice.getName());
+    propMap.put(Overseer.QUEUE_OPERATION, REBALANCELEADERS.toLower());
+    propMap.put(CORE_NAME_PROP, core);
+    propMap.put(NODE_NAME_PROP, replica.getName());
+    propMap.put(ZkStateReader.BASE_URL_PROP, replica.getProperties().get(ZkStateReader.BASE_URL_PROP));
+    propMap.put(REJOIN_AT_HEAD_PROP, Boolean.toString(rejoinAtHead)); // Get ourselves to be first in line.
+    propMap.put(ELECTION_NODE_PROP, electionNode);
+    String asyncId = REBALANCELEADERS.toLower() + "_" + core + "_" + Math.abs(System.nanoTime());
+    propMap.put(ASYNC, asyncId);
+    ZkNodeProps m = new ZkNodeProps(propMap);
+    SolrQueryResponse rspIgnore = new SolrQueryResponse(); // I'm constructing my own response
+    handleResponse(REBALANCELEADERS.toLower(), m, rspIgnore); // Want to construct my own response here.
   }
 
   // currentAsyncIds - map of request IDs and reporting data (value)
@@ -429,23 +546,23 @@ public class CollectionsHandler extends RequestHandlerBase {
 
     Map<String, Object> map = ZkNodeProps.makeMap(Overseer.QUEUE_OPERATION, ADDREPLICAPROP.toLower());
     copyIfNotNull(req.getParams(), map, COLLECTION_PROP, SHARD_ID_PROP, REPLICA_PROP, PROPERTY_PROP,
-        SLICE_UNIQUE, PROPERTY_VALUE_PROP);
+        SHARD_UNIQUE, PROPERTY_VALUE_PROP);
 
     String property = (String) map.get(PROPERTY_PROP);
     if (property.startsWith(OverseerCollectionProcessor.COLL_PROP_PREFIX) == false) {
       property = OverseerCollectionProcessor.COLL_PROP_PREFIX + property;
     }
 
-    boolean uniquePerSlice = Boolean.parseBoolean((String) map.get(SLICE_UNIQUE));
+    boolean uniquePerSlice = Boolean.parseBoolean((String) map.get(SHARD_UNIQUE));
 
     // Check if we're trying to set a property with parameters that allow us to set the property on multiple replicas
     // in a slice on properties that are known to only be one-per-slice and error out if so.
-    if (StringUtils.isNotBlank((String)map.get(SLICE_UNIQUE)) &&
-        Overseer.sliceUniqueBooleanProperties.contains(property.toLowerCase(Locale.ROOT)) &&
+    if (StringUtils.isNotBlank((String)map.get(SHARD_UNIQUE)) &&
+        SliceMutator.SLICE_UNIQUE_BOOLEAN_PROPERTIES.contains(property.toLowerCase(Locale.ROOT)) &&
         uniquePerSlice == false) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
           "Overseer replica property command received for property " + property +
-              " with the " + SLICE_UNIQUE +
+              " with the " + SHARD_UNIQUE +
               " parameter set to something other than 'true'. No action taken.");
     }
     handleResponse(ADDREPLICAPROP.toLower(), new ZkNodeProps(map), rsp);
@@ -462,25 +579,25 @@ public class CollectionsHandler extends RequestHandlerBase {
 
 
 
-  private void handleBalanceSliceUnique(SolrQueryRequest req, SolrQueryResponse rsp) throws KeeperException, InterruptedException {
+  private void handleBalanceShardUnique(SolrQueryRequest req, SolrQueryResponse rsp) throws KeeperException, InterruptedException {
     req.getParams().required().check(COLLECTION_PROP, PROPERTY_PROP);
-    Boolean sliceUnique = Boolean.parseBoolean(req.getParams().get(SLICE_UNIQUE));
+    Boolean shardUnique = Boolean.parseBoolean(req.getParams().get(SHARD_UNIQUE));
     String prop = req.getParams().get(PROPERTY_PROP).toLowerCase(Locale.ROOT);
     if (StringUtils.startsWith(prop, OverseerCollectionProcessor.COLL_PROP_PREFIX) == false) {
       prop = OverseerCollectionProcessor.COLL_PROP_PREFIX + prop;
     }
 
-    if (sliceUnique == false &&
-        Overseer.sliceUniqueBooleanProperties.contains(prop) == false) {
+    if (shardUnique == false &&
+        SliceMutator.SLICE_UNIQUE_BOOLEAN_PROPERTIES.contains(prop) == false) {
       throw new SolrException(ErrorCode.BAD_REQUEST, "Balancing properties amongst replicas in a slice requires that"
-      + " the property be pre-defined as a unique property (e.g. 'preferredLeader') or that 'sliceUnique' be set to 'true'. " +
-      " Property: " + prop + " sliceUnique: " + Boolean.toString(sliceUnique));
+      + " the property be pre-defined as a unique property (e.g. 'preferredLeader') or that 'shardUnique' be set to 'true'. " +
+      " Property: " + prop + " shardUnique: " + Boolean.toString(shardUnique));
     }
 
-    Map<String, Object> map = ZkNodeProps.makeMap(Overseer.QUEUE_OPERATION, BALANCESLICEUNIQUE.toLower());
-    copyIfNotNull(req.getParams(), map, COLLECTION_PROP, PROPERTY_PROP, ONLY_ACTIVE_NODES, SLICE_UNIQUE);
+    Map<String, Object> map = ZkNodeProps.makeMap(Overseer.QUEUE_OPERATION, BALANCESHARDUNIQUE.toLower());
+    copyIfNotNull(req.getParams(), map, COLLECTION_PROP, PROPERTY_PROP, ONLY_ACTIVE_NODES, SHARD_UNIQUE);
 
-    handleResponse(BALANCESLICEUNIQUE.toLower(), new ZkNodeProps(map), rsp);
+    handleResponse(BALANCESHARDUNIQUE.toLower(), new ZkNodeProps(map), rsp);
   }
 
   private void handleOverseerStatus(SolrQueryRequest req, SolrQueryResponse rsp) throws KeeperException, InterruptedException {
@@ -655,17 +772,15 @@ public class CollectionsHandler extends RequestHandlerBase {
     ZkNodeProps leaderProps = clusterState.getLeader(collection, shard);
     ZkCoreNodeProps nodeProps = new ZkCoreNodeProps(leaderProps);
     
-    HttpSolrServer server = new HttpSolrServer(nodeProps.getBaseUrl());
-    try {
-      server.setConnectionTimeout(15000);
-      server.setSoTimeout(60000);
+    ;
+    try (HttpSolrClient client = new HttpSolrClient(nodeProps.getBaseUrl())) {
+      client.setConnectionTimeout(15000);
+      client.setSoTimeout(60000);
       RequestSyncShard reqSyncShard = new CoreAdminRequest.RequestSyncShard();
       reqSyncShard.setCollection(collection);
       reqSyncShard.setShard(shard);
       reqSyncShard.setCoreName(nodeProps.getCoreName());
-      server.request(reqSyncShard);
-    } finally {
-      server.shutdown();
+      client.request(reqSyncShard);
     }
   }
   
@@ -718,7 +833,7 @@ public class CollectionsHandler extends RequestHandlerBase {
       throw new SolrException(ErrorCode.BAD_REQUEST,
           "Collection name is required to create a new collection");
     }
-    
+
     Map<String,Object> props = ZkNodeProps.makeMap(
         Overseer.QUEUE_OPERATION,
         CREATE.toLower(),
@@ -729,18 +844,48 @@ public class CollectionsHandler extends RequestHandlerBase {
          COLL_CONF,
          NUM_SLICES,
          MAX_SHARDS_PER_NODE,
-         CREATE_NODE_SET,
+         CREATE_NODE_SET, CREATE_NODE_SET_SHUFFLE,
          SHARDS_PROP,
          ASYNC,
          DocCollection.STATE_FORMAT,
          AUTO_ADD_REPLICAS,
         "router.");
+    if(props.get(DocCollection.STATE_FORMAT) == null){
+      props.put(DocCollection.STATE_FORMAT,"2");
+    }
 
+    if(SYSTEM_COLL.equals(name)){
+      //We must always create asystem collection with only a single shard
+      props.put(NUM_SLICES,1);
+      props.remove(SHARDS_PROP);
+      createSysConfigSet();
+
+    }
     copyPropertiesIfNotNull(req.getParams(), props);
 
     ZkNodeProps m = new ZkNodeProps(props);
     handleResponse(CREATE.toLower(), m, rsp);
   }
+
+  private void createSysConfigSet() throws KeeperException, InterruptedException {
+    SolrZkClient zk = coreContainer.getZkController().getZkStateReader().getZkClient();
+    createNodeIfNotExists(zk,ZkStateReader.CONFIGS_ZKNODE, null);
+    createNodeIfNotExists(zk,ZkStateReader.CONFIGS_ZKNODE+"/"+SYSTEM_COLL, null);
+    createNodeIfNotExists(zk,ZkStateReader.CONFIGS_ZKNODE+"/"+SYSTEM_COLL+"/schema.xml", BlobHandler.SCHEMA.replaceAll("'","\"").getBytes(StandardCharsets.UTF_8));
+    createNodeIfNotExists(zk, ZkStateReader.CONFIGS_ZKNODE + "/" + SYSTEM_COLL + "/solrconfig.xml", BlobHandler.CONF.replaceAll("'", "\"").getBytes(StandardCharsets.UTF_8));
+  }
+
+  public static void createNodeIfNotExists(SolrZkClient zk, String path, byte[] data) throws KeeperException, InterruptedException {
+    if(!zk.exists(path, true)){
+      //create the config znode
+      try {
+        zk.create(path,data, CreateMode.PERSISTENT,true);
+      } catch (KeeperException.NodeExistsException e) {
+        //no problem . race condition. carry on the good work
+      }
+    }
+  }
+
 
   private void handleRemoveReplica(SolrQueryRequest req, SolrQueryResponse rsp) throws KeeperException, InterruptedException {
     log.info("Remove replica: " + req.getParamString());
@@ -906,9 +1051,16 @@ public class CollectionsHandler extends RequestHandlerBase {
    * @throws InterruptedException connection interrupted
    */
   private void handleListAction(SolrQueryRequest req, SolrQueryResponse rsp) throws KeeperException, InterruptedException {
-    Map<String, Object> props = ZkNodeProps.makeMap(
-        Overseer.QUEUE_OPERATION, CollectionAction.LIST.toString().toLowerCase(Locale.ROOT));
-    handleResponse(CollectionAction.LIST.toString(), new ZkNodeProps(props), rsp);
+    NamedList<Object> results = new NamedList<>();
+    Set<String> collections = coreContainer.getZkController().getZkStateReader().getClusterState().getCollections();
+    List<String> collectionList = new ArrayList<>();
+    for (String collection : collections) {
+      collectionList.add(collection);
+    }
+    results.add("collections", collectionList);
+    SolrResponse response = new OverseerSolrResponse(results);
+
+    rsp.getValues().addAll(response.getResponse());
   }
 
 
@@ -926,5 +1078,6 @@ public class CollectionsHandler extends RequestHandlerBase {
   public String getDescription() {
     return "Manage SolrCloud Collections";
   }
+  public static final String SYSTEM_COLL =".system";
 
 }

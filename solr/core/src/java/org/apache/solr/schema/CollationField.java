@@ -180,11 +180,8 @@ public class CollationField extends FieldType {
      input = loader.openResource(fileName);
      String rules = IOUtils.toString(input, "UTF-8");
      return new RuleBasedCollator(rules);
-    } catch (IOException e) {
-      // io error
-      throw new RuntimeException(e);
-    } catch (ParseException e) {
-      // invalid rules
+    } catch (IOException | ParseException e) {
+      // io error or invalid rules
       throw new RuntimeException(e);
     } finally {
       IOUtils.closeQuietly(input);
@@ -223,7 +220,7 @@ public class CollationField extends FieldType {
   /**
    * analyze the range with the analyzer, instead of the collator.
    * because jdk collators might not be thread safe (when they are
-   * its just that all methods are synced), this keeps things 
+   * it's just that all methods are synced), this keeps things 
    * simple (we already have a threadlocal clone in the reused TS)
    */
   private BytesRef getCollationKey(String field, String text) {     

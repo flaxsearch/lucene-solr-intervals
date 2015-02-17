@@ -25,11 +25,11 @@ import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.PostingsWriterBase;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -41,14 +41,12 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.ByteSequenceOutputs;
 import org.apache.lucene.util.fst.BytesRefFSTEnum;
 import org.apache.lucene.util.fst.FST;
-import org.apache.lucene.util.fst.Outputs;
 import org.apache.lucene.util.fst.Util;
 import org.apache.lucene.util.packed.PackedInts;
 
@@ -95,7 +93,7 @@ import org.apache.lucene.util.packed.PackedInts;
  *   <li><tt>.tip</tt>: <a href="#Termindex">Term Index</a></li>
  * </ul>
  * <p>
- * <a name="Termdictionary" id="Termdictionary"></a>
+ * <a name="Termdictionary"></a>
  * <h3>Term Dictionary</h3>
  *
  * <p>The .tim file contains the list of terms in each
@@ -154,7 +152,7 @@ import org.apache.lucene.util.packed.PackedInts;
  *    <li>For inner nodes of the tree, every entry will steal one bit to mark whether it points
  *        to child nodes(sub-block). If so, the corresponding TermStats and TermMetaData are omitted </li>
  * </ul>
- * <a name="Termindex" id="Termindex"></a>
+ * <a name="Termindex"></a>
  * <h3>Term Index</h3>
  * <p>The .tip file contains an index into the term dictionary, so that it can be 
  * accessed randomly.  The index is also used to determine
@@ -192,10 +190,6 @@ import org.apache.lucene.util.packed.PackedInts;
  */
 public final class BlockTreeTermsWriter extends FieldsConsumer {
 
-  static final Outputs<BytesRef> FST_OUTPUTS = ByteSequenceOutputs.getSingleton();
-
-  static final BytesRef NO_OUTPUT = FST_OUTPUTS.getNoOutput();
-
   /** Suggested default value for the {@code
    *  minItemsInBlock} parameter to {@link
    *  #BlockTreeTermsWriter(SegmentWriteState,PostingsWriterBase,int,int)}. */
@@ -209,38 +203,7 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
   // public final static boolean DEBUG = false;
   //private final static boolean SAVE_DOT_FILES = false;
 
-  static final int OUTPUT_FLAGS_NUM_BITS = 2;
-  static final int OUTPUT_FLAGS_MASK = 0x3;
-  static final int OUTPUT_FLAG_IS_FLOOR = 0x1;
-  static final int OUTPUT_FLAG_HAS_TERMS = 0x2;
-
-  /** Extension of terms file */
-  static final String TERMS_EXTENSION = "tim";
-  final static String TERMS_CODEC_NAME = "BLOCK_TREE_TERMS_DICT";
-
-  /** Initial terms format. */
-  public static final int VERSION_START = 0;
-  
-  /** Append-only */
-  public static final int VERSION_APPEND_ONLY = 1;
-
-  /** Meta data as array */
-  public static final int VERSION_META_ARRAY = 2;
-  
-  /** checksums */
-  public static final int VERSION_CHECKSUM = 3;
-
-  /** min/max term */
-  public static final int VERSION_MIN_MAX_TERMS = 4;
-
-  /** Current terms format. */
-  public static final int VERSION_CURRENT = VERSION_MIN_MAX_TERMS;
-
-  /** Extension of terms index file */
-  static final String TERMS_INDEX_EXTENSION = "tip";
-  final static String TERMS_INDEX_CODEC_NAME = "BLOCK_TREE_TERMS_INDEX";
-
-  private final IndexOutput out;
+  private final IndexOutput termsOut;
   private final IndexOutput indexOut;
   final int maxDoc;
   final int minItemsInBlock;
@@ -286,67 +249,42 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
    *  sub-blocks) per block will aim to be between
    *  minItemsPerBlock and maxItemsPerBlock, though in some
    *  cases the blocks may be smaller than the min. */
-  public BlockTreeTermsWriter(
-                              SegmentWriteState state,
+  public BlockTreeTermsWriter(SegmentWriteState state,
                               PostingsWriterBase postingsWriter,
                               int minItemsInBlock,
                               int maxItemsInBlock)
     throws IOException
   {
-    if (minItemsInBlock <= 1) {
-      throw new IllegalArgumentException("minItemsInBlock must be >= 2; got " + minItemsInBlock);
-    }
-    if (maxItemsInBlock <= 0) {
-      throw new IllegalArgumentException("maxItemsInBlock must be >= 1; got " + maxItemsInBlock);
-    }
-    if (minItemsInBlock > maxItemsInBlock) {
-      throw new IllegalArgumentException("maxItemsInBlock must be >= minItemsInBlock; got maxItemsInBlock=" + maxItemsInBlock + " minItemsInBlock=" + minItemsInBlock);
-    }
-    if (2*(minItemsInBlock-1) > maxItemsInBlock) {
-      throw new IllegalArgumentException("maxItemsInBlock must be at least 2*(minItemsInBlock-1); got maxItemsInBlock=" + maxItemsInBlock + " minItemsInBlock=" + minItemsInBlock);
-    }
+    validateSettings(minItemsInBlock, maxItemsInBlock);
 
-    maxDoc = state.segmentInfo.getDocCount();
+    this.maxDoc = state.segmentInfo.getDocCount();
+    this.fieldInfos = state.fieldInfos;
+    this.minItemsInBlock = minItemsInBlock;
+    this.maxItemsInBlock = maxItemsInBlock;
+    this.postingsWriter = postingsWriter;
 
-    final String termsFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, TERMS_EXTENSION);
-    out = state.directory.createOutput(termsFileName, state.context);
+    final String termsName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, BlockTreeTermsReader.TERMS_EXTENSION);
+    termsOut = state.directory.createOutput(termsName, state.context);
     boolean success = false;
     IndexOutput indexOut = null;
     try {
-      fieldInfos = state.fieldInfos;
-      this.minItemsInBlock = minItemsInBlock;
-      this.maxItemsInBlock = maxItemsInBlock;
-      writeHeader(out);
+      CodecUtil.writeIndexHeader(termsOut, BlockTreeTermsReader.TERMS_CODEC_NAME, BlockTreeTermsReader.VERSION_CURRENT,
+                                  state.segmentInfo.getId(), state.segmentSuffix);
 
-      //DEBUG = state.segmentName.equals("_4a");
+      final String indexName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, BlockTreeTermsReader.TERMS_INDEX_EXTENSION);
+      indexOut = state.directory.createOutput(indexName, state.context);
+      CodecUtil.writeIndexHeader(indexOut, BlockTreeTermsReader.TERMS_INDEX_CODEC_NAME, BlockTreeTermsReader.VERSION_CURRENT,
+                                   state.segmentInfo.getId(), state.segmentSuffix);
 
-      final String termsIndexFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, TERMS_INDEX_EXTENSION);
-      indexOut = state.directory.createOutput(termsIndexFileName, state.context);
-      writeIndexHeader(indexOut);
-
-      this.postingsWriter = postingsWriter;
-      // segment = state.segmentInfo.name;
-
-      // System.out.println("BTW.init seg=" + state.segmentName);
-
-      postingsWriter.init(out);                          // have consumer write its format/header
+      postingsWriter.init(termsOut, state);                          // have consumer write its format/header
+      
+      this.indexOut = indexOut;
       success = true;
     } finally {
       if (!success) {
-        IOUtils.closeWhileHandlingException(out, indexOut);
+        IOUtils.closeWhileHandlingException(termsOut, indexOut);
       }
     }
-    this.indexOut = indexOut;
-  }
-
-  /** Writes the terms file header. */
-  private void writeHeader(IndexOutput out) throws IOException {
-    CodecUtil.writeHeader(out, TERMS_CODEC_NAME, VERSION_CURRENT);   
-  }
-
-  /** Writes the index file header. */
-  private void writeIndexHeader(IndexOutput out) throws IOException {
-    CodecUtil.writeHeader(out, TERMS_INDEX_CODEC_NAME, VERSION_CURRENT); 
   }
 
   /** Writes the terms file trailer. */
@@ -357,6 +295,20 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
   /** Writes the index file trailer. */
   private void writeIndexTrailer(IndexOutput indexOut, long dirStart) throws IOException {
     indexOut.writeLong(dirStart);    
+  }
+
+  /** Throws {@code IllegalArgumentException} if any of these settings
+   *  is invalid. */
+  public static void validateSettings(int minItemsInBlock, int maxItemsInBlock) {
+    if (minItemsInBlock <= 1) {
+      throw new IllegalArgumentException("minItemsInBlock must be >= 2; got " + minItemsInBlock);
+    }
+    if (minItemsInBlock > maxItemsInBlock) {
+      throw new IllegalArgumentException("maxItemsInBlock must be >= minItemsInBlock; got maxItemsInBlock=" + maxItemsInBlock + " minItemsInBlock=" + minItemsInBlock);
+    }
+    if (2*(minItemsInBlock-1) > maxItemsInBlock) {
+      throw new IllegalArgumentException("maxItemsInBlock must be at least 2*(minItemsInBlock-1); got maxItemsInBlock=" + maxItemsInBlock + " minItemsInBlock=" + minItemsInBlock);
+    }
   }
 
   @Override
@@ -389,7 +341,7 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
   
   static long encodeOutput(long fp, boolean hasTerms, boolean isFloor) {
     assert fp < (1L << 62);
-    return (fp << 2) | (hasTerms ? OUTPUT_FLAG_HAS_TERMS : 0) | (isFloor ? OUTPUT_FLAG_IS_FLOOR : 0);
+    return (fp << 2) | (hasTerms ? BlockTreeTermsReader.OUTPUT_FLAG_HAS_TERMS : 0) | (isFloor ? BlockTreeTermsReader.OUTPUT_FLAG_IS_FLOOR : 0);
   }
 
   private static class PendingEntry {
@@ -686,7 +638,7 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
 
       assert end > start;
 
-      long startFP = out.getFilePointer();
+      long startFP = termsOut.getFilePointer();
 
       boolean hasFloorLeadLabel = isFloor && floorLeadLabel != -1;
 
@@ -701,7 +653,7 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
         // Last block:
         code |= 1;
       }
-      out.writeVInt(code);
+      termsOut.writeVInt(code);
 
       /*
       if (DEBUG) {
@@ -746,7 +698,7 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
 
           // Write term stats, to separate byte[] blob:
           statsWriter.writeVInt(state.docFreq);
-          if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+          if (fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
             assert state.totalTermFreq >= state.docFreq: state.totalTermFreq + " vs " + state.docFreq;
             statsWriter.writeVLong(state.totalTermFreq - state.docFreq);
           }
@@ -787,7 +739,7 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
 
             // Write term stats, to separate byte[] blob:
             statsWriter.writeVInt(state.docFreq);
-            if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+            if (fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
               assert state.totalTermFreq >= state.docFreq;
               statsWriter.writeVLong(state.totalTermFreq - state.docFreq);
             }
@@ -847,18 +799,18 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
       // search on lookup
 
       // Write suffixes byte[] blob to terms dict output:
-      out.writeVInt((int) (suffixWriter.getFilePointer() << 1) | (isLeafBlock ? 1:0));
-      suffixWriter.writeTo(out);
+      termsOut.writeVInt((int) (suffixWriter.getFilePointer() << 1) | (isLeafBlock ? 1:0));
+      suffixWriter.writeTo(termsOut);
       suffixWriter.reset();
 
       // Write term stats byte[] blob
-      out.writeVInt((int) statsWriter.getFilePointer());
-      statsWriter.writeTo(out);
+      termsOut.writeVInt((int) statsWriter.getFilePointer());
+      statsWriter.writeTo(termsOut);
       statsWriter.reset();
 
       // Write term meta data byte[] blob
-      out.writeVInt((int) metaWriter.getFilePointer());
-      metaWriter.writeTo(out);
+      termsOut.writeVInt((int) metaWriter.getFilePointer());
+      metaWriter.writeTo(termsOut);
       metaWriter.reset();
 
       // if (DEBUG) {
@@ -875,6 +827,7 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
 
     TermsWriter(FieldInfo fieldInfo) {
       this.fieldInfo = fieldInfo;
+      assert fieldInfo.getIndexOptions() != IndexOptions.NONE;
       docsSeen = new FixedBitSet(maxDoc);
 
       this.longsSize = postingsWriter.setField(fieldInfo);
@@ -894,7 +847,7 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
       BlockTermState state = postingsWriter.writeTerm(text, termsEnum, docsSeen);
       if (state != null) {
         assert state.docFreq != 0;
-        assert fieldInfo.getIndexOptions() == IndexOptions.DOCS_ONLY || state.totalTermFreq >= state.docFreq: "postingsWriter=" + postingsWriter;
+        assert fieldInfo.getIndexOptions() == IndexOptions.DOCS || state.totalTermFreq >= state.docFreq: "postingsWriter=" + postingsWriter;
         sumDocFreq += state.docFreq;
         sumTotalTermFreq += state.totalTermFreq;
         pushTerm(text);
@@ -995,7 +948,7 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
                                      longsSize,
                                      minTerm, maxTerm));
       } else {
-        assert sumTotalTermFreq == 0 || fieldInfo.getIndexOptions() == IndexOptions.DOCS_ONLY && sumTotalTermFreq == -1;
+        assert sumTotalTermFreq == 0 || fieldInfo.getIndexOptions() == IndexOptions.DOCS && sumTotalTermFreq == -1;
         assert sumDocFreq == 0;
         assert docsSeen.cardinality() == 0;
       }
@@ -1007,44 +960,51 @@ public final class BlockTreeTermsWriter extends FieldsConsumer {
     private final RAMOutputStream bytesWriter = new RAMOutputStream();
   }
 
+  private boolean closed;
+  
   @Override
   public void close() throws IOException {
-
+    if (closed) {
+      return;
+    }
+    closed = true;
+    
     boolean success = false;
     try {
       
-      final long dirStart = out.getFilePointer();
+      final long dirStart = termsOut.getFilePointer();
       final long indexDirStart = indexOut.getFilePointer();
 
-      out.writeVInt(fields.size());
+      termsOut.writeVInt(fields.size());
       
       for(FieldMetaData field : fields) {
         //System.out.println("  field " + field.fieldInfo.name + " " + field.numTerms + " terms");
-        out.writeVInt(field.fieldInfo.number);
+        termsOut.writeVInt(field.fieldInfo.number);
         assert field.numTerms > 0;
-        out.writeVLong(field.numTerms);
-        out.writeVInt(field.rootCode.length);
-        out.writeBytes(field.rootCode.bytes, field.rootCode.offset, field.rootCode.length);
-        if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
-          out.writeVLong(field.sumTotalTermFreq);
+        termsOut.writeVLong(field.numTerms);
+        termsOut.writeVInt(field.rootCode.length);
+        termsOut.writeBytes(field.rootCode.bytes, field.rootCode.offset, field.rootCode.length);
+        assert field.fieldInfo.getIndexOptions() != IndexOptions.NONE;
+        if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
+          termsOut.writeVLong(field.sumTotalTermFreq);
         }
-        out.writeVLong(field.sumDocFreq);
-        out.writeVInt(field.docCount);
-        out.writeVInt(field.longsSize);
+        termsOut.writeVLong(field.sumDocFreq);
+        termsOut.writeVInt(field.docCount);
+        termsOut.writeVInt(field.longsSize);
         indexOut.writeVLong(field.indexStartFP);
-        writeBytesRef(out, field.minTerm);
-        writeBytesRef(out, field.maxTerm);
+        writeBytesRef(termsOut, field.minTerm);
+        writeBytesRef(termsOut, field.maxTerm);
       }
-      writeTrailer(out, dirStart);
-      CodecUtil.writeFooter(out);
+      writeTrailer(termsOut, dirStart);
+      CodecUtil.writeFooter(termsOut);
       writeIndexTrailer(indexOut, indexDirStart);
       CodecUtil.writeFooter(indexOut);
       success = true;
     } finally {
       if (success) {
-        IOUtils.close(out, indexOut, postingsWriter);
+        IOUtils.close(termsOut, indexOut, postingsWriter);
       } else {
-        IOUtils.closeWhileHandlingException(out, indexOut, postingsWriter);
+        IOUtils.closeWhileHandlingException(termsOut, indexOut, postingsWriter);
       }
     }
   }

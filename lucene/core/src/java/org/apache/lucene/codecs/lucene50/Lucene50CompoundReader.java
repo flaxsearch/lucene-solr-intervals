@@ -21,7 +21,6 @@ import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentInfo;
-import org.apache.lucene.store.BaseDirectory;
 import org.apache.lucene.store.ChecksumIndexInput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
@@ -43,7 +42,7 @@ import java.io.IOException;
  * Directory methods that would normally modify data throw an exception.
  * @lucene.experimental
  */
-final class Lucene50CompoundReader extends BaseDirectory {
+final class Lucene50CompoundReader extends Directory {
   
   /** Offset/Length for a slice inside of a compound file */
   public static final class FileEntry {
@@ -71,7 +70,7 @@ final class Lucene50CompoundReader extends BaseDirectory {
     boolean success = false;
     handle = directory.openInput(dataFileName, context);
     try {
-      CodecUtil.checkSegmentHeader(handle, Lucene50CompoundFormat.DATA_CODEC, version, version, si.getId(), "");
+      CodecUtil.checkIndexHeader(handle, Lucene50CompoundFormat.DATA_CODEC, version, version, si.getId(), "");
       
       // NOTE: data file is too costly to verify checksum against all the bytes on open,
       // but for now we at least verify proper structure of the checksum footer: which looks
@@ -84,7 +83,6 @@ final class Lucene50CompoundReader extends BaseDirectory {
         IOUtils.closeWhileHandlingException(handle);
       }
     }
-    this.isOpen = true;
   }
 
   /** Helper method that reads CFS entries from an input stream */
@@ -93,7 +91,7 @@ final class Lucene50CompoundReader extends BaseDirectory {
     try (ChecksumIndexInput entriesStream = dir.openChecksumInput(entriesFileName, IOContext.READONCE)) {
       Throwable priorE = null;
       try {
-        version = CodecUtil.checkSegmentHeader(entriesStream, Lucene50CompoundFormat.ENTRY_CODEC, 
+        version = CodecUtil.checkIndexHeader(entriesStream, Lucene50CompoundFormat.ENTRY_CODEC, 
                                                               Lucene50CompoundFormat.VERSION_START, 
                                                               Lucene50CompoundFormat.VERSION_CURRENT, segmentID, "");
         final int numEntries = entriesStream.readVInt();
@@ -119,7 +117,6 @@ final class Lucene50CompoundReader extends BaseDirectory {
   
   @Override
   public void close() throws IOException {
-    isOpen = false;
     IOUtils.close(handle);
   }
   
@@ -183,11 +180,6 @@ final class Lucene50CompoundReader extends BaseDirectory {
   
   @Override
   public Lock makeLock(String name) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public void clearLock(String name) throws IOException {
     throw new UnsupportedOperationException();
   }
 

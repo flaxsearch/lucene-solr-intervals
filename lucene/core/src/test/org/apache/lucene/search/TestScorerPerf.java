@@ -14,6 +14,7 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LuceneTestCase;
 
@@ -114,9 +115,10 @@ public class TestScorerPerf extends LuceneTestCase {
     protected void doSetNextReader(LeafReaderContext context) throws IOException {
       docBase = context.docBase;
     }
+    
     @Override
-    public boolean acceptsDocsOutOfOrder() {
-      return true;
+    public boolean needsScores() {
+      return false;
     }
   }
 
@@ -145,7 +147,11 @@ public class TestScorerPerf extends LuceneTestCase {
       @Override
       public DocIdSet getDocIdSet (LeafReaderContext context, Bits acceptDocs) {
         assertNull("acceptDocs should be null, as we have an index without deletions", acceptDocs);
-        return rnd;
+        return new BitDocIdSet(rnd);
+      }
+      @Override
+      public String toString(String field) {
+        return "randomBitSetFilter";
       }
     });
     bq.add(q, BooleanClause.Occur.MUST);

@@ -46,10 +46,13 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.RamUsageTester;
 import org.apache.lucene.util.TestUtil;
+
+import com.carrotsearch.randomizedtesting.generators.RandomStrings;
 
 public class TermsFilterTest extends LuceneTestCase {
 
@@ -81,20 +84,20 @@ public class TermsFilterTest extends LuceneTestCase {
 
     List<Term> terms = new ArrayList<>();
     terms.add(new Term(fieldName, "19"));
-    FixedBitSet bits = (FixedBitSet) termsFilter(random().nextBoolean(), terms).getDocIdSet(context, context.reader().getLiveDocs());
+    BitDocIdSet bits = (BitDocIdSet) termsFilter(random().nextBoolean(), terms).getDocIdSet(context, context.reader().getLiveDocs());
     assertNull("Must match nothing", bits);
 
     terms.add(new Term(fieldName, "20"));
-    bits = (FixedBitSet) termsFilter(random().nextBoolean(), terms).getDocIdSet(context, context.reader().getLiveDocs());
-    assertEquals("Must match 1", 1, bits.cardinality());
+    bits = (BitDocIdSet) termsFilter(random().nextBoolean(), terms).getDocIdSet(context, context.reader().getLiveDocs());
+    assertEquals("Must match 1", 1, bits.bits().cardinality());
 
     terms.add(new Term(fieldName, "10"));
-    bits = (FixedBitSet) termsFilter(random().nextBoolean(), terms).getDocIdSet(context, context.reader().getLiveDocs());
-    assertEquals("Must match 2", 2, bits.cardinality());
+    bits = (BitDocIdSet) termsFilter(random().nextBoolean(), terms).getDocIdSet(context, context.reader().getLiveDocs());
+    assertEquals("Must match 2", 2, bits.bits().cardinality());
 
     terms.add(new Term(fieldName, "00"));
-    bits = (FixedBitSet) termsFilter(random().nextBoolean(), terms).getDocIdSet(context, context.reader().getLiveDocs());
-    assertEquals("Must match 2", 2, bits.cardinality());
+    bits = (BitDocIdSet) termsFilter(random().nextBoolean(), terms).getDocIdSet(context, context.reader().getLiveDocs());
+    assertEquals("Must match 2", 2, bits.bits().cardinality());
 
     reader.close();
     rd.close();
@@ -126,8 +129,8 @@ public class TermsFilterTest extends LuceneTestCase {
       if (context.reader().docFreq(new Term(fieldName, "content1")) == 0) {
         assertNull(docIdSet);
       } else {
-        FixedBitSet bits = (FixedBitSet) docIdSet;
-        assertTrue("Must be >= 0", bits.cardinality() >= 0);      
+        BitDocIdSet bits = (BitDocIdSet) docIdSet;
+        assertTrue("Must be >= 0", bits.bits().cardinality() >= 0);      
       }
     }
     multi.close();
@@ -163,8 +166,8 @@ public class TermsFilterTest extends LuceneTestCase {
     LeafReaderContext context = reader.leaves().get(0);
     TermsFilter tf = new TermsFilter(terms);
 
-    FixedBitSet bits = (FixedBitSet) tf.getDocIdSet(context, context.reader().getLiveDocs());
-    assertEquals("Must be num fields - 1 since we skip only one field", num-1, bits.cardinality());  
+    BitDocIdSet bits = (BitDocIdSet) tf.getDocIdSet(context, context.reader().getLiveDocs());
+    assertEquals("Must be num fields - 1 since we skip only one field", num-1, bits.bits().cardinality());  
     reader.close();
     dir.close();
   }
@@ -199,8 +202,8 @@ public class TermsFilterTest extends LuceneTestCase {
     LeafReaderContext context = reader.leaves().get(0);
     TermsFilter tf = new TermsFilter(new ArrayList<>(terms));
 
-    FixedBitSet bits = (FixedBitSet) tf.getDocIdSet(context, context.reader().getLiveDocs());
-    assertEquals(context.reader().numDocs(), bits.cardinality());  
+    BitDocIdSet bits = (BitDocIdSet) tf.getDocIdSet(context, context.reader().getLiveDocs());
+    assertEquals(context.reader().numDocs(), bits.bits().cardinality());  
     reader.close();
     dir.close();
   }
@@ -335,4 +338,18 @@ public class TermsFilterTest extends LuceneTestCase {
                                               new Term("field1", "c"));
     assertEquals("field1:a field1:b field1:c", termsFilter.toString());
   }
+
+  public void testRamBytesUsed() {
+    List<Term> terms = new ArrayList<>();
+    final int numTerms = 1000 + random().nextInt(1000);
+    for (int i = 0; i < numTerms; ++i) {
+      terms.add(new Term("f", RandomStrings.randomUnicodeOfLength(random(), 10)));
+    }
+    TermsFilter filter = new TermsFilter(terms);
+    final long actualRamBytesUsed = RamUsageTester.sizeOf(filter);
+    final long expectedRamBytesUsed = filter.ramBytesUsed();
+    // error margin within 1%
+    assertEquals(actualRamBytesUsed, expectedRamBytesUsed, actualRamBytesUsed / 100);
+  }
+
 }

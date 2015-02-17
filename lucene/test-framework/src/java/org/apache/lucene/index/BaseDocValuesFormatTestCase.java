@@ -17,8 +17,6 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import static org.apache.lucene.index.SortedSetDocValues.NO_MORE_ORDS;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -26,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -57,9 +56,12 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.BytesRefHash;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.TestUtil;
+
+import static org.apache.lucene.index.SortedSetDocValues.NO_MORE_ORDS;
 
 /**
  * Abstract class to do basic tests for a docvalues format.
@@ -538,6 +540,34 @@ public abstract class BaseDocValuesFormatTestCase extends BaseIndexFileFormatTes
       assertEquals(expected, scratch.utf8ToString());
     }
 
+    ireader.close();
+    directory.close();
+  }
+  
+  public void testBytesMergeAwayAllValues() throws IOException {
+    Directory directory = newDirectory();
+    Analyzer analyzer = new MockAnalyzer(random());
+    IndexWriterConfig iwconfig = newIndexWriterConfig(analyzer);
+    iwconfig.setMergePolicy(newLogMergePolicy());
+    RandomIndexWriter iwriter = new RandomIndexWriter(random(), directory, iwconfig);
+    
+    Document doc = new Document();
+    doc.add(new StringField("id", "0", Field.Store.NO));
+    iwriter.addDocument(doc);    
+    doc = new Document();
+    doc.add(new StringField("id", "1", Field.Store.NO));
+    doc.add(new BinaryDocValuesField("field", new BytesRef("hi")));
+    iwriter.addDocument(doc);
+    iwriter.commit();
+    iwriter.deleteDocuments(new Term("id", "1"));
+    iwriter.forceMerge(1);
+    
+    DirectoryReader ireader = iwriter.getReader();
+    iwriter.close();
+    
+    BinaryDocValues dv = getOnlySegmentReader(ireader).getBinaryDocValues("field");
+    assertEquals(new BytesRef(), dv.get(0));
+    
     ireader.close();
     directory.close();
   }
@@ -1126,8 +1156,8 @@ public abstract class BaseDocValuesFormatTestCase extends BaseIndexFileFormatTes
 
     for (Entry<String, String> entry : entrySet) {
       // pk lookup
-      DocsEnum termDocsEnum = slowR.termDocsEnum(new Term("id", entry.getKey()));
-      int docId = termDocsEnum.nextDoc();
+      PostingsEnum termPostingsEnum = slowR.termDocsEnum(new Term("id", entry.getKey()));
+      int docId = termPostingsEnum.nextDoc();
       expected = new BytesRef(entry.getValue());
       final BytesRef actual = docValues.get(docId);
       assertEquals(expected, actual);
@@ -2055,7 +2085,7 @@ public abstract class BaseDocValuesFormatTestCase extends BaseIndexFileFormatTes
       );
     }
   }
-  
+
   public void testSortedNumericsMultipleValuesVsStoredFields() throws Exception {
     assumeTrue("Codec does not support SORTED_NUMERIC", codecSupportsSortedNumeric());
     int numIterations = atLeast(1);
@@ -2423,6 +2453,7 @@ public abstract class BaseDocValuesFormatTestCase extends BaseIndexFileFormatTes
   }
   
   /** Tests dv against stored fields with threads (all types + missing) */
+  @Slow
   public void testThreads2() throws Exception {
     assumeTrue("Codec does not support getDocsWithField", codecSupportsDocsWithField());
     assumeTrue("Codec does not support SORTED_SET", codecSupportsSortedSet());
@@ -2595,6 +2626,7 @@ public abstract class BaseDocValuesFormatTestCase extends BaseIndexFileFormatTes
     dir.close();
   }
   
+  @Slow
   public void testThreads3() throws Exception {
     assumeTrue("Codec does not support getDocsWithField", codecSupportsDocsWithField());
     assumeTrue("Codec does not support SORTED_SET", codecSupportsSortedSet());
@@ -2749,6 +2781,34 @@ public abstract class BaseDocValuesFormatTestCase extends BaseIndexFileFormatTes
     directory.close();
   }
   
+  public void testNumberMergeAwayAllValues() throws IOException {
+    Directory directory = newDirectory();
+    Analyzer analyzer = new MockAnalyzer(random());
+    IndexWriterConfig iwconfig = newIndexWriterConfig(analyzer);
+    iwconfig.setMergePolicy(newLogMergePolicy());
+    RandomIndexWriter iwriter = new RandomIndexWriter(random(), directory, iwconfig);
+    
+    Document doc = new Document();
+    doc.add(new StringField("id", "0", Field.Store.NO));
+    iwriter.addDocument(doc);    
+    doc = new Document();
+    doc.add(new StringField("id", "1", Field.Store.NO));
+    doc.add(new NumericDocValuesField("field", 5));
+    iwriter.addDocument(doc);
+    iwriter.commit();
+    iwriter.deleteDocuments(new Term("id", "1"));
+    iwriter.forceMerge(1);
+    
+    DirectoryReader ireader = iwriter.getReader();
+    iwriter.close();
+    
+    NumericDocValues dv = getOnlySegmentReader(ireader).getNumericDocValues("field");
+    assertEquals(0, dv.get(0));
+    
+    ireader.close();
+    directory.close();
+  }
+  
   public void testTwoSortedNumber() throws IOException {
     assumeTrue("Codec does not support SORTED_NUMERIC", codecSupportsSortedNumeric());
     Directory directory = newDirectory();
@@ -2766,6 +2826,29 @@ public abstract class BaseDocValuesFormatTestCase extends BaseIndexFileFormatTes
     dv.setDocument(0);
     assertEquals(2, dv.count());
     assertEquals(-5, dv.valueAt(0));
+    assertEquals(11, dv.valueAt(1));
+
+    reader.close();
+    directory.close();
+  }
+  
+  public void testTwoSortedNumberSameValue() throws IOException {
+    assumeTrue("Codec does not support SORTED_NUMERIC", codecSupportsSortedNumeric());
+    Directory directory = newDirectory();
+    RandomIndexWriter writer = new RandomIndexWriter(random(), directory);
+    Document doc = new Document();
+    doc.add(new SortedNumericDocValuesField("dv", 11));
+    doc.add(new SortedNumericDocValuesField("dv", 11));
+    writer.addDocument(doc);
+    writer.close();
+    
+    // Now search the index:
+    IndexReader reader = DirectoryReader.open(directory);
+    assert reader.leaves().size() == 1;
+    SortedNumericDocValues dv = reader.leaves().get(0).reader().getSortedNumericDocValues("dv");
+    dv.setDocument(0);
+    assertEquals(2, dv.count());
+    assertEquals(11, dv.valueAt(0));
     assertEquals(11, dv.valueAt(1));
 
     reader.close();
@@ -2864,6 +2947,143 @@ public abstract class BaseDocValuesFormatTestCase extends BaseIndexFileFormatTes
     directory.close();
   }
 
+  public void testSortedEnumAdvanceIndependently() throws IOException {
+    Directory directory = newDirectory();
+    Analyzer analyzer = new MockAnalyzer(random());
+    IndexWriterConfig iwconfig = newIndexWriterConfig(analyzer);
+    iwconfig.setMergePolicy(newLogMergePolicy());
+    RandomIndexWriter iwriter = new RandomIndexWriter(random(), directory, iwconfig);
+    
+    Document doc = new Document();
+    SortedDocValuesField field = new SortedDocValuesField("field", new BytesRef("2"));
+    doc.add(field);
+    iwriter.addDocument(doc);
+    field.setBytesValue(new BytesRef("1"));
+    iwriter.addDocument(doc);
+    field.setBytesValue(new BytesRef("3"));
+    iwriter.addDocument(doc);
+
+    iwriter.commit();
+    iwriter.forceMerge(1);
+
+    DirectoryReader ireader = iwriter.getReader();
+    iwriter.close();
+
+    SortedDocValues dv = getOnlySegmentReader(ireader).getSortedDocValues("field");
+    doTestSortedSetEnumAdvanceIndependently(DocValues.singleton(dv));
+
+    ireader.close();
+    directory.close();
+  }
+
+  public void testSortedSetEnumAdvanceIndependently() throws IOException {
+    assumeTrue("Codec does not support SORTED_SET", codecSupportsSortedSet());
+    Directory directory = newDirectory();
+    Analyzer analyzer = new MockAnalyzer(random());
+    IndexWriterConfig iwconfig = newIndexWriterConfig(analyzer);
+    iwconfig.setMergePolicy(newLogMergePolicy());
+    RandomIndexWriter iwriter = new RandomIndexWriter(random(), directory, iwconfig);
+    
+    Document doc = new Document();
+    SortedSetDocValuesField field1 = new SortedSetDocValuesField("field", new BytesRef("2"));
+    SortedSetDocValuesField field2 = new SortedSetDocValuesField("field", new BytesRef("3"));
+    doc.add(field1);
+    doc.add(field2);
+    iwriter.addDocument(doc);
+    field1.setBytesValue(new BytesRef("1"));
+    iwriter.addDocument(doc);
+    field2.setBytesValue(new BytesRef("2"));
+    iwriter.addDocument(doc);
+
+    iwriter.commit();
+    iwriter.forceMerge(1);
+
+    DirectoryReader ireader = iwriter.getReader();
+    iwriter.close();
+
+    SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
+    doTestSortedSetEnumAdvanceIndependently(dv);
+
+    ireader.close();
+    directory.close();
+  }
+
+  protected void doTestSortedSetEnumAdvanceIndependently(SortedSetDocValues dv) throws IOException {
+    if (dv.getValueCount() < 2) {
+      return;
+    }
+    List<BytesRef> terms = new ArrayList<>();
+    TermsEnum te = dv.termsEnum();
+    terms.add(BytesRef.deepCopyOf(te.next()));
+    terms.add(BytesRef.deepCopyOf(te.next()));
+
+    // Make sure that calls to next() does not modify the term of the other enum
+    TermsEnum enum1 = dv.termsEnum();
+    TermsEnum enum2 = dv.termsEnum();
+    BytesRefBuilder term1 = new BytesRefBuilder();
+    BytesRefBuilder term2 = new BytesRefBuilder();
+
+    term1.copyBytes(enum1.next());
+    term2.copyBytes(enum2.next());
+    term1.copyBytes(enum1.next());
+
+    assertEquals(term1.get(), enum1.term());
+    assertEquals(term2.get(), enum2.term());
+
+    // Same for seekCeil
+    enum1 = dv.termsEnum();
+    enum2 = dv.termsEnum();
+    term1 = new BytesRefBuilder();
+    term2 = new BytesRefBuilder();
+
+    term2.copyBytes(enum2.next());
+    BytesRefBuilder seekTerm = new BytesRefBuilder();
+    seekTerm.append(terms.get(0));
+    seekTerm.append((byte) 0);
+    enum1.seekCeil(seekTerm.get());
+    term1.copyBytes(enum1.term());
+
+    assertEquals(term1.get(), enum1.term());
+    assertEquals(term2.get(), enum2.term());
+
+    // Same for seekCeil on an exact value
+    enum1 = dv.termsEnum();
+    enum2 = dv.termsEnum();
+    term1 = new BytesRefBuilder();
+    term2 = new BytesRefBuilder();
+
+    term2.copyBytes(enum2.next());
+    enum1.seekCeil(terms.get(1));
+    term1.copyBytes(enum1.term());
+    
+    assertEquals(term1.get(), enum1.term());
+    assertEquals(term2.get(), enum2.term());
+
+    // Same for seekExact
+    enum1 = dv.termsEnum();
+    enum2 = dv.termsEnum();
+    term1 = new BytesRefBuilder();
+    term2 = new BytesRefBuilder();
+
+    term2.copyBytes(enum2.next());
+    final boolean found = enum1.seekExact(terms.get(1));
+    assertTrue(found);
+    term1.copyBytes(enum1.term());
+
+    // Same for seek by ord
+    enum1 = dv.termsEnum();
+    enum2 = dv.termsEnum();
+    term1 = new BytesRefBuilder();
+    term2 = new BytesRefBuilder();
+
+    term2.copyBytes(enum2.next());
+    enum1.seekExact(1);
+    term1.copyBytes(enum1.term());
+
+    assertEquals(term1.get(), enum1.term());
+    assertEquals(term2.get(), enum2.term());
+  }
+
   protected boolean codecAcceptsHugeBinaryValues(String field) {
     return true;
   }
@@ -2883,4 +3103,5 @@ public abstract class BaseDocValuesFormatTestCase extends BaseIndexFileFormatTes
   protected boolean codecSupportsSortedNumeric() {
     return true;
   }
+
 }

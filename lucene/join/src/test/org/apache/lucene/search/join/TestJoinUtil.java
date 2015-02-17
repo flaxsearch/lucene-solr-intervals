@@ -37,12 +37,12 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.LeafReader;
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DocValues;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
@@ -52,9 +52,12 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.FilterLeafCollector;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -64,6 +67,8 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.BitSet;
+import org.apache.lucene.util.BitSetIterator;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
@@ -236,12 +241,14 @@ public class TestJoinUtil extends LuceneTestCase {
     doc.add(new TextField("description", "random text", Field.Store.NO));
     doc.add(new TextField("name", "name1", Field.Store.NO));
     doc.add(new TextField(idField, "7", Field.Store.NO));
+    doc.add(new SortedDocValuesField(idField, new BytesRef("7")));
     w.addDocument(doc);
 
     // 1
     doc = new Document();
     doc.add(new TextField("price", "10.0", Field.Store.NO));
     doc.add(new TextField(idField, "2", Field.Store.NO));
+    doc.add(new SortedDocValuesField(idField, new BytesRef("2")));
     doc.add(new TextField(toField, "7", Field.Store.NO));
     w.addDocument(doc);
 
@@ -249,6 +256,7 @@ public class TestJoinUtil extends LuceneTestCase {
     doc = new Document();
     doc.add(new TextField("price", "20.0", Field.Store.NO));
     doc.add(new TextField(idField, "3", Field.Store.NO));
+    doc.add(new SortedDocValuesField(idField, new BytesRef("3")));
     doc.add(new TextField(toField, "7", Field.Store.NO));
     w.addDocument(doc);
 
@@ -264,6 +272,7 @@ public class TestJoinUtil extends LuceneTestCase {
     doc = new Document();
     doc.add(new TextField("price", "10.0", Field.Store.NO));
     doc.add(new TextField(idField, "5", Field.Store.NO));
+    doc.add(new SortedDocValuesField(idField, new BytesRef("5")));
     doc.add(new TextField(toField, "0", Field.Store.NO));
     w.addDocument(doc);
 
@@ -271,6 +280,7 @@ public class TestJoinUtil extends LuceneTestCase {
     doc = new Document();
     doc.add(new TextField("price", "20.0", Field.Store.NO));
     doc.add(new TextField(idField, "6", Field.Store.NO));
+    doc.add(new SortedDocValuesField(idField, new BytesRef("6")));
     doc.add(new TextField(toField, "0", Field.Store.NO));
     w.addDocument(doc);
 
@@ -300,9 +310,10 @@ public class TestJoinUtil extends LuceneTestCase {
             assertFalse("optimized bulkScorer was not used for join query embedded in boolean query!", sawFive);
           }
         }
+        
         @Override
-        public boolean acceptsDocsOutOfOrder() {
-          return true;
+        public boolean needsScores() {
+          return false;
         }
       });
 
@@ -437,8 +448,7 @@ public class TestJoinUtil extends LuceneTestCase {
           dir,
           newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.KEYWORD, false)).setMergePolicy(newLogMergePolicy())
       );
-      final boolean scoreDocsInOrder = TestJoinUtil.random().nextBoolean();
-      IndexIterationContext context = createContext(numberOfDocumentsToIndex, w, multipleValuesPerDocument, scoreDocsInOrder);
+      IndexIterationContext context = createContext(numberOfDocumentsToIndex, w, multipleValuesPerDocument);
 
       IndexReader topLevelReader = w.getReader();
       w.close();
@@ -451,7 +461,7 @@ public class TestJoinUtil extends LuceneTestCase {
         int r = random().nextInt(context.randomUniqueValues.length);
         boolean from = context.randomFrom[r];
         String randomValue = context.randomUniqueValues[r];
-        FixedBitSet expectedResult = createExpectedResult(randomValue, from, indexSearcher.getIndexReader(), context);
+        BitSet expectedResult = createExpectedResult(randomValue, from, indexSearcher.getIndexReader(), context);
 
         final Query actualQuery = new TermQuery(new Term("value", randomValue));
         if (VERBOSE) {
@@ -473,43 +483,38 @@ public class TestJoinUtil extends LuceneTestCase {
         }
 
         // Need to know all documents that have matches. TopDocs doesn't give me that and then I'd be also testing TopDocsCollector...
-        final FixedBitSet actualResult = new FixedBitSet(indexSearcher.getIndexReader().maxDoc());
-        final TopScoreDocCollector topScoreDocCollector = TopScoreDocCollector.create(10, false);
-        indexSearcher.search(joinQuery, new SimpleCollector() {
-
-          int docBase;
+        final BitSet actualResult = new FixedBitSet(indexSearcher.getIndexReader().maxDoc());
+        final TopScoreDocCollector topScoreDocCollector = TopScoreDocCollector.create(10);
+        indexSearcher.search(joinQuery, new Collector() {
 
           @Override
-          public void collect(int doc) throws IOException {
-            actualResult.set(doc + docBase);
-            topScoreDocCollector.collect(doc);
+          public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+            final int docBase = context.docBase;
+            final LeafCollector in = topScoreDocCollector.getLeafCollector(context);
+            return new FilterLeafCollector(in) {
+
+              @Override
+              public void collect(int doc) throws IOException {
+                super.collect(doc);
+                actualResult.set(doc + docBase);
+              }
+            };
           }
-
+          
           @Override
-          protected void doSetNextReader(LeafReaderContext context) throws IOException {
-            docBase = context.docBase;
-            topScoreDocCollector.getLeafCollector(context);
-          }
-
-          @Override
-          public void setScorer(Scorer scorer) throws IOException {
-            topScoreDocCollector.setScorer(scorer);
-          }
-
-          @Override
-          public boolean acceptsDocsOutOfOrder() {
-            return scoreDocsInOrder;
+          public boolean needsScores() {
+            return topScoreDocCollector.needsScores();
           }
         });
         // Asserting bit set...
         if (VERBOSE) {
           System.out.println("expected cardinality:" + expectedResult.cardinality());
-          DocIdSetIterator iterator = expectedResult.iterator();
+          DocIdSetIterator iterator = new BitSetIterator(expectedResult, expectedResult.cardinality());
           for (int doc = iterator.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = iterator.nextDoc()) {
             System.out.println(String.format(Locale.ROOT, "Expected doc[%d] with id value %s", doc, indexSearcher.doc(doc).get("id")));
           }
           System.out.println("actual cardinality:" + actualResult.cardinality());
-          iterator = actualResult.iterator();
+          iterator = new BitSetIterator(actualResult, actualResult.cardinality());
           for (int doc = iterator.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = iterator.nextDoc()) {
             System.out.println(String.format(Locale.ROOT, "Actual doc[%d] with id value %s", doc, indexSearcher.doc(doc).get("id")));
           }
@@ -542,11 +547,11 @@ public class TestJoinUtil extends LuceneTestCase {
     }
   }
 
-  private IndexIterationContext createContext(int nDocs, RandomIndexWriter writer, boolean multipleValuesPerDocument, boolean scoreDocsInOrder) throws IOException {
-    return createContext(nDocs, writer, writer, multipleValuesPerDocument, scoreDocsInOrder);
+  private IndexIterationContext createContext(int nDocs, RandomIndexWriter writer, boolean multipleValuesPerDocument) throws IOException {
+    return createContext(nDocs, writer, writer, multipleValuesPerDocument);
   }
 
-  private IndexIterationContext createContext(int nDocs, RandomIndexWriter fromWriter, RandomIndexWriter toWriter, boolean multipleValuesPerDocument, boolean scoreDocsInOrder) throws IOException {
+  private IndexIterationContext createContext(int nDocs, RandomIndexWriter fromWriter, RandomIndexWriter toWriter, boolean multipleValuesPerDocument) throws IOException {
     IndexIterationContext context = new IndexIterationContext();
     int numRandomValues = nDocs / 2;
     context.randomUniqueValues = new String[numRandomValues];
@@ -680,8 +685,8 @@ public class TestJoinUtil extends LuceneTestCase {
           }
 
           @Override
-          public boolean acceptsDocsOutOfOrder() {
-            return false;
+          public boolean needsScores() {
+            return true;
           }
         });
       } else {
@@ -715,76 +720,38 @@ public class TestJoinUtil extends LuceneTestCase {
           public void setScorer(Scorer scorer) {
             this.scorer = scorer;
           }
-
+          
           @Override
-          public boolean acceptsDocsOutOfOrder() {
-            return false;
+          public boolean needsScores() {
+            return true;
           }
         });
       }
 
       final Map<Integer, JoinScore> docToJoinScore = new HashMap<>();
       if (multipleValuesPerDocument) {
-        if (scoreDocsInOrder) {
-          LeafReader slowCompositeReader = SlowCompositeReaderWrapper.wrap(toSearcher.getIndexReader());
-          Terms terms = slowCompositeReader.terms(toField);
-          if (terms != null) {
-            DocsEnum docsEnum = null;
-            TermsEnum termsEnum = null;
-            SortedSet<BytesRef> joinValues = new TreeSet<>(BytesRef.getUTF8SortedAsUnicodeComparator());
-            joinValues.addAll(joinValueToJoinScores.keySet());
-            for (BytesRef joinValue : joinValues) {
-              termsEnum = terms.iterator(termsEnum);
-              if (termsEnum.seekExact(joinValue)) {
-                docsEnum = termsEnum.docs(slowCompositeReader.getLiveDocs(), docsEnum, DocsEnum.FLAG_NONE);
-                JoinScore joinScore = joinValueToJoinScores.get(joinValue);
+        LeafReader slowCompositeReader = SlowCompositeReaderWrapper.wrap(toSearcher.getIndexReader());
+        Terms terms = slowCompositeReader.terms(toField);
+        if (terms != null) {
+          PostingsEnum postingsEnum = null;
+          TermsEnum termsEnum = null;
+          SortedSet<BytesRef> joinValues = new TreeSet<>(BytesRef.getUTF8SortedAsUnicodeComparator());
+          joinValues.addAll(joinValueToJoinScores.keySet());
+          for (BytesRef joinValue : joinValues) {
+            termsEnum = terms.iterator(termsEnum);
+            if (termsEnum.seekExact(joinValue)) {
+              postingsEnum = termsEnum.postings(slowCompositeReader.getLiveDocs(), postingsEnum, PostingsEnum.FLAG_NONE);
+              JoinScore joinScore = joinValueToJoinScores.get(joinValue);
 
-                for (int doc = docsEnum.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = docsEnum.nextDoc()) {
-                  // First encountered join value determines the score.
-                  // Something to keep in mind for many-to-many relations.
-                  if (!docToJoinScore.containsKey(doc)) {
-                    docToJoinScore.put(doc, joinScore);
-                  }
+              for (int doc = postingsEnum.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = postingsEnum.nextDoc()) {
+                // First encountered join value determines the score.
+                // Something to keep in mind for many-to-many relations.
+                if (!docToJoinScore.containsKey(doc)) {
+                  docToJoinScore.put(doc, joinScore);
                 }
               }
             }
           }
-        } else {
-          toSearcher.search(new MatchAllDocsQuery(), new SimpleCollector() {
-
-            private SortedSetDocValues docTermOrds;
-            private int docBase;
-
-            @Override
-            public void collect(int doc) throws IOException {
-              docTermOrds.setDocument(doc);
-              long ord;
-              while ((ord = docTermOrds.nextOrd()) != SortedSetDocValues.NO_MORE_ORDS) {
-                final BytesRef joinValue = docTermOrds.lookupOrd(ord);
-                JoinScore joinScore = joinValueToJoinScores.get(joinValue);
-                if (joinScore == null) {
-                  continue;
-                }
-                Integer basedDoc = docBase + doc;
-                // First encountered join value determines the score.
-                // Something to keep in mind for many-to-many relations.
-                if (!docToJoinScore.containsKey(basedDoc)) {
-                  docToJoinScore.put(basedDoc, joinScore);
-                }
-              }
-            }
-
-            @Override
-            protected void doSetNextReader(LeafReaderContext context) throws IOException {
-              docBase = context.docBase;
-              docTermOrds = DocValues.getSortedSet(context.reader(), toField);
-            }
-
-            @Override
-            public boolean acceptsDocsOutOfOrder() {return false;}
-            @Override
-            public void setScorer(Scorer scorer) {}
-          });
         }
       } else {
         toSearcher.search(new MatchAllDocsQuery(), new SimpleCollector() {
@@ -809,9 +776,12 @@ public class TestJoinUtil extends LuceneTestCase {
           }
 
           @Override
-          public boolean acceptsDocsOutOfOrder() {return false;}
-          @Override
           public void setScorer(Scorer scorer) {}
+          
+          @Override
+          public boolean needsScores() {
+            return false;
+          }
         });
       }
       queryVals.put(uniqueRandomValue, docToJoinScore);
@@ -858,7 +828,7 @@ public class TestJoinUtil extends LuceneTestCase {
     return new TopDocs(hits.size(), scoreDocs, hits.isEmpty() ? Float.NaN : hits.get(0).getValue().score(scoreMode));
   }
 
-  private FixedBitSet createExpectedResult(String queryValue, boolean from, IndexReader topLevelReader, IndexIterationContext context) throws IOException {
+  private BitSet createExpectedResult(String queryValue, boolean from, IndexReader topLevelReader, IndexIterationContext context) throws IOException {
     final Map<String, List<RandomDoc>> randomValueDocs;
     final Map<String, List<RandomDoc>> linkValueDocuments;
     if (from) {
@@ -869,7 +839,7 @@ public class TestJoinUtil extends LuceneTestCase {
       linkValueDocuments = context.fromDocuments;
     }
 
-    FixedBitSet expectedResult = new FixedBitSet(topLevelReader.maxDoc());
+    BitSet expectedResult = new FixedBitSet(topLevelReader.maxDoc());
     List<RandomDoc> matchingDocs = randomValueDocs.get(queryValue);
     if (matchingDocs == null) {
       return new FixedBitSet(topLevelReader.maxDoc());
@@ -883,9 +853,9 @@ public class TestJoinUtil extends LuceneTestCase {
         }
 
         for (RandomDoc otherSideDoc : otherMatchingDocs) {
-          DocsEnum docsEnum = MultiFields.getTermDocsEnum(topLevelReader, MultiFields.getLiveDocs(topLevelReader), "id", new BytesRef(otherSideDoc.id), 0);
-          assert docsEnum != null;
-          int doc = docsEnum.nextDoc();
+          PostingsEnum postingsEnum = MultiFields.getTermDocsEnum(topLevelReader, MultiFields.getLiveDocs(topLevelReader), "id", new BytesRef(otherSideDoc.id), 0);
+          assert postingsEnum != null;
+          int doc = postingsEnum.nextDoc();
           expectedResult.set(doc);
         }
       }

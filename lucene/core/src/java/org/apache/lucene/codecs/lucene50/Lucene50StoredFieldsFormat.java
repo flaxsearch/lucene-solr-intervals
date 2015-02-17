@@ -17,30 +17,50 @@ package org.apache.lucene.codecs.lucene50;
  * limitations under the License.
  */
 
+import java.io.IOException;
+import java.util.Objects;
+
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.StoredFieldsFormat;
+import org.apache.lucene.codecs.StoredFieldsReader;
+import org.apache.lucene.codecs.StoredFieldsWriter;
 import org.apache.lucene.codecs.compressing.CompressingStoredFieldsFormat;
 import org.apache.lucene.codecs.compressing.CompressingStoredFieldsIndexWriter;
 import org.apache.lucene.codecs.compressing.CompressionMode;
+import org.apache.lucene.index.FieldInfos;
+import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.StoredFieldVisitor;
 import org.apache.lucene.store.DataOutput;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.packed.PackedInts;
 
 /**
  * Lucene 5.0 stored fields format.
  *
- * <p><b>Principle</b></p>
- * <p>This {@link StoredFieldsFormat} compresses blocks of 16KB of documents in
+ * <p><b>Principle</b>
+ * <p>This {@link StoredFieldsFormat} compresses blocks of documents in
  * order to improve the compression ratio compared to document-level
  * compression. It uses the <a href="http://code.google.com/p/lz4/">LZ4</a>
- * compression algorithm, which is fast to compress and very fast to decompress
- * data. Although the compression method that is used focuses more on speed
- * than on compression ratio, it should provide interesting compression ratios
- * for redundant inputs (such as log files, HTML or plain text).</p>
- * <p><b>File formats</b></p>
- * <p>Stored fields are represented by two files:</p>
+ * compression algorithm by default in 16KB blocks, which is fast to compress 
+ * and very fast to decompress data. Although the default compression method 
+ * that is used ({@link Mode#BEST_SPEED BEST_SPEED}) focuses more on speed than on 
+ * compression ratio, it should provide interesting compression ratios
+ * for redundant inputs (such as log files, HTML or plain text). For higher
+ * compression, you can choose ({@link Mode#BEST_COMPRESSION BEST_COMPRESSION}), which uses 
+ * the <a href="http://en.wikipedia.org/wiki/DEFLATE">DEFLATE</a> algorithm with 60KB blocks 
+ * for a better ratio at the expense of slower performance. 
+ * These two options can be configured like this:
+ * <pre class="prettyprint">
+ *   // the default: for high performance
+ *   indexWriterConfig.setCodec(new Lucene50Codec(Mode.BEST_SPEED));
+ *   // instead for higher performance (but slower):
+ *   // indexWriterConfig.setCodec(new Lucene50Codec(Mode.BEST_COMPRESSION));
+ * </pre>
+ * <p><b>File formats</b>
+ * <p>Stored fields are represented by two files:
  * <ol>
- * <li><a name="field_data" id="field_data"></a>
+ * <li><a name="field_data"></a>
  * <p>A fields data file (extension <tt>.fdt</tt>). This file stores a compact
  * representation of documents in compressed blocks of 16KB or more. When
  * writing a segment, documents are appended to an in-memory <tt>byte[]</tt>
@@ -51,8 +71,8 @@ import org.apache.lucene.util.packed.PackedInts;
  * <a href="http://fastcompression.blogspot.fr/2011/05/lz4-explained.html">compression format</a>.</p>
  * <p>Here is a more detailed description of the field data file format:</p>
  * <ul>
- * <li>FieldData (.fdt) --&gt; &lt;Header&gt;, PackedIntsVersion, &lt;Chunk&gt;<sup>ChunkCount</sup></li>
- * <li>Header --&gt; {@link CodecUtil#writeSegmentHeader SegmentHeader}</li>
+ * <li>FieldData (.fdt) --&gt; &lt;Header&gt;, PackedIntsVersion, &lt;Chunk&gt;<sup>ChunkCount</sup>, ChunkCount, DirtyChunkCount, Footer</li>
+ * <li>Header --&gt; {@link CodecUtil#writeIndexHeader IndexHeader}</li>
  * <li>PackedIntsVersion --&gt; {@link PackedInts#VERSION_CURRENT} as a {@link DataOutput#writeVInt VInt}</li>
  * <li>ChunkCount is not known in advance and is the number of chunks necessary to store all document of the segment</li>
  * <li>Chunk --&gt; DocBase, ChunkDocs, DocFieldCounts, DocLengths, &lt;CompressedDocs&gt;</li>
@@ -82,8 +102,11 @@ import org.apache.lucene.util.packed.PackedInts;
  * <li>FieldNum --&gt; an ID of the field</li>
  * <li>Value --&gt; {@link DataOutput#writeString(String) String} | BinaryValue | Int | Float | Long | Double depending on Type</li>
  * <li>BinaryValue --&gt; ValueLength &lt;Byte&gt;<sup>ValueLength</sup></li>
+ * <li>ChunkCount --&gt; the number of chunks in this file</li>
+ * <li>DirtyChunkCount --&gt; the number of prematurely flushed chunks in this file</li>
+ * <li>Footer --&gt; {@link CodecUtil#writeFooter CodecFooter}</li>
  * </ul>
- * <p>Notes</p>
+ * <p>Notes
  * <ul>
  * <li>If documents are larger than 16KB then chunks will likely contain only
  * one document. However, documents can never spread across several chunks (all
@@ -100,25 +123,73 @@ import org.apache.lucene.util.packed.PackedInts;
  * 0.5% larger than Docs.</li>
  * </ul>
  * </li>
- * <li><a name="field_index" id="field_index"></a>
+ * <li><a name="field_index"></a>
  * <p>A fields index file (extension <tt>.fdx</tt>).</p>
  * <ul>
- * <li>FieldsIndex (.fdx) --&gt; &lt;Header&gt;, &lt;ChunkIndex&gt;</li>
- * <li>Header --&gt; {@link CodecUtil#writeSegmentHeader SegmentHeader}</li>
+ * <li>FieldsIndex (.fdx) --&gt; &lt;Header&gt;, &lt;ChunkIndex&gt;, Footer</li>
+ * <li>Header --&gt; {@link CodecUtil#writeIndexHeader IndexHeader}</li>
  * <li>ChunkIndex: See {@link CompressingStoredFieldsIndexWriter}</li>
+ * <li>Footer --&gt; {@link CodecUtil#writeFooter CodecFooter}</li>
  * </ul>
  * </li>
  * </ol>
- * <p><b>Known limitations</b></p>
+ * <p><b>Known limitations</b>
  * <p>This {@link StoredFieldsFormat} does not support individual documents
- * larger than (<tt>2<sup>31</sup> - 2<sup>14</sup></tt>) bytes.</p>
+ * larger than (<tt>2<sup>31</sup> - 2<sup>14</sup></tt>) bytes.
  * @lucene.experimental
  */
-public final class Lucene50StoredFieldsFormat extends CompressingStoredFieldsFormat {
-
-  /** Sole constructor. */
+public final class Lucene50StoredFieldsFormat extends StoredFieldsFormat {
+  
+  /** Configuration option for stored fields. */
+  public static enum Mode {
+    /** Trade compression ratio for retrieval speed. */
+    BEST_SPEED,
+    /** Trade retrieval speed for compression ratio. */
+    BEST_COMPRESSION
+  }
+  
+  /** Attribute key for compression mode. */
+  public static final String MODE_KEY = Lucene50StoredFieldsFormat.class.getSimpleName() + ".mode";
+  
+  final Mode mode;
+  
+  /** Stored fields format with default options */
   public Lucene50StoredFieldsFormat() {
-    super("Lucene50StoredFields", CompressionMode.FAST, 1 << 14);
+    this(Mode.BEST_SPEED);
+  }
+  
+  /** Stored fields format with specified mode */
+  public Lucene50StoredFieldsFormat(Mode mode) {
+    this.mode = Objects.requireNonNull(mode);
   }
 
+  @Override
+  public StoredFieldsReader fieldsReader(Directory directory, SegmentInfo si, FieldInfos fn, IOContext context) throws IOException {
+    String value = si.getAttribute(MODE_KEY);
+    if (value == null) {
+      throw new IllegalStateException("missing value for " + MODE_KEY + " for segment: " + si.name);
+    }
+    Mode mode = Mode.valueOf(value);
+    return impl(mode).fieldsReader(directory, si, fn, context);
+  }
+
+  @Override
+  public StoredFieldsWriter fieldsWriter(Directory directory, SegmentInfo si, IOContext context) throws IOException {
+    String previous = si.putAttribute(MODE_KEY, mode.name());
+    if (previous != null) {
+      throw new IllegalStateException("found existing value for " + MODE_KEY + " for segment: " + si.name +
+                                      "old=" + previous + ", new=" + mode.name());
+    }
+    return impl(mode).fieldsWriter(directory, si, context);
+  }
+  
+  StoredFieldsFormat impl(Mode mode) {
+    switch (mode) {
+      case BEST_SPEED: 
+        return new CompressingStoredFieldsFormat("Lucene50StoredFieldsFast", CompressionMode.FAST, 1 << 14, 128, 1024);
+      case BEST_COMPRESSION: 
+        return new CompressingStoredFieldsFormat("Lucene50StoredFieldsHigh", CompressionMode.HIGH_COMPRESSION, 61440, 512, 1024);
+      default: throw new AssertionError();
+    }
+  }
 }

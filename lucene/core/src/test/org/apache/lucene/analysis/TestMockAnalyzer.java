@@ -25,20 +25,22 @@ import java.util.Random;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
-import org.apache.lucene.index.LeafReader;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Fields;
+import org.apache.lucene.index.IndexOptions;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.automaton.AutomatonTestUtil;
 import org.apache.lucene.util.automaton.Automata;
-import org.apache.lucene.util.automaton.Operations;
+import org.apache.lucene.util.automaton.AutomatonTestUtil;
 import org.apache.lucene.util.automaton.CharacterRunAutomaton;
+import org.apache.lucene.util.automaton.Operations;
 import org.apache.lucene.util.automaton.RegExp;
+
+import static org.apache.lucene.util.automaton.Operations.DEFAULT_MAX_DETERMINIZED_STATES;
 
 public class TestMockAnalyzer extends BaseTokenStreamTestCase {
 
@@ -166,7 +168,8 @@ public class TestMockAnalyzer extends BaseTokenStreamTestCase {
       new CharacterRunAutomaton(
           Operations.complement(
               Operations.union(
-                  Arrays.asList(Automata.makeString("foo"), Automata.makeString("bar")))));
+                  Arrays.asList(Automata.makeString("foo"), Automata.makeString("bar"))),
+              DEFAULT_MAX_DETERMINIZED_STATES));
     Analyzer a = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true, keepWords);
     assertAnalyzesTo(a, "quick foo brown bar bar fox foo",
         new String[] { "foo", "bar", "bar", "foo" },
@@ -227,9 +230,9 @@ public class TestMockAnalyzer extends BaseTokenStreamTestCase {
   
   /** blast some random strings through differently configured tokenizers */
   public void testRandomRegexps() throws Exception {
-    int iters = atLeast(30);
+    int iters = TEST_NIGHTLY ? atLeast(30) : atLeast(1);
     for (int i = 0; i < iters; i++) {
-      final CharacterRunAutomaton dfa = new CharacterRunAutomaton(AutomatonTestUtil.randomAutomaton(random()));
+      final CharacterRunAutomaton dfa = new CharacterRunAutomaton(AutomatonTestUtil.randomAutomaton(random()), Integer.MAX_VALUE);
       final boolean lowercase = random().nextBoolean();
       final int limit = TestUtil.nextInt(random(), 0, 500);
       Analyzer a = new Analyzer() {
@@ -245,7 +248,7 @@ public class TestMockAnalyzer extends BaseTokenStreamTestCase {
   }
   
   public void testForwardOffsets() throws Exception {
-    int num = atLeast(10000);
+    int num = atLeast(1000);
     for (int i = 0; i < num; i++) {
       String s = TestUtil.randomHtmlishString(random(), 20);
       StringReader reader = new StringReader(s);
@@ -302,23 +305,23 @@ public class TestMockAnalyzer extends BaseTokenStreamTestCase {
       }
     };
 
-    final RandomIndexWriter writer = new RandomIndexWriter(random(), newDirectory());
+    final RandomIndexWriter writer = new RandomIndexWriter(random(), newDirectory(), a);
     final Document doc = new Document();
     final FieldType ft = new FieldType();
-    ft.setIndexOptions(IndexOptions.DOCS_ONLY);
+    ft.setIndexOptions(IndexOptions.DOCS);
     ft.setTokenized(true);
     ft.setStoreTermVectors(true);
     ft.setStoreTermVectorPositions(true);
     ft.setStoreTermVectorOffsets(true);
     doc.add(new Field("f", "a", ft));
     doc.add(new Field("f", "a", ft));
-    writer.addDocument(doc, a);
+    writer.addDocument(doc);
     final LeafReader reader = getOnlySegmentReader(writer.getReader());
     final Fields fields = reader.getTermVectors(0);
     final Terms terms = fields.terms("f");
     final TermsEnum te = terms.iterator(null);
     assertEquals(new BytesRef("a"), te.next());
-    final DocsAndPositionsEnum dpe = te.docsAndPositions(null, null);
+    final PostingsEnum dpe = te.postings(null, null, PostingsEnum.FLAG_ALL);
     assertEquals(0, dpe.nextDoc());
     assertEquals(2, dpe.freq());
     assertEquals(0, dpe.nextPosition());

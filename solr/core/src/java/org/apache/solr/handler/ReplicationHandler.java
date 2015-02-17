@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.Writer;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -34,7 +33,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -46,15 +44,18 @@ import java.util.zip.Checksum;
 import java.util.zip.DeflaterOutputStream;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexDeletionPolicy;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.SegmentCommitInfo;
+import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.RateLimiter;
-import org.apache.solr.client.solrj.impl.BinaryResponseParser;
+import org.apache.lucene.util.Version;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.params.CommonParams;
@@ -72,7 +73,6 @@ import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrDeletionPolicy;
 import org.apache.solr.core.SolrEventListener;
 import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.response.BinaryQueryResponseWriter;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.update.SolrIndexWriter;
@@ -84,22 +84,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * <p> A Handler which provides a REST API for replication and serves replication requests from Slaves. <p/> </p>
+ * <p> A Handler which provides a REST API for replication and serves replication requests from Slaves. </p>
  * <p>When running on the master, it provides the following commands <ol> <li>Get the current replicable index version
  * (command=indexversion)</li> <li>Get the list of files for a given index version
  * (command=filelist&amp;indexversion=&lt;VERSION&gt;)</li> <li>Get full or a part (chunk) of a given index or a config
  * file (command=filecontent&amp;file=&lt;FILE_NAME&gt;) You can optionally specify an offset and length to get that
  * chunk of the file. You can request a configuration file by using "cf" parameter instead of the "file" parameter.</li>
- * <li>Get status/statistics (command=details)</li> </ol> </p> <p>When running on the slave, it provides the following
+ * <li>Get status/statistics (command=details)</li> </ol> <p>When running on the slave, it provides the following
  * commands <ol> <li>Perform a snap pull now (command=snappull)</li> <li>Get status/statistics (command=details)</li>
  * <li>Abort a snap pull (command=abort)</li> <li>Enable/Disable polling the master for new versions (command=enablepoll
- * or command=disablepoll)</li> </ol> </p>
+ * or command=disablepoll)</li> </ol>
  *
  *
  * @since solr 1.4
  */
 public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAware {
-  
+
   private static final Logger LOG = LoggerFactory.getLogger(ReplicationHandler.class.getName());
   SolrCore core;
 
@@ -212,7 +212,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
       doSnapShoot(new ModifiableSolrParams(solrParams), rsp, req);
       rsp.add(STATUS, OK_STATUS);
     } else if (command.equalsIgnoreCase(CMD_DELETE_BACKUP)) {
-      deleteSnapshot(new ModifiableSolrParams(solrParams), rsp, req);
+      deleteSnapshot(new ModifiableSolrParams(solrParams));
       rsp.add(STATUS, OK_STATUS);
     } else if (command.equalsIgnoreCase(CMD_FETCH_INDEX)) {
       String masterUrl = solrParams.get(MASTER_URL);
@@ -228,6 +228,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
           doFetch(paramsCopy, false);
         }
       };
+      puller.setDaemon(false);
       puller.start();
       if (solrParams.getBool(WAIT, false)) {
         puller.join();
@@ -271,7 +272,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     }
   }
 
-  private void deleteSnapshot(ModifiableSolrParams params, SolrQueryResponse rsp, SolrQueryRequest req) {
+  private void deleteSnapshot(ModifiableSolrParams params) {
     String name = params.get("name");
     if(name == null) {
       throw new SolrException(ErrorCode.BAD_REQUEST, "Missing mandatory param: name");
@@ -328,11 +329,16 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     if (!snapPullLock.tryLock())
       return false;
     try {
-      tempSnapPuller = snapPuller;
       if (masterUrl != null) {
+        if (tempSnapPuller != null && tempSnapPuller != snapPuller) {
+          tempSnapPuller.destroy();
+        }
+        
         NamedList<Object> nl = solrParams.toNamedList();
         nl.remove(SnapPuller.POLL_INTERVAL);
         tempSnapPuller = new SnapPuller(nl, this, core);
+      } else {
+        tempSnapPuller = snapPuller;
       }
       return tempSnapPuller.fetchLatestIndex(core, forceReplication);
     } catch (Exception e) {
@@ -421,28 +427,68 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     core.getDeletionPolicy().setReserveDuration(gen, reserveCommitDuration);
     List<Map<String, Object>> result = new ArrayList<>();
     Directory dir = null;
+    Version version = null;
     try {
-      // get all the files in the commit
-      // use a set to workaround possible Lucene bug which returns same file
-      // name multiple times
-      Collection<String> files = new HashSet<>(commit.getFileNames());
       dir = core.getDirectoryFactory().get(core.getNewIndexDir(), DirContext.DEFAULT, core.getSolrConfig().indexConfig.lockType);
-      try {
-        
-        for (String fileName : files) {
-          if (fileName.endsWith(".lock")) continue;
+      SegmentInfos infos = SegmentInfos.readCommit(dir, commit.getSegmentsFileName());
+      Version oldestVersion = Version.LUCENE_CURRENT;
+      for (SegmentCommitInfo commitInfo : infos) {
+        version = commitInfo.info.getVersion();
+        if (oldestVersion.onOrAfter(version)) {
+          oldestVersion = version;
+        }
+        for (String file : commitInfo.files()) {
           Map<String,Object> fileMeta = new HashMap<>();
-          fileMeta.put(NAME, fileName);
-          fileMeta.put(SIZE, dir.fileLength(fileName));
+          fileMeta.put(NAME, file);
+          fileMeta.put(SIZE, dir.fileLength(file));
+          
+          try (final IndexInput in = dir.openInput(file, IOContext.READONCE)) {
+            if (version.onOrAfter(Version.LUCENE_4_8_0)) {
+              try {
+                long checksum = CodecUtil.retrieveChecksum(in);
+                fileMeta.put(CHECKSUM, checksum);
+              } catch(Exception e) {
+                LOG.warn("Could not read checksum from index file.", e);
+              }
+            }
+          }
+          
           result.add(fileMeta);
         }
-      } finally {
-        core.getDirectoryFactory().release(dir);
       }
+      
+      // add the segments_N file
+      
+      // we use the oldest version seen to determine
+      // how we treat the segments_N file - conservative, easy
+      
+      Map<String,Object> fileMeta = new HashMap<>();
+      fileMeta.put(NAME, infos.getSegmentsFileName());
+      fileMeta.put(SIZE, dir.fileLength(infos.getSegmentsFileName()));
+      if (infos.getId() != null) {
+        try (final IndexInput in = dir.openInput(infos.getSegmentsFileName(), IOContext.READONCE)) {
+          if (oldestVersion.onOrAfter(Version.LUCENE_4_8_0)) {
+            try {
+              fileMeta.put(CHECKSUM, CodecUtil.retrieveChecksum(in));
+            } catch(Exception e) {
+              LOG.warn("Could not read checksum from index file.", e);
+            }
+          }
+        }
+      }
+      result.add(fileMeta);
     } catch (IOException e) {
       rsp.add("status", "unable to get file names for given index generation");
       rsp.add("exception", e);
       LOG.error("Unable to get file names for indexCommit generation: " + gen, e);
+    } finally {
+      if (dir != null) {
+        try {
+          core.getDirectoryFactory().release(dir);
+        } catch (IOException e) {
+          SolrException.log(LOG, "Could not release directory after fetching file list", e);
+        }
+      }
     }
     rsp.add(CMD_GET_FILE_LIST, result);
     if (confFileNameAlias.size() < 1 || core.getCoreDescriptor().getCoreContainer().isZooKeeperAware())
@@ -571,7 +617,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     NamedList list = super.getStatistics();
     if (core != null) {
       list.add("indexSize", NumberUtils.readableSize(getIndexSize()));
-      CommitVersionInfo vInfo = getIndexVersion();
+      CommitVersionInfo vInfo = (core != null && !core.isClosed()) ? getIndexVersion(): null;
       list.add("indexVersion", null == vInfo ? 0 : vInfo.version);
       list.add(GENERATION, null == vInfo ? 0 : vInfo.generation);
 
@@ -787,8 +833,8 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     } else if (clzz == List.class) {
       String ss[] = s.split(",");
       List<String> l = new ArrayList<>();
-      for (int i = 0; i < ss.length; i++) {
-        l.add(new Date(Long.valueOf(ss[i])).toString());
+      for (String s1 : ss) {
+        l.add(new Date(Long.valueOf(s1)).toString());
       }
       nl.add(key, l);
     } else {
@@ -859,7 +905,6 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
   @SuppressWarnings("unchecked")
   public void inform(SolrCore core) {
     this.core = core;
-    registerFileStreamResponseWriter();
     registerCloseHook();
     Object nbtk = initArgs.get(NUMBER_BACKUPS_TO_KEEP_INIT_PARAM);
     if(nbtk!=null) {
@@ -1001,39 +1046,14 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
         if (snapPuller != null) {
           snapPuller.destroy();
         }
+        if (tempSnapPuller != null && tempSnapPuller != snapPuller) {
+          tempSnapPuller.destroy();
+        }
       }
 
       @Override
       public void postClose(SolrCore core) {}
     });
-  }
-
-  /**
-   * A ResponseWriter is registered automatically for wt=filestream This response writer is used to transfer index files
-   * in a block-by-block manner within the same HTTP response.
-   */
-  private void registerFileStreamResponseWriter() {
-    core.registerResponseWriter(FILE_STREAM, new BinaryQueryResponseWriter() {
-      @Override
-      public void write(OutputStream out, SolrQueryRequest request, SolrQueryResponse resp) throws IOException {
-        DirectoryFileStream stream = (DirectoryFileStream) resp.getValues().get(FILE_STREAM);
-        stream.write(out);
-      }
-
-      @Override
-      public void write(Writer writer, SolrQueryRequest request, SolrQueryResponse response) {
-        throw new RuntimeException("This is a binary writer , Cannot write to a characterstream");
-      }
-
-      @Override
-      public String getContentType(SolrQueryRequest request, SolrQueryResponse response) {
-        return BinaryResponseParser.BINARY_CONTENT_TYPE;
-      }
-
-      @Override
-      public void init(NamedList args) { /*no op*/ }
-    });
-
   }
 
   /**
@@ -1078,6 +1098,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
               numberToKeep = Integer.MAX_VALUE;
             }            
             SnapShooter snapShooter = new SnapShooter(core, null, null);
+            snapShooter.validateCreateSnapshot();
             snapShooter.createSnapAsync(currentCommitPoint, numberToKeep, ReplicationHandler.this);
           } catch (Exception e) {
             LOG.error("Exception while snapshooting", e);
@@ -1098,7 +1119,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
   /**This class is used to read and send files in the lucene index
    *
    */
-  private class DirectoryFileStream {
+  private class DirectoryFileStream implements SolrCore.RawWriter {
     protected SolrParams params;
 
     protected FastOutputStream fos;
@@ -1202,6 +1223,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
           offset = offset == -1 ? 0 : offset;
           int read = (int) Math.min(buf.length, filelen - offset);
           in.readBytes(buf, 0, read);
+
           fos.writeInt(read);
           if (useChecksum) {
             checksum.reset();
@@ -1210,6 +1232,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
           }
           fos.write(buf, 0, read);
           fos.flush();
+          LOG.debug("Wrote {} bytes for file {}", offset + read, fileName);
 
           //Pause if necessary
           maxBytesBeforePause += read;
@@ -1259,8 +1282,8 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
       FileInputStream inputStream = null;
       try {
         initWrite();
-  
-        //if if is a conf file read from config diectory
+
+        //if if is a conf file read from config directory
         File file = new File(core.getResourceLoader().getConfigDir(), cfileName);
 
         if (file.exists() && file.canRead()) {
@@ -1384,7 +1407,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
    * Boolean param for tests that can be specified when using 
    * {@link #CMD_FETCH_INDEX} to force the current request to block until 
    * the fetch is complete.  <b>NOTE:</b> This param is not advised for 
-   * non-test code, since the the durration of the fetch for non-trivial
+   * non-test code, since the the duration of the fetch for non-trivial
    * indexes will likeley cause the request to time out.
    *
    * @lucene.internal

@@ -17,15 +17,16 @@ package org.apache.lucene.spatial.prefix.tree;
  * limitations under the License.
  */
 
-import com.spatial4j.core.shape.Shape;
-import com.spatial4j.core.shape.SpatialRelation;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.LuceneTestCase;
-
 import java.text.ParseException;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
+
+import com.spatial4j.core.shape.Shape;
+import com.spatial4j.core.shape.SpatialRelation;
+import org.apache.lucene.spatial.prefix.tree.NumberRangePrefixTree.UnitNRShape;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.LuceneTestCase;
 
 public class DateRangePrefixTreeTest extends LuceneTestCase {
 
@@ -94,7 +95,7 @@ public class DateRangePrefixTreeTest extends LuceneTestCase {
       assertEquals(cal, tree.parseCalendar(calString));
 
       //to Shape and back to Cal
-      Shape shape = tree.toShape(cal);
+      UnitNRShape shape = tree.toShape(cal);
       Calendar cal2 = tree.toCalendar(shape);
       assertEquals(calString, tree.toString(cal2));
 
@@ -104,7 +105,7 @@ public class DateRangePrefixTreeTest extends LuceneTestCase {
         BytesRef term = cell.getTokenBytesNoLeaf(null);
         Cell cell2 = tree.readCell(BytesRef.deepCopyOf(term), null);
         assertEquals(calString, cell, cell2);
-        Calendar cal3 = tree.toCalendar(cell2.getShape());
+        Calendar cal3 = tree.toCalendar((UnitNRShape) cell2.getShape());
         assertEquals(calString, tree.toString(cal3));
 
         // setLeaf comparison
@@ -157,7 +158,9 @@ public class DateRangePrefixTreeTest extends LuceneTestCase {
 
     assertEquals("2014", tree.parseShape("[2014-01-01 TO 2014-12-31]").toString());
 
-    assertEquals("2014", tree.parseShape("[2014-01 TO 2014]").toString());
+    assertEquals("2014",    tree.parseShape("[2014-01 TO 2014]").toString());
+    assertEquals("2014-01", tree.parseShape("[2014 TO 2014-01]").toString());
+    assertEquals("2014-12", tree.parseShape("[2014-12 TO 2014]").toString());
 
     assertEquals("[2014 TO 2014-04-06]", tree.parseShape("[2014-01 TO 2014-04-06]").toString());
 

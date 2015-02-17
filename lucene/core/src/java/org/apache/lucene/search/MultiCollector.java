@@ -17,10 +17,10 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.LeafReaderContext;
+
 import java.io.IOException;
 import java.util.Arrays;
-
-import org.apache.lucene.index.LeafReaderContext;
 
 /**
  * A {@link Collector} which allows running a search with several
@@ -93,6 +93,16 @@ public class MultiCollector implements Collector {
   }
 
   @Override
+  public boolean needsScores() {
+    for (Collector collector : collectors) {
+      if (collector.needsScores()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @Override
   public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
     final LeafCollector[] leafCollectors = new LeafCollector[collectors.length];
     for (int i = 0; i < collectors.length; ++i) {
@@ -100,7 +110,6 @@ public class MultiCollector implements Collector {
     }
     return new MultiLeafCollector(leafCollectors);
   }
-
 
   private static class MultiLeafCollector implements LeafCollector {
 
@@ -122,26 +131,6 @@ public class MultiCollector implements Collector {
       for (LeafCollector c : collectors) {
         c.collect(doc);
       }
-    }
-
-    @Override
-    public boolean acceptsDocsOutOfOrder() {
-      for (LeafCollector c : collectors) {
-        if (!c.acceptsDocsOutOfOrder()) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    @Override
-    public Weight.PostingFeatures postingFeatures() {
-      Weight.PostingFeatures features = Weight.PostingFeatures.DOCS_ONLY;
-      for (LeafCollector c : collectors) {
-        if (c.postingFeatures().compareTo(features) > 0)
-          features = c.postingFeatures();
-      }
-      return features;
     }
 
   }

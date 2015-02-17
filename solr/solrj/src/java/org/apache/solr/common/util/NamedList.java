@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -390,6 +391,31 @@ public class NamedList<T> implements Cloneable, Serializable, Iterable<Map.Entry
     return new NamedList<>( Collections.unmodifiableList(copy.nvPairs));
   }
 
+  public Map asMap(int maxDepth) {
+    LinkedHashMap result = new LinkedHashMap();
+    for(int i=0;i<size();i++){
+      Object val = getVal(i);
+      if (val instanceof NamedList && maxDepth> 0) {
+        //the maxDepth check is to avoid stack overflow due to infinite recursion
+        val = ((NamedList) val).asMap(maxDepth-1);
+      }
+      Object old = result.put(getName(i), val);
+      if(old!=null){
+        if (old instanceof List) {
+          List list = (List) old;
+          list.add(val);
+          result.put(getName(i),old);
+        } else {
+          ArrayList l = new ArrayList();
+          l.add(old);
+          l.add(val);
+          result.put(getName(i), l);
+        }
+      }
+    }
+    return result;
+  }
+
   /**
    * 
    * Helper class implementing Map.Entry&lt;String, T&gt; to store the key-value
@@ -429,7 +455,7 @@ public class NamedList<T> implements Cloneable, Serializable, Iterable<Map.Entry
   }
 
   /**
-   * Iterates over the Map and sequentially adds it's key/value pairs
+   * Iterates over the Map and sequentially adds its key/value pairs
    */
   public boolean addAll(Map<String,T> args) {
     for (Map.Entry<String, T> entry : args.entrySet() ) {

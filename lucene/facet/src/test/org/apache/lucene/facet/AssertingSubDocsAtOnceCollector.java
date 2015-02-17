@@ -56,7 +56,7 @@ class AssertingSubDocsAtOnceCollector extends SimpleCollector {
   }
 
   @Override
-  public boolean acceptsDocsOutOfOrder() {
+  public boolean needsScores() {
     return false;
   }
 }

@@ -34,7 +34,7 @@ import org.apache.lucene.util.Version;
 import org.xml.sax.InputSource;
 
 /**
- * Factory for {@link Lucene43HyphenationCompoundWordTokenFilter}.
+ * Factory for {@link HyphenationCompoundWordTokenFilter}.
  * <p>
  * This factory accepts the following parameters:
  * <ul>
@@ -48,7 +48,7 @@ import org.xml.sax.InputSource;
  *  <li><code>onlyLongestMatch</code> (optional): if true, adds only the longest matching subword 
  *    to the stream. defaults to false.
  * </ul>
- * <p>
+ * <br>
  * <pre class="prettyprint">
  * &lt;fieldType name="text_hyphncomp" class="solr.TextField" positionIncrementGap="100"&gt;
  *   &lt;analyzer&gt;
@@ -58,7 +58,7 @@ import org.xml.sax.InputSource;
  *   &lt;/analyzer&gt;
  * &lt;/fieldType&gt;</pre>
  *
- * @see Lucene43HyphenationCompoundWordTokenFilter
+ * @see HyphenationCompoundWordTokenFilter
  */
 public class HyphenationCompoundWordTokenFilterFactory extends TokenFilterFactory implements ResourceLoaderAware {
   private CharArraySet dictionary;
@@ -74,13 +74,12 @@ public class HyphenationCompoundWordTokenFilterFactory extends TokenFilterFactor
   /** Creates a new HyphenationCompoundWordTokenFilterFactory */
   public HyphenationCompoundWordTokenFilterFactory(Map<String, String> args) {
     super(args);
-    assureMatchVersion();
     dictFile = get(args, "dictionary");
     encoding = get(args, "encoding");
     hypFile = require(args, "hyphenator");
-    minWordSize = getInt(args, "minWordSize", Lucene43CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE);
-    minSubwordSize = getInt(args, "minSubwordSize", Lucene43CompoundWordTokenFilterBase.DEFAULT_MIN_SUBWORD_SIZE);
-    maxSubwordSize = getInt(args, "maxSubwordSize", Lucene43CompoundWordTokenFilterBase.DEFAULT_MAX_SUBWORD_SIZE);
+    minWordSize = getInt(args, "minWordSize", CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE);
+    minSubwordSize = getInt(args, "minSubwordSize", CompoundWordTokenFilterBase.DEFAULT_MIN_SUBWORD_SIZE);
+    maxSubwordSize = getInt(args, "maxSubwordSize", CompoundWordTokenFilterBase.DEFAULT_MAX_SUBWORD_SIZE);
     onlyLongestMatch = getBoolean(args, "onlyLongestMatch", false);
     if (!args.isEmpty()) {
       throw new IllegalArgumentException("Unknown parameters: " + args);

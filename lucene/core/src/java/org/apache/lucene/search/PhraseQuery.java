@@ -17,8 +17,12 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Set;
+
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.LeafReader;
@@ -38,7 +42,6 @@ import org.apache.lucene.util.ToStringUtils;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Set;
 
 /** A Query that matches documents containing a particular sequence of terms.
  * A PhraseQuery is built by QueryParser for input like <code>"new york"</code>.
@@ -140,15 +143,14 @@ public class PhraseQuery extends Query {
   }
 
   static class PostingsAndFreq implements Comparable<PostingsAndFreq> {
-    final TermDocsEnumFactory factory;
-    final DocsAndPositionsEnum postings;
+
+    final PostingsEnum postings;
     final int docFreq;
     final int position;
     final Term[] terms;
     final int nTerms; // for faster comparisons
 
-    public PostingsAndFreq(DocsAndPositionsEnum postings, TermDocsEnumFactory factory, int docFreq, int position, Term... terms) throws IOException {
-      this.factory = factory;
+    public PostingsAndFreq(PostingsEnum postings, int docFreq, int position, Term... terms) {
       this.postings = postings;
       this.docFreq = docFreq;
       this.position = position;
@@ -216,10 +218,13 @@ public class PhraseQuery extends Query {
   private class PhraseWeight extends Weight {
     private final Similarity similarity;
     private final Similarity.SimWeight stats;
+    private final boolean needsScores;
     private transient TermContext states[];
 
-    public PhraseWeight(IndexSearcher searcher)
+    public PhraseWeight(IndexSearcher searcher, boolean needsScores)
       throws IOException {
+      super(PhraseQuery.this);
+      this.needsScores = needsScores;
       this.similarity = searcher.getSimilarity();
       final IndexReaderContext context = searcher.getTopReaderContext();
       states = new TermContext[terms.size()];
@@ -236,9 +241,6 @@ public class PhraseQuery extends Query {
     public String toString() { return "weight(" + PhraseQuery.this + ")"; }
 
     @Override
-    public Query getQuery() { return PhraseQuery.this; }
-
-    @Override
     public float getValueForNormalization() {
       return stats.getValueForNormalization();
     }
@@ -249,7 +251,7 @@ public class PhraseQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, Weight.PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
       assert !terms.isEmpty();
       final LeafReader reader = context.reader();
       final Bits liveDocs = acceptDocs;
@@ -271,7 +273,7 @@ public class PhraseQuery extends Query {
           return null;
         }
         te.seekExact(t.bytes(), state);
-        DocsAndPositionsEnum postingsEnum = te.docsAndPositions(liveDocs, null, DocsEnum.FLAG_NONE);
+        PostingsEnum postingsEnum = te.postings(liveDocs, null, PostingsEnum.FLAG_POSITIONS);
 
         // PhraseQuery on a field that did not index
         // positions.
@@ -280,8 +282,8 @@ public class PhraseQuery extends Query {
           // term does exist, but has no positions
           throw new IllegalStateException("field \"" + t.field() + "\" was indexed without position data; cannot run PhraseQuery (term=" + t.text() + ")");
         }
-        TermDocsEnumFactory factory = new TermDocsEnumFactory(t.bytes(), state, te, flags, acceptDocs);
-        postingsFreqs[i] = new PostingsAndFreq(postingsEnum, factory, te.docFreq(), positions.get(i).intValue(), t);
+
+        postingsFreqs[i] = new PostingsAndFreq(postingsEnum, te.docFreq(), positions.get(i), t);
       }
 
       // sort by increasing docFreq order
@@ -290,9 +292,9 @@ public class PhraseQuery extends Query {
       }
 
       if (slop == 0) {  // optimize exact case
-        return new ExactPhraseScorer(this, postingsFreqs, similarity.simScorer(stats, context), field);
+        return new ExactPhraseScorer(this, postingsFreqs, similarity.simScorer(stats, context), needsScores, field);
       } else {
-        return new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.simScorer(stats, context), field);
+        return new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.simScorer(stats, context), needsScores, field);
       }
     }
     
@@ -303,7 +305,7 @@ public class PhraseQuery extends Query {
 
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      Scorer scorer = scorer(context, PostingFeatures.POSITIONS, context.reader().getLiveDocs());
+      Scorer scorer = scorer(context, context.reader().getLiveDocs());
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {
@@ -324,8 +326,8 @@ public class PhraseQuery extends Query {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return new PhraseWeight(searcher);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int postingsFlags) throws IOException {
+    return new PhraseWeight(searcher, needsScores);
   }
 
   /**
@@ -404,29 +406,27 @@ public class PhraseQuery extends Query {
   static class TermDocsEnumFactory {
     protected final TermsEnum termsEnum;
     protected final Bits liveDocs;
-    protected final Weight.PostingFeatures flags;
 
     private final BytesRef term;
     private final TermState termState;
     
-    TermDocsEnumFactory(TermsEnum termsEnum, Weight.PostingFeatures flags, Bits liveDocs) {
-      this(null, null, termsEnum, flags, liveDocs);
+    TermDocsEnumFactory(TermsEnum termsEnum, Bits liveDocs) {
+      this(null, null, termsEnum, liveDocs);
     }
     
-    TermDocsEnumFactory(BytesRef term, TermState termState, TermsEnum termsEnum, Weight.PostingFeatures flags,  Bits liveDocs) {
+    TermDocsEnumFactory(BytesRef term, TermState termState, TermsEnum termsEnum, Bits liveDocs) {
       this.termsEnum = termsEnum;
       this.termState = termState;
       this.liveDocs = liveDocs;
       this.term = term;
-      this.flags = flags;
     }
     
     
-    public DocsAndPositionsEnum docsAndPositionsEnum()
+    public PostingsEnum docsAndPositionsEnum()
         throws IOException {
       assert term != null;
       termsEnum.seekExact(term, termState);
-      return termsEnum.docsAndPositions(liveDocs, null, flags.docsAndPositionsFlags());
+      return termsEnum.postings(liveDocs, null);
     }
 
   }

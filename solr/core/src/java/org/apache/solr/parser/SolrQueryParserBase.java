@@ -41,8 +41,8 @@ import org.apache.lucene.util.QueryBuilder;
 import org.apache.lucene.util.ToStringUtils;
 import org.apache.lucene.util.Version;
 import org.apache.lucene.util.automaton.Automata;
-import org.apache.lucene.util.automaton.Operations;
 import org.apache.lucene.util.automaton.Automaton;
+import org.apache.lucene.util.automaton.Operations;
 import org.apache.solr.analysis.ReversedWildcardFilterFactory;
 import org.apache.solr.analysis.TokenizerChain;
 import org.apache.solr.common.SolrException;
@@ -150,13 +150,9 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
       Query res = TopLevelQuery(null);  // pass null so we can tell later if an explicit field was provided or not
       return res!=null ? res : newBooleanQuery(false);
     }
-    catch (ParseException tme) {
+    catch (ParseException | TokenMgrError tme) {
       throw new SyntaxError("Cannot parse '" +query+ "': " + tme.getMessage(), tme);
-    }
-    catch (TokenMgrError tme) {
-      throw new SyntaxError("Cannot parse '" +query+ "': " + tme.getMessage(), tme);
-    }
-    catch (BooleanQuery.TooManyClauses tmc) {
+    } catch (BooleanQuery.TooManyClauses tmc) {
       throw new SyntaxError("Cannot parse '" +query+ "': too many boolean clauses", tmc);
     }
   }
@@ -275,7 +271,7 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
    * Sets the boolean operator of the QueryParser.
    * In default mode (<code>OR_OPERATOR</code>) terms without any modifiers
    * are considered optional: for example <code>capital of Hungary</code> is equal to
-   * <code>capital OR of OR Hungary</code>.<br/>
+   * <code>capital OR of OR Hungary</code>.<br>
    * In <code>AND_OPERATOR</code> mode terms are considered to be in conjunction: the
    * above mentioned query is parsed as <code>capital AND of AND Hungary</code>
    */
@@ -788,10 +784,10 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
             Automata.makeChar(factory.getMarkerChar()),
             Automata.makeAnyString());
         // subtract these away
-        automaton = Operations.minus(automaton, falsePositives);
+        automaton = Operations.minus(automaton, falsePositives, Operations.DEFAULT_MAX_DETERMINIZED_STATES);
       }
       return new AutomatonQuery(term, automaton) {
-        // override toString so its completely transparent
+        // override toString so it's completely transparent
         @Override
         public String toString(String field) {
           StringBuilder buffer = new StringBuilder();

@@ -17,9 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.LinkedList;
-
 import org.apache.lucene.analysis.CannedTokenStream;
 import org.apache.lucene.analysis.Token;
 import org.apache.lucene.document.Document;
@@ -30,6 +27,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermsEnum;
@@ -39,6 +37,9 @@ import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.Ignore;
+
+import java.io.IOException;
+import java.util.LinkedList;
 
 /**
  * This class tests the MultiPhraseQuery class.
@@ -344,7 +345,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     MultiPhraseQuery query = new MultiPhraseQuery();
     query.add(new Term[] { new Term("body", "this"), new Term("body", "that") });
     query.add(new Term("body", "is"));
-    Weight weight = query.createWeight(searcher);
+    Weight weight = query.createWeight(searcher, true, PostingsEnum.FLAG_FREQS);
     assertEquals(10f * 10f, weight.getValueForNormalization(), 0.001f);
 
     writer.close();

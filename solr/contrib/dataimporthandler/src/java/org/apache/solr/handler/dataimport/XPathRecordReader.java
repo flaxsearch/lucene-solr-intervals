@@ -50,10 +50,8 @@ import org.slf4j.LoggerFactory;
  * This class is thread-safe for parsing xml. But adding fields is not
  * thread-safe. The recommended usage is to addField() in one thread and 
  * then share the instance across threads.
- * </p>
- * <p/>
- * <b>This API is experimental and may change in the future.</b>
  * <p>
+ * <b>This API is experimental and may change in the future.</b>
  *
  * @since solr 1.3
  */
@@ -566,7 +564,7 @@ public class XPathRecordReader {
       for (Node n : searchList)
         if (n.xpathName.equals(xpathName)) return n;
       // new territory! add a new node for this Xpath bitty
-      Node n = new Node(xpathName, this); // a minimal Node initalization
+      Node n = new Node(xpathName, this); // a minimal Node initialization
       Matcher m = ATTRIB_PRESENT_WITHVAL.matcher(xpathName);
       if (m.find()) {
         n.name = m.group(1);

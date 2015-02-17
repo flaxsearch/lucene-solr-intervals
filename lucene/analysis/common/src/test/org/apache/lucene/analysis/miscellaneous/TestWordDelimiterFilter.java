@@ -39,7 +39,7 @@ import static org.apache.lucene.analysis.miscellaneous.WordDelimiterIterator.DEF
  */
 public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
 
-  /***
+  /*
   public void testPerformance() throws IOException {
     String s = "now is the time-for all good men to come to-the aid of their country.";
     Token tok = new Token();
@@ -355,7 +355,7 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
         }
       };
       // TODO: properly support positionLengthAttribute
-      checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER, 20, false, false);
+      checkRandomData(random(), a, 200*RANDOM_MULTIPLIER, 20, false, false);
     }
   }
   
@@ -380,7 +380,7 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
         }
       };
       // TODO: properly support positionLengthAttribute
-      checkRandomData(random(), a, 100*RANDOM_MULTIPLIER, 8192, false, false);
+      checkRandomData(random(), a, 20*RANDOM_MULTIPLIER, 8192, false, false);
     }
   }
   

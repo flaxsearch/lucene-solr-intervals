@@ -18,12 +18,13 @@ package org.apache.solr;
  */
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
+import org.junit.Test;
 
 /**
  * TODO? perhaps use:
@@ -43,8 +44,8 @@ public class TestDistributedGrouping extends BaseDistributedSearchTestCase {
   String tdate_b = "b_n_tdt";
   String oddField="oddField_s";
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  public void test() throws Exception {
     del("*:*");
     commit();
 
@@ -243,7 +244,7 @@ public class TestDistributedGrouping extends BaseDistributedSearchTestCase {
     setDistributedParams(params);
 
     int which = r.nextInt(clients.size());
-    SolrServer client = clients.get(which);
+    SolrClient client = clients.get(which);
     QueryResponse rsp = client.query(params);
     NamedList nl = (NamedList<?>) rsp.getResponse().get("grouped");
     nl = (NamedList<?>) nl.getVal(0);

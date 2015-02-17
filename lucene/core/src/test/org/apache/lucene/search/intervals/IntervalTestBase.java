@@ -16,7 +16,6 @@ import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.search.Weight;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.After;
@@ -264,11 +263,6 @@ public abstract class IntervalTestBase extends LuceneTestCase {
     }
 
     @Override
-    public boolean acceptsDocsOutOfOrder() {
-      return false;
-    }
-
-    @Override
     public void collectLeafPosition(Scorer scorer, Interval interval, int docID) {
       matches.add(new Match(docID + docBase, interval, false));
     }
@@ -278,17 +272,17 @@ public abstract class IntervalTestBase extends LuceneTestCase {
       matches.add(new Match(docID + docBase, interval, true));
     }
 
-    @Override
-    public Weight.PostingFeatures postingFeatures() {
-      return Weight.PostingFeatures.OFFSETS;
-    }
-
     public Set<Match> getMatches() {
       return matches;
     }
 
     public int getHitCount() {
       return hitCount;
+    }
+
+    @Override
+    public boolean needsScores() {
+      return true;
     }
   }
 }

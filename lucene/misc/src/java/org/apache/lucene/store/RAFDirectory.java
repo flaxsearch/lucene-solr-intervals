@@ -38,10 +38,10 @@ import java.nio.file.Path;
 public class RAFDirectory extends FSDirectory {
     
   /** Create a new RAFDirectory for the named location.
+   *  The directory is created at the named location if it does not yet exist.
    *
    * @param path the path of the directory
-   * @param lockFactory the lock factory to use, or null for the default
-   * ({@link NativeFSLockFactory});
+   * @param lockFactory the lock factory to use
    * @throws IOException if there is a low-level I/O error
    */
   public RAFDirectory(Path path, LockFactory lockFactory) throws IOException {
@@ -49,14 +49,14 @@ public class RAFDirectory extends FSDirectory {
     path.toFile(); // throw exception if we can't get a File
   }
   
-  /** Create a new SimpleFSDirectory for the named location and {@link NativeFSLockFactory}.
+  /** Create a new SimpleFSDirectory for the named location and {@link FSLockFactory#getDefault()}.
+   *  The directory is created at the named location if it does not yet exist.
    *
    * @param path the path of the directory
    * @throws IOException if there is a low-level I/O error
    */
   public RAFDirectory(Path path) throws IOException {
-    super(path, null);
-    path.toFile(); // throw exception if we can't get a File
+    this(path, FSLockFactory.getDefault());
   }
 
   /** Creates an IndexInput for the file with the given name. */

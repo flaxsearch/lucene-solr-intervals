@@ -69,7 +69,7 @@ import org.apache.solr.util.PrimUtils;
  *
  *   There are actually 256 byte arrays, to compensate for the fact that the pointers
  *   into the byte arrays are only 3 bytes long.  The correct byte array for a document
- *   is a function of it's id.
+ *   is a function of its id.
  *
  *   To save space and speed up faceting, any term that matches enough documents will
  *   not be un-inverted... it will be skipped while building the un-inverted field structure,
@@ -78,7 +78,7 @@ import org.apache.solr.util.PrimUtils;
  *   To further save memory, the terms (the actual string values) are not all stored in
  *   memory, but a TermIndex is used to convert term numbers to term values only
  *   for the terms needed after faceting has completed.  Only every 128th term value
- *   is stored, along with it's corresponding term number, and this is used as an
+ *   is stored, along with its corresponding term number, and this is used as an
  *   index to find the closest term and iterate until the desired number is hit (very
  *   much like Lucene's own internal term index).
  *
@@ -138,11 +138,11 @@ public class UnInvertedField extends DocTermOrds {
         deState.fieldName = field;
         deState.liveDocs = searcher.getLeafReader().getLiveDocs();
         deState.termsEnum = te;  // TODO: check for MultiTermsEnum in SolrIndexSearcher could now fail?
-        deState.docsEnum = docsEnum;
+        deState.postingsEnum = postingsEnum;
         deState.minSetSizeCached = maxTermDocFreq;
       }
 
-      docsEnum = deState.docsEnum;
+      postingsEnum = deState.postingsEnum;
       DocSet set = searcher.getDocSet(deState);
       maxTermCounts[termNum] = set.size();
     }
@@ -234,7 +234,7 @@ public class UnInvertedField extends DocTermOrds {
       final int[] counts = new int[numTermsInField + 1];
 
       //
-      // If there is prefix, find it's start and end term numbers
+      // If there is prefix, find its start and end term numbers
       //
       int startTerm = 0;
       int endTerm = numTermsInField;  // one past the end
@@ -462,7 +462,7 @@ public class UnInvertedField extends DocTermOrds {
   /**
    * Collect statistics about the UninvertedField.  Code is very similar to {@link #getCounts(org.apache.solr.search.SolrIndexSearcher, org.apache.solr.search.DocSet, int, int, Integer, boolean, String, String)}
    * It can be used to calculate stats on multivalued fields.
-   * <p/>
+   * <p>
    * This method is mainly used by the {@link org.apache.solr.handler.component.StatsComponent}.
    *
    * @param searcher The Searcher to use to gather the statistics

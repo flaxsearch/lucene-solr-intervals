@@ -17,6 +17,8 @@ package org.apache.lucene.analysis;
  * limitations under the License.
  */
 
+import java.util.Objects;
+
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
@@ -211,6 +213,33 @@ public final class NumericTokenStream extends TokenStream {
     public void copyTo(AttributeImpl target) {
       final NumericTermAttribute a = (NumericTermAttribute) target;
       a.init(value, valueSize, precisionStep, shift);
+    }
+    
+    @Override
+    public NumericTermAttributeImpl clone() {
+      NumericTermAttributeImpl t = (NumericTermAttributeImpl)super.clone();
+      // Do a deep clone
+      t.bytes = new BytesRefBuilder();
+      t.bytes.copyBytes(bytes.get());
+      return t;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(precisionStep, shift, value, valueSize);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) return true;
+      if (obj == null) return false;
+      if (getClass() != obj.getClass()) return false;
+      NumericTermAttributeImpl other = (NumericTermAttributeImpl) obj;
+      if (precisionStep != other.precisionStep) return false;
+      if (shift != other.shift) return false;
+      if (value != other.value) return false;
+      if (valueSize != other.valueSize) return false;
+      return true;
     }
   }
   

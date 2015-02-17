@@ -18,6 +18,7 @@ package org.apache.lucene.search;
  */
 
 import org.apache.lucene.search.intervals.IntervalIterator;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 
 import java.io.IOException;
@@ -37,6 +38,26 @@ public class TestCachingCollector extends LuceneTestCase {
     
     @Override
     public int freq() throws IOException { return 0; }
+
+    @Override
+    public int nextPosition() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return null;
+    }
 
     @Override
     public int docID() { return 0; }
@@ -60,25 +81,19 @@ public class TestCachingCollector extends LuceneTestCase {
   
   private static class NoOpCollector extends SimpleCollector {
 
-    private final boolean acceptDocsOutOfOrder;
-    
-    public NoOpCollector(boolean acceptDocsOutOfOrder) {
-      this.acceptDocsOutOfOrder = acceptDocsOutOfOrder;
-    }
-
     @Override
     public void collect(int doc) throws IOException {}
-
-    @Override
-    public boolean acceptsDocsOutOfOrder() {
-      return acceptDocsOutOfOrder;
-    }
     
+    @Override
+    public boolean needsScores() {
+      return false;
+    }
+
   }
 
   public void testBasic() throws Exception {
     for (boolean cacheScores : new boolean[] { false, true }) {
-      CachingCollector cc = CachingCollector.create(new NoOpCollector(false), cacheScores, 1.0);
+      CachingCollector cc = CachingCollector.create(new NoOpCollector(), cacheScores, 1.0);
       LeafCollector acc = cc.getLeafCollector(null);
       acc.setScorer(new MockScorer());
 
@@ -96,9 +111,9 @@ public class TestCachingCollector extends LuceneTestCase {
           assertEquals(prevDocID + 1, doc);
           prevDocID = doc;
         }
-
+        
         @Override
-        public boolean acceptsDocsOutOfOrder() {
+        public boolean needsScores() {
           return false;
         }
       });
@@ -106,7 +121,7 @@ public class TestCachingCollector extends LuceneTestCase {
   }
   
   public void testIllegalStateOnReplay() throws Exception {
-    CachingCollector cc = CachingCollector.create(new NoOpCollector(false), true, 50 * ONE_BYTE);
+    CachingCollector cc = CachingCollector.create(new NoOpCollector(), true, 50 * ONE_BYTE);
     LeafCollector acc = cc.getLeafCollector(null);
     acc.setScorer(new MockScorer());
     
@@ -118,37 +133,10 @@ public class TestCachingCollector extends LuceneTestCase {
     assertFalse("CachingCollector should not be cached due to low memory limit", cc.isCached());
     
     try {
-      cc.replay(new NoOpCollector(false));
+      cc.replay(new NoOpCollector());
       fail("replay should fail if CachingCollector is not cached");
     } catch (IllegalStateException e) {
       // expected
-    }
-  }
-  
-  public void testIllegalCollectorOnReplay() throws Exception {
-    // tests that the Collector passed to replay() has an out-of-order mode that
-    // is valid with the Collector passed to the ctor
-    
-    // 'src' Collector does not support out-of-order
-    CachingCollector cc = CachingCollector.create(new NoOpCollector(false), true, 100 * ONE_BYTE);
-    LeafCollector acc = cc.getLeafCollector(null);
-    acc.setScorer(new MockScorer());
-    for (int i = 0; i < 10; i++) acc.collect(i);
-    cc.replay(new NoOpCollector(true)); // this call should not fail
-    cc.replay(new NoOpCollector(false)); // this call should not fail
-
-    // 'src' Collector supports out-of-order
-    cc = CachingCollector.create(new NoOpCollector(true), true, 100 * ONE_BYTE);
-    acc = cc.getLeafCollector(null);
-    acc.setScorer(new MockScorer());
-    for (int i = 0; i < 10; i++) acc.collect(i);
-    cc.replay(new NoOpCollector(true)); // this call should not fail
-    try {
-      cc.replay(new NoOpCollector(false)); // this call should fail
-      fail("should have failed if an in-order Collector was given to replay(), " +
-           "while CachingCollector was initialized with out-of-order collection");
-    } catch (IllegalArgumentException e) {
-      // ok
     }
   }
   
@@ -160,7 +148,7 @@ public class TestCachingCollector extends LuceneTestCase {
     int numDocs = random().nextInt(10000) + 150;
     for (boolean cacheScores : new boolean[] { false, true }) {
       int bytesPerDoc = cacheScores ? 8 : 4;
-      CachingCollector cc = CachingCollector.create(new NoOpCollector(false),
+      CachingCollector cc = CachingCollector.create(new NoOpCollector(),
           cacheScores, bytesPerDoc * ONE_BYTE * numDocs);
       LeafCollector acc = cc.getLeafCollector(null);
       acc.setScorer(new MockScorer());
@@ -176,13 +164,13 @@ public class TestCachingCollector extends LuceneTestCase {
   public void testNoWrappedCollector() throws Exception {
     for (boolean cacheScores : new boolean[] { false, true }) {
       // create w/ null wrapped collector, and test that the methods work
-      CachingCollector cc = CachingCollector.create(true, cacheScores, 50 * ONE_BYTE);
+      CachingCollector cc = CachingCollector.create(cacheScores, 50 * ONE_BYTE);
       LeafCollector acc = cc.getLeafCollector(null);
       acc.setScorer(new MockScorer());
       acc.collect(0);
       
       assertTrue(cc.isCached());
-      cc.replay(new NoOpCollector(true));
+      cc.replay(new NoOpCollector());
     }
   }
   

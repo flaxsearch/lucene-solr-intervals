@@ -24,7 +24,9 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.InputStreamEntity;
 import org.apache.solr.client.solrj.impl.BinaryRequestWriter;
 import org.apache.solr.client.solrj.impl.BinaryResponseParser;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.solr.client.solrj.response.QueryResponse;
+import org.apache.solr.common.SolrDocument;
 import org.apache.solr.util.ExternalPaths;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -33,6 +35,12 @@ import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.OutputStreamWriter;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Properties;
+import java.util.Set;
 
 public class SolrSchemalessExampleTest extends SolrExampleTestsBase {
   private static Logger log = LoggerFactory.getLogger(SolrSchemalessExampleTest.class);
@@ -42,47 +50,103 @@ public class SolrSchemalessExampleTest extends SolrExampleTestsBase {
     File tempSolrHome = createTempDir().toFile();
     // Schemaless renames schema.xml -> schema.xml.bak, and creates + modifies conf/managed-schema,
     // which violates the test security manager's rules, which disallow writes outside the build dir,
-    // so we copy the example/example-schemaless/solr/ directory to a new temp dir where writes are allowed. 
-    FileUtils.copyDirectory(new File(ExternalPaths.EXAMPLE_SCHEMALESS_HOME), tempSolrHome);
+    // so we copy the example/example-schemaless/solr/ directory to a new temp dir where writes are allowed.
+    FileUtils.copyFileToDirectory(new File(ExternalPaths.SERVER_HOME, "solr.xml"), tempSolrHome);
+    File collection1Dir = new File(tempSolrHome, "collection1");
+    FileUtils.forceMkdir(collection1Dir);
+    FileUtils.copyDirectoryToDirectory(new File(ExternalPaths.SCHEMALESS_CONFIGSET), collection1Dir);
+    Properties props = new Properties();
+    props.setProperty("name","collection1");
+    OutputStreamWriter writer = null;
+    try {
+      writer = new OutputStreamWriter(FileUtils.openOutputStream(new File(collection1Dir, "core.properties")), "UTF-8");
+      props.store(writer, null);
+    } finally {
+      if (writer != null) {
+        try {
+          writer.close();
+        } catch (Exception ignore){}
+      }
+    }
     createJetty(tempSolrHome.getAbsolutePath(), null, null);
   }
   @Test
   public void testArbitraryJsonIndexing() throws Exception  {
-    HttpSolrServer server = (HttpSolrServer) getSolrServer();
-    server.deleteByQuery("*:*");
-    server.commit();
+    HttpSolrClient client = (HttpSolrClient) getSolrClient();
+    client.deleteByQuery("*:*");
+    client.commit();
     assertNumFound("*:*", 0); // make sure it got in
 
     // two docs, one with uniqueKey, another without it
     String json = "{\"id\":\"abc1\", \"name\": \"name1\"} {\"name\" : \"name2\"}";
-    HttpClient httpClient = server.getHttpClient();
-    HttpPost post = new HttpPost(server.getBaseURL() + "/update/json/docs");
+    HttpClient httpClient = client.getHttpClient();
+    HttpPost post = new HttpPost(client.getBaseURL() + "/update/json/docs");
     post.setHeader("Content-Type", "application/json");
     post.setEntity(new InputStreamEntity(new ByteArrayInputStream(json.getBytes("UTF-8")), -1));
     HttpResponse response = httpClient.execute(post);
     assertEquals(200, response.getStatusLine().getStatusCode());
-    server.commit();
+    client.commit();
     assertNumFound("*:*", 2);
   }
 
+  @Test
+  public void testFieldMutating() throws Exception {
+    HttpSolrClient client = (HttpSolrClient) getSolrClient();
+    client.deleteByQuery("*:*");
+    client.commit();
+    assertNumFound("*:*", 0); // make sure it got in
+    // two docs, one with uniqueKey, another without it
+    String json = "{\"name one\": \"name\"} " +
+        "{\"name  two\" : \"name\"}" +
+        "{\"first-second\" : \"name\"}" +
+        "{\"x+y\" : \"name\"}" +
+        "{\"p%q\" : \"name\"}" +
+        "{\"p.q\" : \"name\"}" +
+        "{\"a&b\" : \"name\"}"
+        ;
+    HttpClient httpClient = client.getHttpClient();
+    HttpPost post = new HttpPost(client.getBaseURL() + "/update/json/docs");
+    post.setHeader("Content-Type", "application/json");
+    post.setEntity(new InputStreamEntity(new ByteArrayInputStream(json.getBytes("UTF-8")), -1));
+    HttpResponse response = httpClient.execute(post);
+    assertEquals(200, response.getStatusLine().getStatusCode());
+    client.commit();
+    List<String> expected = Arrays.asList(
+        "name_one",
+        "name__two",
+        "first-second",
+        "a_b",
+        "p_q",
+        "p.q",
+        "x_y");
+    HashSet set = new HashSet();
+    QueryResponse rsp = assertNumFound("*:*", expected.size());
+    for (SolrDocument doc : rsp.getResults()) set.addAll(doc.getFieldNames());
+    for (String s : expected) {
+      assertTrue(s+" not created "+ rsp ,set.contains(s) );
+    }
+
+  }
+
+
 
   @Override
-  public SolrServer createNewSolrServer() {
+  public SolrClient createNewSolrClient() {
     try {
       // setup the server...
       String url = jetty.getBaseUrl().toString() + "/collection1";
-      HttpSolrServer s = new HttpSolrServer(url);
-      s.setConnectionTimeout(DEFAULT_CONNECTION_TIMEOUT);
-      s.setDefaultMaxConnectionsPerHost(100);
-      s.setMaxTotalConnections(100);
-      s.setUseMultiPartPost(random().nextBoolean());
+      HttpSolrClient client = new HttpSolrClient(url);
+      client.setConnectionTimeout(DEFAULT_CONNECTION_TIMEOUT);
+      client.setDefaultMaxConnectionsPerHost(100);
+      client.setMaxTotalConnections(100);
+      client.setUseMultiPartPost(random().nextBoolean());
       
       if (random().nextBoolean()) {
-        s.setParser(new BinaryResponseParser());
-        s.setRequestWriter(new BinaryRequestWriter());
+        client.setParser(new BinaryResponseParser());
+        client.setRequestWriter(new BinaryRequestWriter());
       }
       
-      return s;
+      return client;
     } catch (Exception ex) {
       throw new RuntimeException(ex);
     }

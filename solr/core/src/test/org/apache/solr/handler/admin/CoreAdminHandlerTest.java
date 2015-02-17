@@ -17,14 +17,12 @@
 
 package org.apache.solr.handler.admin;
 
-import java.io.File;
-import java.util.Map;
-
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 import org.apache.commons.codec.Charsets;
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
@@ -33,7 +31,6 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.SolrCore;
-import org.apache.solr.core.SolrXMLCoresLocator;
 import org.apache.solr.response.SolrQueryResponse;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -41,7 +38,8 @@ import org.junit.Test;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
 
-import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
+import java.io.File;
+import java.util.Map;
 
 public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
   
@@ -74,8 +72,6 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
         new File(subHome, "solrconfig.snippet.randomindexconfig.xml"));
 
     final CoreContainer cores = h.getCoreContainer();
-    SolrXMLCoresLocator.NonPersistingLocator locator
-        = (SolrXMLCoresLocator.NonPersistingLocator) cores.getCoresLocator();
 
     final CoreAdminHandler admin = new CoreAdminHandler(cores);
 
@@ -98,15 +94,6 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
             CoreAdminParams.DATA_DIR, "${DATA_TEST}"),
             resp);
     assertNull("Exception on create", resp.getException());
-
-    // First assert that these values are persisted.
-    h.validateXPath
-        (locator.xml
-            ,"/solr/cores/core[@name='" + getCoreName() + "' and @instanceDir='${INSTDIR_TEST}']"
-            ,"/solr/cores/core[@name='" + getCoreName() + "' and @dataDir='${DATA_TEST}']"
-            ,"/solr/cores/core[@name='" + getCoreName() + "' and @schema='${SCHEMA_TEST}']"
-            ,"/solr/cores/core[@name='" + getCoreName() + "' and @config='${CONFIG_TEST}']"
-        );
 
     // Now assert that certain values are properly dereferenced in the process of creating the core, see
     // SOLR-4982.
@@ -213,42 +200,32 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
     copySolrHomeToTemp(solrHomeDirectory, "corex", true);
     File corex = new File(solrHomeDirectory, "corex");
     FileUtils.write(new File(corex, "core.properties"), "", Charsets.UTF_8.toString());
-    JettySolrRunner runner = new JettySolrRunner(solrHomeDirectory.getAbsolutePath(), "/solr", 0);
-    HttpSolrServer server = null;
-    try {
-      runner.start();
-      server = new HttpSolrServer("http://localhost:" + runner.getLocalPort() + "/solr/corex");
-      server.setConnectionTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
-      server.setSoTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
+    JettySolrRunner runner = new JettySolrRunner(solrHomeDirectory.getAbsolutePath(), "/solr", 0, null, null, true, null, sslConfig);
+    runner.start();
+
+    try (HttpSolrClient client = new HttpSolrClient(runner.getBaseUrl() + "/corex")) {
+      client.setConnectionTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
+      client.setSoTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
       SolrInputDocument doc = new SolrInputDocument();
       doc.addField("id", "123");
-      server.add(doc);
-      server.commit();
-      server.shutdown();
+      client.add(doc);
+      client.commit();
+    }
 
-      server = new HttpSolrServer("http://localhost:" + runner.getLocalPort() + "/solr");
-      server.setConnectionTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
-      server.setSoTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
+    try (HttpSolrClient client = new HttpSolrClient(runner.getBaseUrl().toString())) {
+      client.setConnectionTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
+      client.setSoTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
       CoreAdminRequest.Unload req = new CoreAdminRequest.Unload(false);
       req.setDeleteInstanceDir(true);
       req.setCoreName("corex");
-      req.process(server);
-      server.shutdown();
-
-      runner.stop();
-
-      assertFalse("Instance directory exists after core unload with deleteInstanceDir=true : " + corex,
-          corex.exists());
-    } catch (Exception e) {
-      log.error("Exception testing core unload with deleteInstanceDir=true", e);
-    } finally {
-      if (server != null) {
-        server.shutdown();
-      }
-      if (!runner.isStopped())  {
-        runner.stop();
-      }
+      req.process(client);
     }
+
+    runner.stop();
+
+    assertFalse("Instance directory exists after core unload with deleteInstanceDir=true : " + corex,
+        corex.exists());
+
   }
 
   @Test

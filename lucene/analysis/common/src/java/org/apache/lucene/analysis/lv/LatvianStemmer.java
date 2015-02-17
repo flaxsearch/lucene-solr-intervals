@@ -87,15 +87,15 @@ public class LatvianStemmer {
   /**
    * Most cases are handled except for the ambiguous ones:
    * <ul>
-   *  <li> s -> š
-   *  <li> t -> š
-   *  <li> d -> ž
-   *  <li> z -> ž
+   *  <li> s -&gt; š
+   *  <li> t -&gt; š
+   *  <li> d -&gt; ž
+   *  <li> z -&gt; ž
    * </ul>
    */
   private int unpalatalize(char s[], int len) {
-    // we check the character removed: if its -u then 
-    // its 2,5, or 6 gen pl., and these two can only apply then.
+    // we check the character removed: if it's -u then 
+    // it's 2,5, or 6 gen pl., and these two can only apply then.
     if (s[len] == 'u') {
       // kš -> kst
       if (endsWith(s, len, "kš")) {

@@ -22,6 +22,7 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.FilterScorer;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
@@ -68,8 +69,8 @@ public class BoostedQuery extends Query {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return new BoostedQuery.BoostedWeight(searcher);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+    return new BoostedQuery.BoostedWeight(searcher, needsScores, flags);
   }
 
   private class BoostedWeight extends Weight {
@@ -77,16 +78,12 @@ public class BoostedQuery extends Query {
     Weight qWeight;
     Map fcontext;
 
-    public BoostedWeight(IndexSearcher searcher) throws IOException {
+    public BoostedWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+      super(BoostedQuery.this);
       this.searcher = searcher;
-      this.qWeight = q.createWeight(searcher);
+      this.qWeight = q.createWeight(searcher, needsScores, flags);
       this.fcontext = ValueSource.newContext(searcher);
       boostVal.createWeight(fcontext,searcher);
-    }
-
-    @Override
-    public Query getQuery() {
-      return BoostedQuery.this;
     }
 
     @Override
@@ -103,8 +100,8 @@ public class BoostedQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
-      Scorer subQueryScorer = qWeight.scorer(context, flags, acceptDocs);
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+      Scorer subQueryScorer = qWeight.scorer(context, acceptDocs);
       if (subQueryScorer == null) {
         return null;
       }
@@ -128,41 +125,24 @@ public class BoostedQuery extends Query {
   }
 
 
-  private class CustomScorer extends Scorer {
+  private class CustomScorer extends FilterScorer {
     private final BoostedQuery.BoostedWeight weight;
     private final float qWeight;
-    private final Scorer scorer;
     private final FunctionValues vals;
     private final LeafReaderContext readerContext;
 
     private CustomScorer(LeafReaderContext readerContext, BoostedQuery.BoostedWeight w, float qWeight,
         Scorer scorer, ValueSource vs) throws IOException {
-      super(w);
+      super(scorer);
       this.weight = w;
       this.qWeight = qWeight;
-      this.scorer = scorer;
       this.readerContext = readerContext;
       this.vals = vs.getValues(weight.fcontext, readerContext);
     }
 
-    @Override
-    public int docID() {
-      return scorer.docID();
-    }
-
-    @Override
-    public int advance(int target) throws IOException {
-      return scorer.advance(target);
-    }
-
-    @Override
-    public int nextDoc() throws IOException {
-      return scorer.nextDoc();
-    }
-
     @Override   
     public float score() throws IOException {
-      float score = qWeight * scorer.score() * vals.floatVal(scorer.docID());
+      float score = qWeight * in.score() * vals.floatVal(in.docID());
 
       // Current Lucene priority queues can't handle NaN and -Infinity, so
       // map to -Float.MAX_VALUE. This conditional handles both -infinity
@@ -171,13 +151,8 @@ public class BoostedQuery extends Query {
     }
 
     @Override
-    public int freq() throws IOException {
-      return scorer.freq();
-    }
-
-    @Override
     public Collection<ChildScorer> getChildren() {
-      return Collections.singleton(new ChildScorer(scorer, "CUSTOM"));
+      return Collections.singleton(new ChildScorer(in, "CUSTOM"));
     }
 
     public Explanation explain(int doc) throws IOException {
@@ -195,12 +170,9 @@ public class BoostedQuery extends Query {
 
     @Override
     public IntervalIterator intervals(boolean collectIntervals) throws IOException {
-      return scorer.intervals(collectIntervals);
+      return in.intervals(collectIntervals);
     }
 
-    public long cost() {
-      return scorer.cost();
-    }
   }
 
 

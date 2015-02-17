@@ -34,8 +34,7 @@ import java.util.List;
  * query. Only the group value is collected, and the order
  * is undefined.  This collector does not determine
  * the most relevant document of a group.
- *
- * <p/>
+ * <p>
  * Implementation detail: an int hash set (SentinelIntSet)
  * is used to detect if a group is already added to the
  * total count.  For each segment the int set is cleared and filled
@@ -117,5 +116,10 @@ public class TermAllGroupsCollector extends AbstractAllGroupsCollector<BytesRef>
         }
       }
     }
+  }
+  
+  @Override
+  public boolean needsScores() {
+    return true; // TODO, maybe we don't?
   }
 }

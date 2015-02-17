@@ -16,27 +16,16 @@
  */
 package org.apache.solr.morphlines.solr;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.TimeZone;
-import java.util.concurrent.atomic.AtomicInteger;
-
+import com.codahale.metrics.MetricRegistry;
+import com.google.common.base.Joiner;
+import com.google.common.io.Files;
+import com.typesafe.config.Config;
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.impl.XMLResponseParser;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
@@ -56,16 +45,26 @@ import org.kitesdk.morphline.stdlib.PipeBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.codahale.metrics.MetricRegistry;
-import com.google.common.base.Joiner;
-import com.google.common.io.Files;
-import com.typesafe.config.Config;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class AbstractSolrMorphlineTestBase extends SolrTestCaseJ4 {
   private static Locale savedLocale;
   protected Collector collector;
   protected Command morphline;
-  protected SolrServer solrServer;
+  protected SolrClient solrClient;
   protected DocumentLoader testServer;
   
   protected static final boolean TEST_WITH_EMBEDDED_SOLR_SERVER = true;
@@ -119,19 +118,19 @@ public class AbstractSolrMorphlineTestBase extends SolrTestCaseJ4 {
     if (EXTERNAL_SOLR_SERVER_URL != null) {
       //solrServer = new ConcurrentUpdateSolrServer(EXTERNAL_SOLR_SERVER_URL, 2, 2);
       //solrServer = new SafeConcurrentUpdateSolrServer(EXTERNAL_SOLR_SERVER_URL, 2, 2);
-      solrServer = new HttpSolrServer(EXTERNAL_SOLR_SERVER_URL);
-      ((HttpSolrServer)solrServer).setParser(new XMLResponseParser());
+      solrClient = new HttpSolrClient(EXTERNAL_SOLR_SERVER_URL);
+      ((HttpSolrClient) solrClient).setParser(new XMLResponseParser());
     } else {
       if (TEST_WITH_EMBEDDED_SOLR_SERVER) {
-        solrServer = new EmbeddedTestSolrServer(h.getCoreContainer(), "");
+        solrClient = new EmbeddedTestSolrServer(h.getCoreContainer(), DEFAULT_TEST_CORENAME);
       } else {
         throw new RuntimeException("Not yet implemented");
-        //solrServer = new TestSolrServer(getSolrServer());
+        //solrServer = new TestSolrServer(getSolrClient());
       }
     }
 
     int batchSize = SEQ_NUM2.incrementAndGet() % 2 == 0 ? 100 : 1; //SolrInspector.DEFAULT_SOLR_SERVER_BATCH_SIZE : 1;
-    testServer = new SolrServerDocumentLoader(solrServer, batchSize);
+    testServer = new SolrClientDocumentLoader(solrClient, batchSize);
     deleteAllDocuments();
     
     tempDir = createTempDir().toFile().getAbsolutePath();
@@ -140,8 +139,8 @@ public class AbstractSolrMorphlineTestBase extends SolrTestCaseJ4 {
   @After
   public void tearDown() throws Exception {
     collector = null;
-    solrServer.shutdown();
-    solrServer = null;
+    solrClient.close();
+    solrClient = null;
     super.tearDown();
   }
 
@@ -201,8 +200,8 @@ public class AbstractSolrMorphlineTestBase extends SolrTestCaseJ4 {
 //    return collector.getRecords().size();
     try {
       testServer.commitTransaction();
-      solrServer.commit(false, true, true);
-      QueryResponse rsp = solrServer.query(new SolrQuery(query).setRows(Integer.MAX_VALUE));
+      solrClient.commit(false, true, true);
+      QueryResponse rsp = solrClient.query(new SolrQuery(query).setRows(Integer.MAX_VALUE));
       LOGGER.debug("rsp: {}", rsp);
       int i = 0;
       for (SolrDocument doc : rsp.getResults()) {
@@ -217,7 +216,7 @@ public class AbstractSolrMorphlineTestBase extends SolrTestCaseJ4 {
   
   private void deleteAllDocuments() throws SolrServerException, IOException {
     collector.reset();
-    SolrServer s = solrServer;
+    SolrClient s = solrClient;
     s.deleteByQuery("*:*"); // delete everything!
     s.commit();
   }
@@ -255,7 +254,7 @@ public class AbstractSolrMorphlineTestBase extends SolrTestCaseJ4 {
 
   protected void testDocumentContent(HashMap<String, ExpectedResult> expectedResultMap)
   throws Exception {
-    QueryResponse rsp = solrServer.query(new SolrQuery("*:*").setRows(Integer.MAX_VALUE));
+    QueryResponse rsp = solrClient.query(new SolrQuery("*:*").setRows(Integer.MAX_VALUE));
     // Check that every expected field/values shows up in the actual query
     for (Entry<String, ExpectedResult> current : expectedResultMap.entrySet()) {
       String field = current.getKey();

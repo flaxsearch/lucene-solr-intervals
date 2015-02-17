@@ -18,21 +18,17 @@
 package org.apache.solr.common.params;
 
 import java.util.Iterator;
-
-import org.apache.solr.common.util.IteratorChain;
+import java.util.LinkedHashSet;
 
 /**
  *
  */
 public class DefaultSolrParams extends SolrParams {
+
   protected final SolrParams params;
   protected final SolrParams defaults;
 
-  /**
-   * @deprecated (3.6) Use {@link SolrParams#wrapDefaults(SolrParams, SolrParams)} instead.
-   */
-  @Deprecated
-  public DefaultSolrParams(SolrParams params, SolrParams defaults) {
+  protected DefaultSolrParams(SolrParams params, SolrParams defaults) {
     assert params != null && defaults != null;
     this.params = params;
     this.defaults = defaults;
@@ -52,10 +48,17 @@ public class DefaultSolrParams extends SolrParams {
 
   @Override
   public Iterator<String> getParameterNamesIterator() {
-    final IteratorChain<String> c = new IteratorChain<>();
-    c.addIterator(defaults.getParameterNamesIterator());
-    c.addIterator(params.getParameterNamesIterator());
-    return c;
+    // We need to compute the set of all param names in advance 
+    // So we don't wind up with an iterator that returns the same
+    // String more then once (SOLR-6780)
+    LinkedHashSet<String> allKeys = new LinkedHashSet<>();
+    for (SolrParams p : new SolrParams [] {params, defaults}) {
+      Iterator<String> localKeys = p.getParameterNamesIterator();
+      while (localKeys.hasNext()) {
+        allKeys.add(localKeys.next());
+      }
+    }
+    return allKeys.iterator();
   }
 
   @Override

@@ -73,7 +73,7 @@ import java.util.Map;
 //     maybe CMS should do so)
 
 public class TieredMergePolicy extends MergePolicy {
-  /** Default noCFSRatio.  If a merge's size is >= 10% of
+  /** Default noCFSRatio.  If a merge's size is {@code >= 10%} of
    *  the index, then we disable compound file for it.
    *  @see MergePolicy#setNoCFSRatio */
   public static final double DEFAULT_NO_CFS_RATIO = 0.1;
@@ -215,7 +215,7 @@ public class TieredMergePolicy extends MergePolicy {
   /** Sets the allowed number of segments per tier.  Smaller
    *  values mean more merging but fewer segments.
    *
-   *  <p><b>NOTE</b>: this value should be >= the {@link
+   *  <p><b>NOTE</b>: this value should be {@code >=} the {@link
    *  #setMaxMergeAtOnce} otherwise you'll force too much
    *  merging to occur.</p>
    *
@@ -568,7 +568,7 @@ public class TieredMergePolicy extends MergePolicy {
       final int numToMerge = end - maxSegmentCount + 1;
       final OneMerge merge = new OneMerge(eligible.subList(end-numToMerge, end));
       if (verbose(writer)) {
-        message("add final merge=" + merge.segString(writer.getDirectory()), writer);
+        message("add final merge=" + merge.segString(), writer);
       }
       spec = new MergeSpecification();
       spec.add(merge);

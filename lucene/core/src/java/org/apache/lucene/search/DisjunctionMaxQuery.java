@@ -115,18 +115,17 @@ public class DisjunctionMaxQuery extends Query implements Iterable<Query> {
   protected class DisjunctionMaxWeight extends Weight {
 
     /** The Weights for our subqueries, in 1-1 correspondence with disjuncts */
-    protected ArrayList<Weight> weights = new ArrayList<>();  // The Weight's for our subqueries, in 1-1 correspondence with disjuncts
+    protected final ArrayList<Weight> weights = new ArrayList<>();  // The Weight's for our subqueries, in 1-1 correspondence with disjuncts
+    private final boolean needsScores;
 
     /** Construct the Weight for this Query searched by searcher.  Recursively construct subquery weights. */
-    public DisjunctionMaxWeight(IndexSearcher searcher) throws IOException {
+    public DisjunctionMaxWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+      super(DisjunctionMaxQuery.this);
       for (Query disjunctQuery : disjuncts) {
-        weights.add(disjunctQuery.createWeight(searcher));
+        weights.add(disjunctQuery.createWeight(searcher, needsScores, flags));
       }
+      this.needsScores = needsScores;
     }
-
-    /** Return our associated DisjunctionMaxQuery */
-    @Override
-    public Query getQuery() { return DisjunctionMaxQuery.this; }
 
     /** Compute the sub of squared weights of us applied to our subqueries.  Used for normalization. */
     @Override
@@ -153,11 +152,11 @@ public class DisjunctionMaxQuery extends Query implements Iterable<Query> {
 
     /** Create the scorer used to score our associated DisjunctionMaxQuery */
     @Override
-    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
       List<Scorer> scorers = new ArrayList<>();
       for (Weight w : weights) {
         // we will advance() subscorers
-        Scorer subScorer = w.scorer(context, flags, acceptDocs);
+        Scorer subScorer = w.scorer(context, acceptDocs);
         if (subScorer != null) {
           scorers.add(subScorer);
         }
@@ -169,7 +168,7 @@ public class DisjunctionMaxQuery extends Query implements Iterable<Query> {
         // only one sub-scorer in this segment
         return scorers.get(0);
       } else {
-        return new DisjunctionMaxScorer(this, tieBreakerMultiplier, scorers.toArray(new Scorer[scorers.size()]));
+        return new DisjunctionMaxScorer(this, tieBreakerMultiplier, scorers, needsScores);
       }
     }
 
@@ -197,8 +196,8 @@ public class DisjunctionMaxQuery extends Query implements Iterable<Query> {
 
   /** Create the Weight used to score us */
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return new DisjunctionMaxWeight(searcher);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+    return new DisjunctionMaxWeight(searcher, needsScores, flags);
   }
 
   /** Optimize our representation and our subqueries representations

@@ -22,10 +22,8 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.ComplexExplanation;
-import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
@@ -33,8 +31,10 @@ import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.ArrayUtil;
+import org.apache.lucene.util.BitDocIdSet;
+import org.apache.lucene.util.BitSet;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -50,7 +50,7 @@ import java.util.Set;
  * child documents must appear first, ending with the parent
  * document.  At search time you provide a Filter
  * identifying the parents, however this Filter must provide
- * an {@link FixedBitSet} per sub-reader.
+ * an {@link BitSet} per sub-reader.
  *
  * <p>Once the block index is built, use this query to wrap
  * any sub-query matching only child docs and join matches in that
@@ -86,7 +86,7 @@ import java.util.Set;
  */
 public class ToParentBlockJoinQuery extends Query {
 
-  private final Filter parentsFilter;
+  private final BitDocIdSetFilter parentsFilter;
   private final Query childQuery;
 
   // If we are rewritten, this is the original childQuery we
@@ -100,13 +100,11 @@ public class ToParentBlockJoinQuery extends Query {
   /** Create a ToParentBlockJoinQuery.
    * 
    * @param childQuery Query matching child documents.
-   * @param parentsFilter Filter (must produce FixedBitSet
-   * per-segment, like {@link FixedBitSetCachingWrapperFilter})
-   * identifying the parent documents.
+   * @param parentsFilter Filter identifying the parent documents.
    * @param scoreMode How to aggregate multiple child scores
    * into a single parent score.
    **/
-  public ToParentBlockJoinQuery(Query childQuery, Filter parentsFilter, ScoreMode scoreMode) {
+  public ToParentBlockJoinQuery(Query childQuery, BitDocIdSetFilter parentsFilter, ScoreMode scoreMode) {
     super();
     this.origChildQuery = childQuery;
     this.childQuery = childQuery;
@@ -114,7 +112,7 @@ public class ToParentBlockJoinQuery extends Query {
     this.scoreMode = scoreMode;
   }
 
-  private ToParentBlockJoinQuery(Query origChildQuery, Query childQuery, Filter parentsFilter, ScoreMode scoreMode) {
+  private ToParentBlockJoinQuery(Query origChildQuery, Query childQuery, BitDocIdSetFilter parentsFilter, ScoreMode scoreMode) {
     super();
     this.origChildQuery = origChildQuery;
     this.childQuery = childQuery;
@@ -123,27 +121,27 @@ public class ToParentBlockJoinQuery extends Query {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return new BlockJoinWeight(this, childQuery.createWeight(searcher), parentsFilter, scoreMode);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+    return new BlockJoinWeight(this, childQuery.createWeight(searcher, needsScores, flags), parentsFilter, scoreMode);
+  }
+  
+  /** Return our child query. */
+  public Query getChildQuery() {
+    return childQuery;
   }
 
   private static class BlockJoinWeight extends Weight {
     private final Query joinQuery;
     private final Weight childWeight;
-    private final Filter parentsFilter;
+    private final BitDocIdSetFilter parentsFilter;
     private final ScoreMode scoreMode;
 
-    public BlockJoinWeight(Query joinQuery, Weight childWeight, Filter parentsFilter, ScoreMode scoreMode) {
-      super();
+    public BlockJoinWeight(Query joinQuery, Weight childWeight, BitDocIdSetFilter parentsFilter, ScoreMode scoreMode) {
+      super(joinQuery);
       this.joinQuery = joinQuery;
       this.childWeight = childWeight;
       this.parentsFilter = parentsFilter;
       this.scoreMode = scoreMode;
-    }
-
-    @Override
-    public Query getQuery() {
-      return joinQuery;
     }
 
     @Override
@@ -159,9 +157,9 @@ public class ToParentBlockJoinQuery extends Query {
     // NOTE: acceptDocs applies (and is checked) only in the
     // parent document space
     @Override
-    public Scorer scorer(LeafReaderContext readerContext, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext readerContext, Bits acceptDocs) throws IOException {
 
-      final Scorer childScorer = childWeight.scorer(readerContext, flags, readerContext.reader().getLiveDocs());
+      final Scorer childScorer = childWeight.scorer(readerContext, readerContext.reader().getLiveDocs());
       if (childScorer == null) {
         // No matches
         return null;
@@ -173,42 +171,31 @@ public class ToParentBlockJoinQuery extends Query {
         return null;
       }
 
-      // NOTE: we cannot pass acceptDocs here because this
-      // will (most likely, justifiably) cause the filter to
-      // not return a FixedBitSet but rather a
-      // BitsFilteredDocIdSet.  Instead, we filter by
-      // acceptDocs when we score:
-      final DocIdSet parents = parentsFilter.getDocIdSet(readerContext, null);
+      // NOTE: this does not take accept docs into account, the responsibility
+      // to not match deleted docs is on the scorer
+      final BitDocIdSet parents = parentsFilter.getDocIdSet(readerContext);
 
       if (parents == null) {
         // No matches
         return null;
       }
-      if (!(parents instanceof FixedBitSet)) {
-        throw new IllegalStateException("parentFilter must return FixedBitSet; got " + parents);
-      }
 
-      return new BlockJoinScorer(this, childScorer, (FixedBitSet) parents, firstChildDoc, scoreMode, acceptDocs);
+      return new BlockJoinScorer(this, childScorer, parents.bits(), firstChildDoc, scoreMode, acceptDocs);
     }
 
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      BlockJoinScorer scorer = (BlockJoinScorer) scorer(context, PostingFeatures.DOCS_ONLY, context.reader().getLiveDocs());
+      BlockJoinScorer scorer = (BlockJoinScorer) scorer(context, context.reader().getLiveDocs());
       if (scorer != null && scorer.advance(doc) == doc) {
         return scorer.explain(context.docBase);
       }
       return new ComplexExplanation(false, 0.0f, "Not a match");
     }
-
-    @Override
-    public boolean scoresDocsOutOfOrder() {
-      return false;
-    }
   }
 
   static class BlockJoinScorer extends Scorer {
     private final Scorer childScorer;
-    private final FixedBitSet parentBits;
+    private final BitSet parentBits;
     private final ScoreMode scoreMode;
     private final Bits acceptDocs;
     private int parentDoc = -1;
@@ -220,7 +207,7 @@ public class ToParentBlockJoinQuery extends Query {
     private float[] pendingChildScores;
     private int childDocUpto;
 
-    public BlockJoinScorer(Weight weight, Scorer childScorer, FixedBitSet parentBits, int firstChildDoc, ScoreMode scoreMode, Bits acceptDocs) {
+    public BlockJoinScorer(Weight weight, Scorer childScorer, BitSet parentBits, int firstChildDoc, ScoreMode scoreMode, Bits acceptDocs) {
       super(weight);
       //System.out.println("Q.init firstChildDoc=" + firstChildDoc);
       this.parentBits = parentBits;
@@ -288,7 +275,7 @@ public class ToParentBlockJoinQuery extends Query {
         }
 
         //System.out.println("  parentDoc=" + parentDoc);
-        assert parentDoc != -1;
+        assert parentDoc != DocIdSetIterator.NO_MORE_DOCS;
 
         //System.out.println("  nextChildDoc=" + nextChildDoc);
         if (acceptDocs != null && !acceptDocs.get(parentDoc)) {
@@ -377,6 +364,26 @@ public class ToParentBlockJoinQuery extends Query {
     @Override
     public int freq() {
       return parentFreq;
+    }
+
+    @Override
+    public int nextPosition() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return null;
     }
 
     @Override

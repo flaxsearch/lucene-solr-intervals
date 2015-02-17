@@ -123,8 +123,7 @@ public class TestSubScorerFreqs extends LuceneTestCase {
   @Test
   public void testTermQuery() throws Exception {
     TermQuery q = new TermQuery(new Term("f", "d"));
-    CountingCollector c = new CountingCollector(TopScoreDocCollector.create(10,
-        true));
+    CountingCollector c = new CountingCollector(TopScoreDocCollector.create(10));
     s.search(q, null, c);
     final int maxDocs = s.getIndexReader().maxDoc();
     assertEquals(maxDocs, c.docCounts.size());
@@ -164,14 +163,14 @@ public class TestSubScorerFreqs extends LuceneTestCase {
     
     for (final Set<String> occur : occurList) {
       CountingCollector c = new CountingCollector(TopScoreDocCollector.create(
-          10, true), occur);
+          10), occur);
       s.search(query, null, c);
       final int maxDocs = s.getIndexReader().maxDoc();
       assertEquals(maxDocs, c.docCounts.size());
       boolean includeOptional = occur.contains("SHOULD");
       for (int i = 0; i < maxDocs; i++) {
         Map<Query, Float> doc0 = c.docCounts.get(i);
-        // Y doesnt exist in the index, so its not in the scorer tree
+        // Y doesnt exist in the index, so it's not in the scorer tree
         assertEquals(4, doc0.size());
         assertEquals(1.0F, doc0.get(aQuery), FLOAT_TOLERANCE);
         assertEquals(4.0F, doc0.get(dQuery), FLOAT_TOLERANCE);
@@ -180,7 +179,7 @@ public class TestSubScorerFreqs extends LuceneTestCase {
         }
 
         Map<Query, Float> doc1 = c.docCounts.get(++i);
-        // Y doesnt exist in the index, so its not in the scorer tree
+        // Y doesnt exist in the index, so it's not in the scorer tree
         assertEquals(4, doc1.size());
         assertEquals(1.0F, doc1.get(aQuery), FLOAT_TOLERANCE);
         assertEquals(1.0F, doc1.get(dQuery), FLOAT_TOLERANCE);
@@ -196,8 +195,7 @@ public class TestSubScorerFreqs extends LuceneTestCase {
     PhraseQuery q = new PhraseQuery();
     q.add(new Term("f", "b"));
     q.add(new Term("f", "c"));
-    CountingCollector c = new CountingCollector(TopScoreDocCollector.create(10,
-        true));
+    CountingCollector c = new CountingCollector(TopScoreDocCollector.create(10));
     s.search(q, null, c);
     final int maxDocs = s.getIndexReader().maxDoc();
     assertEquals(maxDocs, c.docCounts.size());

@@ -317,7 +317,7 @@ public class UpdateLog implements PluginInfoInitialized {
   }
 
   /* Takes over ownership of the log, keeping it until no longer needed
-     and then decrementing it's reference and dropping it.
+     and then decrementing its reference and dropping it.
    */
   protected synchronized void addOldLog(TransactionLog oldLog, boolean removeOld) {
     if (oldLog == null) return;
@@ -1302,10 +1302,6 @@ public class UpdateLog implements PluginInfoInitialized {
                 // versionInfo.unblockUpdates();
               }
             }
-          } catch (InterruptedException e) {
-            SolrException.log(log,e);
-          } catch (IOException e) {
-            SolrException.log(log,e);
           } catch (Exception e) {
             SolrException.log(log,e);
           }

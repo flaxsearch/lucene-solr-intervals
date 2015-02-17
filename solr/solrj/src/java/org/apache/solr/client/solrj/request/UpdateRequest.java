@@ -30,7 +30,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.LinkedHashMap;
 
-import org.apache.solr.client.solrj.impl.LBHttpSolrServer;
+import org.apache.solr.client.solrj.impl.LBHttpSolrClient;
 import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.cloud.DocCollection;
@@ -49,6 +49,7 @@ public class UpdateRequest extends AbstractUpdateRequest {
   public static final String REPFACT = "rf";
   public static final String MIN_REPFACT = "min_rf";
   public static final String VER = "ver";
+  public static final String ROUTE = "_route_";
   public static final String OVERWRITE = "ow";
   public static final String COMMIT_WITHIN = "cw";
   private Map<SolrInputDocument,Map<String,Object>> documents = null;
@@ -132,7 +133,25 @@ public class UpdateRequest extends AbstractUpdateRequest {
     deleteById.put(id, null);
     return this;
   }
-  
+
+  public UpdateRequest deleteById(String id, String route) {
+    return deleteById(id, route, null);
+  }
+
+  public UpdateRequest deleteById(String id, String route, Long version) {
+    if (deleteById == null) {
+      deleteById = new LinkedHashMap<>();
+    }
+    Map<String, Object> params = (route == null && version == null) ? null : new HashMap<String, Object>(1);
+    if (version != null)
+      params.put(VER, version);
+    if (route != null)
+      params.put(ROUTE, route);
+    deleteById.put(id, params);
+    return this;
+  }
+
+
   public UpdateRequest deleteById(List<String> ids) {
     if (deleteById == null) {
       deleteById = new LinkedHashMap<>();
@@ -146,13 +165,7 @@ public class UpdateRequest extends AbstractUpdateRequest {
   }
   
   public UpdateRequest deleteById(String id, Long version) {
-    if (deleteById == null) {
-      deleteById = new LinkedHashMap<>();
-    }
-    Map<String,Object> params = new HashMap<>(1);
-    params.put(VER, version);
-    deleteById.put(id, params);
-    return this;
+    return deleteById(id, null, version);
   }
   
   public UpdateRequest deleteByQuery(String q) {
@@ -171,7 +184,7 @@ public class UpdateRequest extends AbstractUpdateRequest {
    * @param idField the id field
    * @return a Map of urls to requests
    */
-  public Map<String,LBHttpSolrServer.Req> getRoutes(DocRouter router,
+  public Map<String,LBHttpSolrClient.Req> getRoutes(DocRouter router,
       DocCollection col, Map<String,List<String>> urlMap,
       ModifiableSolrParams params, String idField) {
     
@@ -180,7 +193,7 @@ public class UpdateRequest extends AbstractUpdateRequest {
       return null;
     }
     
-    Map<String,LBHttpSolrServer.Req> routes = new HashMap<>();
+    Map<String,LBHttpSolrClient.Req> routes = new HashMap<>();
     if (documents != null) {
       Set<Entry<SolrInputDocument,Map<String,Object>>> entries = documents.entrySet();
       for (Entry<SolrInputDocument,Map<String,Object>> entry : entries) {
@@ -190,13 +203,13 @@ public class UpdateRequest extends AbstractUpdateRequest {
           return null;
         }
         Slice slice = router.getTargetSlice(id
-            .toString(), doc, null, col);
+            .toString(), doc, null, null, col);
         if (slice == null) {
           return null;
         }
         List<String> urls = urlMap.get(slice.getName());
         String leaderUrl = urls.get(0);
-        LBHttpSolrServer.Req request = (LBHttpSolrServer.Req) routes
+        LBHttpSolrClient.Req request = (LBHttpSolrClient.Req) routes
             .get(leaderUrl);
         if (request == null) {
           UpdateRequest updateRequest = new UpdateRequest();
@@ -204,11 +217,20 @@ public class UpdateRequest extends AbstractUpdateRequest {
           updateRequest.setCommitWithin(getCommitWithin());
           updateRequest.setParams(params);
           updateRequest.setPath(getPath());
-          request = new LBHttpSolrServer.Req(updateRequest, urls);
+          request = new LBHttpSolrClient.Req(updateRequest, urls);
           routes.put(leaderUrl, request);
         }
         UpdateRequest urequest = (UpdateRequest) request.getRequest();
-        urequest.add(doc);
+        Map<String,Object> value = entry.getValue();
+        Boolean ow = null;
+        if (value != null) {
+          ow = (Boolean) value.get(OVERWRITE);
+        }
+        if (ow != null) {
+          urequest.add(doc, ow);
+        } else {
+          urequest.add(doc);
+        }
       }
     }
     
@@ -228,13 +250,13 @@ public class UpdateRequest extends AbstractUpdateRequest {
         if (map != null) {
           version = (Long) map.get(VER);
         }
-        Slice slice = router.getTargetSlice(deleteId, null, null, col);
+        Slice slice = router.getTargetSlice(deleteId, null, null, null, col);
         if (slice == null) {
           return null;
         }
         List<String> urls = urlMap.get(slice.getName());
         String leaderUrl = urls.get(0);
-        LBHttpSolrServer.Req request = routes.get(leaderUrl);
+        LBHttpSolrClient.Req request = routes.get(leaderUrl);
         if (request != null) {
           UpdateRequest urequest = (UpdateRequest) request.getRequest();
           urequest.deleteById(deleteId, version);
@@ -242,7 +264,7 @@ public class UpdateRequest extends AbstractUpdateRequest {
           UpdateRequest urequest = new UpdateRequest();
           urequest.setParams(params);
           urequest.deleteById(deleteId, version);
-          request = new LBHttpSolrServer.Req(urequest, urls);
+          request = new LBHttpSolrClient.Req(urequest, urls);
           routes.put(leaderUrl, request);
         }
       }
@@ -375,8 +397,13 @@ public class UpdateRequest extends AbstractUpdateRequest {
           Map<String,Object> map = entry.getValue();
           if (map != null) {
             Long version = (Long) map.get(VER);
+            String route = (String)map.get(ROUTE);
             if (version != null) {
               writer.append(" version=\"" + version + "\"");
+            }
+            
+            if (route != null) {
+              writer.append(" _route_=\"" + route + "\"");
             }
           }
           writer.append(">");

@@ -1,14 +1,10 @@
 package org.apache.solr;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStream;
-
 import org.apache.commons.io.FileUtils;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrException;
@@ -20,6 +16,10 @@ import org.apache.solr.response.BinaryResponseWriter;
 import org.apache.solr.response.SolrQueryResponse;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -40,8 +40,8 @@ import org.junit.BeforeClass;
 
 public class TestTolerantSearch extends SolrJettyTestBase {
   
-  private static SolrServer collection1;
-  private static SolrServer collection2;
+  private static SolrClient collection1;
+  private static SolrClient collection2;
   private static String shard1;
   private static String shard2;
   private static File solrHome;
@@ -60,8 +60,8 @@ public class TestTolerantSearch extends SolrJettyTestBase {
     solrHome = createSolrHome();
     createJetty(solrHome.getAbsolutePath(), null, null);
     String url = jetty.getBaseUrl().toString();
-    collection1 = new HttpSolrServer(url);
-    collection2 = new HttpSolrServer(url + "/collection2");
+    collection1 = new HttpSolrClient(url + "/collection1");
+    collection2 = new HttpSolrClient(url + "/collection2");
     
     String urlCollection1 = jetty.getBaseUrl().toString() + "/" + "collection1";
     String urlCollection2 = jetty.getBaseUrl().toString() + "/" + "collection2";
@@ -69,10 +69,13 @@ public class TestTolerantSearch extends SolrJettyTestBase {
     shard2 = urlCollection2.replaceAll("https?://", "");
     
     //create second core
-    CoreAdminRequest.Create req = new CoreAdminRequest.Create();
-    req.setCoreName("collection2");
-    collection1.request(req);
-    
+    try (HttpSolrClient nodeClient = new HttpSolrClient(url)) {
+      CoreAdminRequest.Create req = new CoreAdminRequest.Create();
+      req.setCoreName("collection2");
+      req.setConfigSet("collection1");
+      nodeClient.request(req);
+    }
+
     SolrInputDocument doc = new SolrInputDocument();
     doc.setField("id", "1");
     doc.setField("subject", "batman");
@@ -96,8 +99,8 @@ public class TestTolerantSearch extends SolrJettyTestBase {
   
   @AfterClass
   public static void destroyThings() throws Exception {
-    collection1.shutdown();
-    collection2.shutdown();
+    collection1.close();
+    collection2.close();
     collection1 = null;
     collection2 = null;
     jetty.stop();

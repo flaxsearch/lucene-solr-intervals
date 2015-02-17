@@ -43,7 +43,6 @@ import java.util.Map;
 /**
  * Handler for rich documents like PDF or Word or any other file format that Tika handles that need the text to be extracted
  * first from the document.
- * <p/>
  */
 public class ExtractingRequestHandler extends ContentStreamHandlerBase implements SolrCoreAware {
 
@@ -94,9 +93,7 @@ public class ExtractingRequestHandler extends ContentStreamHandlerBase implement
     if (config == null) {
       try {
         config = getDefaultConfig(core.getResourceLoader().getClassLoader());
-      } catch (MimeTypeException e) {
-        throw new SolrException(ErrorCode.SERVER_ERROR, e);
-      } catch (IOException e) {
+      } catch (MimeTypeException | IOException e) {
         throw new SolrException(ErrorCode.SERVER_ERROR, e);
       }
     }

@@ -18,8 +18,8 @@ package org.apache.lucene.document;
  */
 
 import org.apache.lucene.document.FieldType.NumericType;
-import org.apache.lucene.index.FieldInfo.DocValuesType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.DocValuesType;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.util.LuceneTestCase;
 
 /** simple testcases for concrete impl of IndexableFieldType */
@@ -39,7 +39,7 @@ public class TestFieldType extends LuceneTestCase {
     assertFalse(ft3.equals(ft));
     
     FieldType ft4 = new FieldType();
-    ft4.setDocValueType(DocValuesType.BINARY);
+    ft4.setDocValuesType(DocValuesType.BINARY);
     assertFalse(ft4.equals(ft));
     
     FieldType ft5 = new FieldType();

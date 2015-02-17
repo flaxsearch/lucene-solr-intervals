@@ -102,7 +102,13 @@ public class TestRollingUpdates extends LuceneTestCase {
       updateCount++;
 
       if (doUpdate) {
-        w.updateDocument(idTerm, doc);
+        if (random().nextBoolean()) {
+          w.updateDocument(idTerm, doc);
+        } else {
+          // It's OK to not be atomic for this test (no separate thread reopening readers):
+          w.deleteDocuments(new TermQuery(idTerm));
+          w.addDocument(doc);
+        }
       } else {
         w.addDocument(doc);
       }
@@ -143,8 +149,7 @@ public class TestRollingUpdates extends LuceneTestCase {
     docs.close();
     
     // LUCENE-4455:
-    SegmentInfos infos = new SegmentInfos();
-    infos.read(dir);
+    SegmentInfos infos = SegmentInfos.readLatestCommit(dir);
     long totalBytes = 0;
     for(SegmentCommitInfo sipc : infos) {
       totalBytes += sipc.sizeInBytes();

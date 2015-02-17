@@ -17,9 +17,6 @@ package org.apache.lucene.store;
  * limitations under the License.
  */
 
-import org.apache.lucene.util.Constants;
-import org.apache.lucene.util.IOUtils;
-
 import java.io.FileOutputStream;
 import java.io.FilterOutputStream;
 import java.io.IOException;
@@ -27,32 +24,32 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.channels.ClosedChannelException; // javadoc @link
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Future;
 
-import static java.util.Collections.synchronizedSet;
+import org.apache.lucene.util.Constants;
+import org.apache.lucene.util.IOUtils;
 
 /**
  * Base class for Directory implementations that store index
  * files in the file system.  
- * <a name="subclasses"/>
+ * <a name="subclasses"></a>
  * There are currently three core
  * subclasses:
  *
  * <ul>
  *
- *  <li> {@link SimpleFSDirectory} is a straightforward
+ *  <li>{@link SimpleFSDirectory} is a straightforward
  *       implementation using Files.newByteChannel.
  *       However, it has poor concurrent performance
  *       (multiple threads will bottleneck) as it
  *       synchronizes when multiple threads read from the
  *       same file.
  *
- *  <li> {@link NIOFSDirectory} uses java.nio's
+ *  <li>{@link NIOFSDirectory} uses java.nio's
  *       FileChannel's positional io when reading to avoid
  *       synchronization when reading from the same file.
  *       Unfortunately, due to a Windows-only <a
@@ -64,9 +61,7 @@ import static java.util.Collections.synchronizedSet;
  *       {@code RAFDirectory} instead. See {@link NIOFSDirectory} java doc
  *       for details.
  *        
- *        
- *
- *  <li> {@link MMapDirectory} uses memory-mapped IO when
+ *  <li>{@link MMapDirectory} uses memory-mapped IO when
  *       reading. This is a good choice if you have plenty
  *       of virtual memory relative to your index size, eg
  *       if you are running on a 64 bit JRE, or you are
@@ -90,14 +85,9 @@ import static java.util.Collections.synchronizedSet;
  *       an important limitation to be aware of. This class supplies a
  *       (possibly dangerous) workaround mentioned in the bug report,
  *       which may fail on non-Sun JVMs.
- *       
- *       Applications using {@link Thread#interrupt()} or
- *       {@link Future#cancel(boolean)} should use
- *       {@code RAFDirectory} instead. See {@link MMapDirectory}
- *       java doc for details.
  * </ul>
  *
- * Unfortunately, because of system peculiarities, there is
+ * <p>Unfortunately, because of system peculiarities, there is
  * no single overall best implementation.  Therefore, we've
  * added the {@link #open} method, to allow Lucene to choose
  * the best FSDirectory implementation given your
@@ -106,6 +96,15 @@ import static java.util.Collections.synchronizedSet;
  * specific implementation, it's best to simply use {@link
  * #open}.  For all others, you should instantiate the
  * desired implementation directly.
+ *
+ * <p><b>NOTE:</b> Accessing one of the above subclasses either directly or
+ * indirectly from a thread while it's interrupted can close the
+ * underlying channel immediately if at the same time the thread is
+ * blocked on IO. The channel will remain closed and subsequent access
+ * to the index will throw a {@link ClosedChannelException}.
+ * Applications using {@link Thread#interrupt()} or
+ * {@link Future#cancel(boolean)} should use the slower legacy
+ * {@code RAFDirectory} from the {@code misc} Lucene module instead.
  *
  * <p>The locking implementation is by default {@link
  * NativeFSLockFactory}, but can be changed by
@@ -116,31 +115,26 @@ import static java.util.Collections.synchronizedSet;
 public abstract class FSDirectory extends BaseDirectory {
 
   protected final Path directory; // The underlying filesystem directory
-  protected final Set<String> staleFiles = synchronizedSet(new HashSet<String>()); // Files written, but not yet sync'ed
 
   /** Create a new FSDirectory for the named location (ctor for subclasses).
+   * The directory is created at the named location if it does not yet exist.
    * @param path the path of the directory
    * @param lockFactory the lock factory to use, or null for the default
    * ({@link NativeFSLockFactory});
    * @throws IOException if there is a low-level I/O error
    */
   protected FSDirectory(Path path, LockFactory lockFactory) throws IOException {
-    // new ctors use always NativeFSLockFactory as default:
-    if (lockFactory == null) {
-      lockFactory = new NativeFSLockFactory();
-    }
-    
-    Files.createDirectories(path);  // create directory, if it doesnt exist
+    super(lockFactory);
+    Files.createDirectories(path);  // create directory, if it doesn't exist
     directory = path.toRealPath();
-
-    setLockFactory(lockFactory);
   }
 
   /** Creates an FSDirectory instance, trying to pick the
    *  best implementation given the current environment.
    *  The directory returned uses the {@link NativeFSLockFactory}.
+   *  The directory is created at the named location if it does not yet exist.
    *
-   *  <p>Currently this returns {@link MMapDirectory} for most Solaris
+   *  <p>Currently this returns {@link MMapDirectory} for Linux, MacOSX, Solaris,
    *  and Windows 64-bit JREs, {@link NIOFSDirectory} for other
    *  non-Windows JREs, and {@link SimpleFSDirectory} for other
    *  JREs on Windows. It is highly recommended that you consult the
@@ -157,7 +151,7 @@ public abstract class FSDirectory extends BaseDirectory {
    *
    * <p>See <a href="#subclasses">above</a> */
   public static FSDirectory open(Path path) throws IOException {
-    return open(path, null);
+    return open(path, FSLockFactory.getDefault());
   }
 
   /** Just like {@link #open(Path)}, but allows you to
@@ -172,39 +166,14 @@ public abstract class FSDirectory extends BaseDirectory {
     }
   }
 
-  @Override
-  public void setLockFactory(LockFactory lockFactory) throws IOException {
-    super.setLockFactory(lockFactory);
-
-    // for filesystem based LockFactory, delete the lockPrefix, if the locks are placed
-    // in index dir. If no index dir is given, set ourselves
-    if (lockFactory instanceof FSLockFactory) {
-      final FSLockFactory lf = (FSLockFactory) lockFactory;
-      final Path dir = lf.getLockDir();
-      // if the lock factory has no lockDir set, use the this directory as lockDir
-      if (dir == null) {
-        lf.setLockDir(directory);
-        lf.setLockPrefix(null);
-      } else if (dir.toRealPath().equals(directory)) {
-        lf.setLockPrefix(null);
-      }
-    }
-
-  }
-  
-  /** Lists all files (not subdirectories) in the
+  /** Lists all files (including subdirectories) in the
    *  directory.
    *
    *  @throws IOException if there was an I/O error during listing */
   public static String[] listAll(Path dir) throws IOException {
     List<String> entries = new ArrayList<>();
     
-    try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, new DirectoryStream.Filter<Path>() {
-      @Override
-      public boolean accept(Path entry) throws IOException {
-        return !Files.isDirectory(entry); // filter out entries that are definitely directories.
-      }
-    })) {
+    try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
       for (Path path : stream) {
         entries.add(path.getFileName().toString());
       }
@@ -213,9 +182,6 @@ public abstract class FSDirectory extends BaseDirectory {
     return entries.toArray(new String[entries.size()]);
   }
 
-  /** Lists all files (not subdirectories) in the
-   * directory.
-   * @see #listAll(Path) */
   @Override
   public String[] listAll() throws IOException {
     ensureOpen();
@@ -234,7 +200,6 @@ public abstract class FSDirectory extends BaseDirectory {
   public void deleteFile(String name) throws IOException {
     ensureOpen();
     Files.delete(directory.resolve(name));
-    staleFiles.remove(name);
   }
 
   /** Creates an IndexOutput for the file with the given name. */
@@ -250,25 +215,13 @@ public abstract class FSDirectory extends BaseDirectory {
     Files.deleteIfExists(directory.resolve(name)); // delete existing, if any
   }
 
-  /**
-   * Sub classes should call this method on closing an open {@link IndexOutput}, reporting the name of the file
-   * that was closed. {@code FSDirectory} needs this information to take care of syncing stale files.
-   */
-  protected void onIndexOutputClosed(String name) {
-    staleFiles.add(name);
-  }
-
   @Override
   public void sync(Collection<String> names) throws IOException {
     ensureOpen();
-    Set<String> toSync = new HashSet<>(names);
-    toSync.retainAll(staleFiles);
 
-    for (String name : toSync) {
+    for (String name : names) {
       fsync(name);
     }
-    
-    staleFiles.removeAll(toSync);
   }
   
   @Override
@@ -278,19 +231,6 @@ public abstract class FSDirectory extends BaseDirectory {
     // TODO: should we move directory fsync to a separate 'syncMetadata' method?
     // for example, to improve listCommits(), IndexFileDeleter could also call that after deleting segments_Ns
     IOUtils.fsync(directory, true);
-  }
-
-  @Override
-  public String getLockID() {
-    ensureOpen();
-    String dirName = directory.toString();  // name to be hashed
-
-    int digest = 0;
-    for(int charIDX=0;charIDX<dirName.length();charIDX++) {
-      final char ch = dirName.charAt(charIDX);
-      digest = 31 * digest + ch;
-    }
-    return "lucene-" + Integer.toHexString(digest);
   }
 
   /** Closes the store to future operations. */
@@ -308,7 +248,7 @@ public abstract class FSDirectory extends BaseDirectory {
   /** For debug output. */
   @Override
   public String toString() {
-    return this.getClass().getSimpleName() + "@" + directory + " lockFactory=" + getLockFactory();
+    return this.getClass().getSimpleName() + "@" + directory + " lockFactory=" + lockFactory;
   }
 
   final class FSIndexOutput extends OutputStreamIndexOutput {
@@ -318,10 +258,8 @@ public abstract class FSDirectory extends BaseDirectory {
      */
     static final int CHUNK_SIZE = 8192;
     
-    private final String name;
-
     public FSIndexOutput(String name) throws IOException {
-      super(new FilterOutputStream(Files.newOutputStream(directory.resolve(name))) {
+      super("FSIndexOutput(path=\"" + directory.resolve(name) + "\")", new FilterOutputStream(Files.newOutputStream(directory.resolve(name))) {
         // This implementation ensures, that we never write more than CHUNK_SIZE bytes:
         @Override
         public void write(byte[] b, int offset, int length) throws IOException {
@@ -333,16 +271,6 @@ public abstract class FSDirectory extends BaseDirectory {
           }
         }
       }, CHUNK_SIZE);
-      this.name = name;
-    }
-    
-    @Override
-    public void close() throws IOException {
-      try {
-        onIndexOutputClosed(name);
-      } finally {
-        super.close();
-      }
     }
   }
 

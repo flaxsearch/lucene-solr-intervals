@@ -33,6 +33,7 @@ import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.DoubleFieldSource;
 import org.apache.lucene.queries.function.valuesource.FloatFieldSource;
@@ -61,13 +62,13 @@ import org.apache.solr.search.QParser;
  * {@link DoubleField}.
  * See {@link org.apache.lucene.search.NumericRangeQuery} for more details.
  * It supports integer, float, long, double and date types.
- * <p/>
+ * <p>
  * For each number being added to this field, multiple terms are generated as per the algorithm described in the above
  * link. The possible number of terms increases dramatically with lower precision steps. For
  * the fast range search to work, trie fields must be indexed.
- * <p/>
+ * <p>
  * Trie fields are sortable in numerical order and can be used in function queries.
- * <p/>
+ * <p>
  * Note that if you use a precisionStep of 32 for int/float and 64 for long/double/date, then multiple terms will not be
  * generated, range search will be no faster than any other number field, but sorting will still be possible.
  *
@@ -601,7 +602,7 @@ public class TrieField extends PrimitiveFieldType {
     ft.setStored(stored);
     ft.setTokenized(true);
     ft.setOmitNorms(field.omitNorms());
-    ft.setIndexOptions(indexed ? getIndexOptions(field, value.toString()) : null);
+    ft.setIndexOptions(indexed ? getIndexOptions(field, value.toString()) : IndexOptions.NONE);
 
     switch (type) {
       case INTEGER:

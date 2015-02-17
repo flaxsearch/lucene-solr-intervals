@@ -60,7 +60,6 @@ public class TestEarlyTermination extends LuceneTestCase {
       final IndexSearcher searcher = newSearcher(reader);
       final Collector collector = new SimpleCollector() {
 
-        final boolean outOfOrder = random().nextBoolean();
         boolean collectionTerminated = true;
 
         @Override
@@ -81,12 +80,11 @@ public class TestEarlyTermination extends LuceneTestCase {
             collectionTerminated = false;
           }
         }
-
+        
         @Override
-        public boolean acceptsDocsOutOfOrder() {
-          return outOfOrder;
+        public boolean needsScores() {
+          return false;
         }
-
       };
 
       searcher.search(new MatchAllDocsQuery(), collector);

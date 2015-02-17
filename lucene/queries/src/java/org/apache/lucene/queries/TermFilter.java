@@ -17,88 +17,27 @@ package org.apache.lucene.queries;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.DocIdSet;
-import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.util.Bits;
-
-import java.io.IOException;
+import org.apache.lucene.search.QueryWrapperFilter;
+import org.apache.lucene.search.TermQuery;
 
 /**
  * A filter that includes documents that match with a specific term.
+ * @deprecated Use QueryWrapperFilter(TermQuery) instead.
  */
-final public class TermFilter extends Filter {
-
-  private final Term term;
-
+@Deprecated
+public class TermFilter extends QueryWrapperFilter {
+  
   /**
+   * Create a new TermFilter
    * @param term The term documents need to have in order to be a match for this filter.
    */
   public TermFilter(Term term) {
-    if (term == null) {
-      throw new IllegalArgumentException("Term must not be null");
-    } else if (term.field() == null) {
-      throw new IllegalArgumentException("Field must not be null");
-    }
-    this.term = term;
-  }
-
-  /**
-   * @return The term this filter includes documents with.
-   */
-  public Term getTerm() {
-    return term;
+    super(new TermQuery(term));
   }
 
   @Override
-  public DocIdSet getDocIdSet(LeafReaderContext context, final Bits acceptDocs) throws IOException {
-    Terms terms = context.reader().terms(term.field());
-    if (terms == null) {
-      return null;
-    }
-
-    final TermsEnum termsEnum = terms.iterator(null);
-    if (!termsEnum.seekExact(term.bytes())) {
-      return null;
-    }
-    return new DocIdSet() {
-      @Override
-      public DocIdSetIterator iterator() throws IOException {
-        return termsEnum.docs(acceptDocs, null, DocsEnum.FLAG_NONE);
-      }
-
-      @Override
-      public long ramBytesUsed() {
-        return 0L;
-      }
-    };
+  public String toString(String field) {
+    return getQuery().toString();
   }
-
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
-
-    TermFilter that = (TermFilter) o;
-
-    if (term != null ? !term.equals(that.term) : that.term != null) return false;
-
-    return true;
-  }
-
-  @Override
-  public int hashCode() {
-    return term != null ? term.hashCode() : 0;
-  }
-
-  @Override
-  public String toString() {
-    return term.field() + ":" + term.text();
-  }
-
 }

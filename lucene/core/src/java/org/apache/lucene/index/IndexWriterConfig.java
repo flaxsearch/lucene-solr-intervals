@@ -142,6 +142,9 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
    *           if this config is already attached to a writer.
    */
   IndexWriterConfig setIndexWriter(IndexWriter writer) {
+    if (this.writer.get() != null) {
+      throw new IllegalStateException("do not share IndexWriterConfig instances across IndexWriters");
+    }
     this.writer.set(writer);
     return this;
   }
@@ -518,7 +521,7 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder(super.toString());
-    sb.append("writer=").append(writer).append("\n");
+    sb.append("writer=").append(writer.get()).append("\n");
     return sb.toString();
   }
   

@@ -85,7 +85,7 @@ public class CommonTermsQuery extends Query {
    * @param lowFreqOccur
    *          {@link Occur} used for low frequency terms
    * @param maxTermFrequency
-   *          a value in [0..1) (or absolute number >=1) representing the
+   *          a value in [0..1) (or absolute number &gt;=1) representing the
    *          maximum threshold of a terms document frequency to be considered a
    *          low frequency term.
    * @throws IllegalArgumentException
@@ -105,7 +105,7 @@ public class CommonTermsQuery extends Query {
    * @param lowFreqOccur
    *          {@link Occur} used for low frequency terms
    * @param maxTermFrequency
-   *          a value in [0..1) (or absolute number >=1) representing the
+   *          a value in [0..1) (or absolute number &gt;=1) representing the
    *          maximum threshold of a terms document frequency to be considered a
    *          low frequency term.
    * @param disableCoord
@@ -239,10 +239,6 @@ public class CommonTermsQuery extends Query {
     TermsEnum termsEnum = null;
     for (LeafReaderContext context : leaves) {
       final Fields fields = context.reader().fields();
-      if (fields == null) {
-        // reader has no fields
-        continue;
-      }
       for (int i = 0; i < queryTerms.length; i++) {
         Term term = queryTerms[i];
         TermContext termContext = contextArray[i];

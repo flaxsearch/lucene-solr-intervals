@@ -31,16 +31,20 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.FilterDirectoryReader;
+import org.apache.lucene.index.FilterLeafReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.ThreadedIndexingAndSearchingTestCase;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
+import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.NamedThreadFactory;
 import org.apache.lucene.util.TestUtil;
 
@@ -142,7 +146,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
   @Override
   protected IndexSearcher getCurrentSearcher() throws Exception {
     if (random().nextInt(10) == 7) {
-      // NOTE: not best practice to call maybeReopen
+      // NOTE: not best practice to call maybeRefresh
       // synchronous to your search threads, but still we
       // test as apps will presumably do this for
       // simplicity:
@@ -247,7 +251,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
         try {
           triedReopen.set(true);
           if (VERBOSE) {
-            System.out.println("NOW call maybeReopen");
+            System.out.println("NOW call maybeRefresh");
           }
           searcherManager.maybeRefresh();
           success.set(true);
@@ -445,5 +449,58 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
     sm.close();
     dir.close();
   }
-  
+
+  private static class MyFilterLeafReader extends FilterLeafReader {
+    public MyFilterLeafReader(LeafReader in) {
+      super(in);
+    }
+  }
+
+  private static class MyFilterDirectoryReader extends FilterDirectoryReader {
+    public MyFilterDirectoryReader(DirectoryReader in) {
+      super(in, 
+            new FilterDirectoryReader.SubReaderWrapper() {
+              @Override
+              public LeafReader wrap(LeafReader reader) {
+                FilterLeafReader wrapped = new MyFilterLeafReader(reader);
+                assertEquals(reader, wrapped.getDelegate());
+                return wrapped;
+              }
+            });
+    }
+
+    @Override
+    protected DirectoryReader doWrapDirectoryReader(DirectoryReader in) {
+      return new MyFilterDirectoryReader(in);
+    }
+  }
+
+  // LUCENE-6087
+  public void testCustomDirectoryReader() throws Exception {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    DirectoryReader nrtReader = w.getReader();
+
+    FilterDirectoryReader reader = new MyFilterDirectoryReader(nrtReader);
+    assertEquals(nrtReader, reader.getDelegate());
+    assertEquals(nrtReader, FilterDirectoryReader.unwrap(reader));
+
+    SearcherManager mgr = new SearcherManager(reader, null);
+    for(int i=0;i<10;i++) {
+      w.addDocument(new Document());
+      mgr.maybeRefresh();
+      IndexSearcher s = mgr.acquire();
+      try {
+        assertTrue(s.getIndexReader() instanceof MyFilterDirectoryReader);
+        for (LeafReaderContext ctx : s.getIndexReader().leaves()) {
+          assertTrue(ctx.reader() instanceof MyFilterLeafReader);
+        }
+      } finally {
+        mgr.release(s);
+      }
+    }
+    mgr.close();
+    w.close();
+    dir.close();
+  }
 }

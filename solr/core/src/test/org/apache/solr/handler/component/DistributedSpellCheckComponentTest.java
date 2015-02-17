@@ -26,12 +26,13 @@ import junit.framework.Assert;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.LuceneTestCase.SuppressTempFileChecks;
 import org.apache.solr.BaseDistributedSearchTestCase;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SpellingParams;
 import org.apache.solr.common.util.NamedList;
 import org.junit.BeforeClass;
+import org.junit.Test;
 
 /**
  * Test for SpellCheckComponent's distributed querying
@@ -57,16 +58,6 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
     useFactory(null); // need an FS factory
   }
 
-  @Override
-  public void setUp() throws Exception {
-    super.setUp();
-  }
-  
-  @Override
-  public void tearDown() throws Exception {
-    super.tearDown();
-  }
-  
   private void q(Object... q) throws Exception {
     final ModifiableSolrParams params = new ModifiableSolrParams();
 
@@ -79,7 +70,7 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
     // query a random server
     params.set("shards", shards);
     int which = r.nextInt(clients.size());
-    SolrServer client = clients.get(which);
+    SolrClient client = clients.get(which);
     client.query(params);
   }
   
@@ -95,9 +86,9 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
       Assert.fail("Control data did not return any suggestions.");
     }
   }
-  
-  @Override
-  public void doTest() throws Exception {
+
+  @Test
+  public void test() throws Exception {
     del("*:*");
     index(id, "1", "lowerfilt", "toyota");
     index(id, "2", "lowerfilt", "chevrolet");

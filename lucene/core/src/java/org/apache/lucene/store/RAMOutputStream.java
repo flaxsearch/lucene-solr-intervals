@@ -18,6 +18,7 @@ package org.apache.lucene.store;
  */
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
@@ -46,10 +47,17 @@ public class RAMOutputStream extends IndexOutput implements Accountable {
 
   /** Construct an empty output buffer. */
   public RAMOutputStream() {
-    this(new RAMFile(), false);
+    this("noname", new RAMFile(), false);
   }
 
+  /** Creates this, with no name. */
   public RAMOutputStream(RAMFile f, boolean checksum) {
+    this("noname", f, checksum);
+  }
+
+  /** Creates this, with specified name. */
+  public RAMOutputStream(String name, RAMFile f, boolean checksum) {
+    super("RAMOutputStream(name=\"" + name + "\")");
     file = f;
 
     // make sure that we switch to the
@@ -186,7 +194,7 @@ public class RAMOutputStream extends IndexOutput implements Accountable {
   }
   
   @Override
-  public Iterable<? extends Accountable> getChildResources() {
+  public Collection<Accountable> getChildResources() {
     return Collections.singleton(Accountables.namedAccountable("file", file));
   }
 

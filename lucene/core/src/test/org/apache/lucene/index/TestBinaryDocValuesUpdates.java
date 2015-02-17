@@ -26,6 +26,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.LuceneTestCase.Nightly;
 import org.apache.lucene.util.TestUtil;
 import org.junit.Test;
 
@@ -299,40 +300,6 @@ public class TestBinaryDocValuesUpdates extends LuceneTestCase {
     LeafReader r = reader.leaves().get(0).reader();
     assertFalse(r.getLiveDocs().get(0));
     assertEquals(17, getValue(r.getBinaryDocValues("val"), 1));
-    
-    reader.close();
-    dir.close();
-  }
-  
-  public void testUpdateAndDeleteSameDocument() throws Exception {
-    // update and delete same document in same commit session
-    Directory dir = newDirectory();
-    IndexWriterConfig conf = newIndexWriterConfig(new MockAnalyzer(random()));
-    conf.setMaxBufferedDocs(10); // control segment flushing
-    IndexWriter writer = new IndexWriter(dir, conf);
-    
-    writer.addDocument(doc(0));
-    writer.addDocument(doc(1));
-    
-    if (random().nextBoolean()) {
-      writer.commit();
-    }
-    
-    writer.deleteDocuments(new Term("id", "doc-0"));
-    writer.updateBinaryDocValue(new Term("id", "doc-0"), "val", toBytes(17L));
-    
-    final DirectoryReader reader;
-    if (random().nextBoolean()) { // not NRT
-      writer.close();
-      reader = DirectoryReader.open(dir);
-    } else { // NRT
-      reader = DirectoryReader.open(writer, true);
-      writer.close();
-    }
-    
-    LeafReader r = reader.leaves().get(0).reader();
-    assertFalse(r.getLiveDocs().get(0));
-    assertEquals(1, getValue(r.getBinaryDocValues("val"), 0)); // deletes are currently applied first
     
     reader.close();
     dir.close();
@@ -645,7 +612,7 @@ public class TestBinaryDocValuesUpdates extends LuceneTestCase {
     reader.close();
     dir.close();
   }
-  
+
   public void testManyReopensAndFields() throws Exception {
     Directory dir = newDirectory();
     final Random random = random();
@@ -663,6 +630,7 @@ public class TestBinaryDocValuesUpdates extends LuceneTestCase {
       writer.commit();
       reader = DirectoryReader.open(dir);
     }
+    //System.out.println("TEST: isNRT=" + isNRT);
     
     final int numFields = random.nextInt(4) + 3; // 3-7
     final long[] fieldValues = new long[numFields];
@@ -674,7 +642,7 @@ public class TestBinaryDocValuesUpdates extends LuceneTestCase {
     int docID = 0;
     for (int i = 0; i < numRounds; i++) {
       int numDocs = atLeast(5);
-//      System.out.println("[" + Thread.currentThread().getName() + "]: round=" + i + ", numDocs=" + numDocs);
+      //System.out.println("[" + Thread.currentThread().getName() + "]: round=" + i + ", numDocs=" + numDocs);
       for (int j = 0; j < numDocs; j++) {
         Document doc = new Document();
         doc.add(new StringField("id", "doc-" + docID, Store.NO));
@@ -833,7 +801,7 @@ public class TestBinaryDocValuesUpdates extends LuceneTestCase {
   
   public void testUpdateBinaryDVFieldWithSameNameAsPostingField() throws Exception {
     // this used to fail because FieldInfos.Builder neglected to update
-    // globalFieldMaps.docValueTypes map
+    // globalFieldMaps.docValuesTypes map
     Directory dir = newDirectory();
     IndexWriterConfig conf = newIndexWriterConfig(new MockAnalyzer(random()));
     IndexWriter writer = new IndexWriter(dir, conf);
@@ -1105,7 +1073,7 @@ public class TestBinaryDocValuesUpdates extends LuceneTestCase {
       writer.addIndexes(dir1);
     } else {
       DirectoryReader reader = DirectoryReader.open(dir1);
-      writer.addIndexes(reader);
+      TestUtil.addIndexesSlowly(writer, reader);
       reader.close();
     }
     writer.close();
@@ -1157,6 +1125,7 @@ public class TestBinaryDocValuesUpdates extends LuceneTestCase {
     dir.close();
   }
 
+  @Nightly
   public void testTonsOfUpdates() throws Exception {
     // LUCENE-5248: make sure that when there are many updates, we don't use too much RAM
     Directory dir = newDirectory();

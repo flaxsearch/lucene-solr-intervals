@@ -170,9 +170,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
         this.curBufIndex = bi;
         this.curBuf = b;
       }
-    } catch (ArrayIndexOutOfBoundsException aioobe) {
-      throw new EOFException("seek past EOF: " + this);
-    } catch (IllegalArgumentException iae) {
+    } catch (ArrayIndexOutOfBoundsException | IllegalArgumentException e) {
       throw new EOFException("seek past EOF: " + this);
     } catch (NullPointerException npe) {
       throw new AlreadyClosedException("Already closed: " + this);
@@ -198,9 +196,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
       b.position((int) (pos & chunkSizeMask));
       this.curBufIndex = bi;
       this.curBuf = b;
-    } catch (ArrayIndexOutOfBoundsException aioobe) {
-      throw new EOFException("seek past EOF: " + this);
-    } catch (IllegalArgumentException iae) {
+    } catch (ArrayIndexOutOfBoundsException | IllegalArgumentException aioobe) {
       throw new EOFException("seek past EOF: " + this);
     } catch (NullPointerException npe) {
       throw new AlreadyClosedException("Already closed: " + this);
@@ -213,7 +209,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
     try {
       return buffers[bi].getShort((int) (pos & chunkSizeMask));
     } catch (IndexOutOfBoundsException ioobe) {
-      // either its a boundary, or read past EOF, fall back:
+      // either it's a boundary, or read past EOF, fall back:
       setPos(pos, bi);
       return readShort();
     } catch (NullPointerException npe) {
@@ -227,7 +223,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
     try {
       return buffers[bi].getInt((int) (pos & chunkSizeMask));
     } catch (IndexOutOfBoundsException ioobe) {
-      // either its a boundary, or read past EOF, fall back:
+      // either it's a boundary, or read past EOF, fall back:
       setPos(pos, bi);
       return readInt();
     } catch (NullPointerException npe) {
@@ -241,7 +237,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
     try {
       return buffers[bi].getLong((int) (pos & chunkSizeMask));
     } catch (IndexOutOfBoundsException ioobe) {
-      // either its a boundary, or read past EOF, fall back:
+      // either it's a boundary, or read past EOF, fall back:
       setPos(pos, bi);
       return readLong();
     } catch (NullPointerException npe) {

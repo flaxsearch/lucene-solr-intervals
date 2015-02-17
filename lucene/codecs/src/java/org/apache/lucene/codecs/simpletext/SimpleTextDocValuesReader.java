@@ -17,16 +17,6 @@ package org.apache.lucene.codecs.simpletext;
  * limitations under the License.
  */
 
-import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.END;
-import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.FIELD;
-import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.LENGTH;
-import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.MAXLENGTH;
-import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.MINVALUE;
-import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.NUMVALUES;
-import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.ORDPATTERN;
-import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.PATTERN;
-import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.TYPE;
-
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -34,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.ParseException;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
@@ -43,8 +34,8 @@ import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.DocValues;
+import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldInfo.DocValuesType;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SegmentReadState;
@@ -60,6 +51,16 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.StringHelper;
+
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.END;
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.FIELD;
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.LENGTH;
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.MAXLENGTH;
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.MINVALUE;
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.NUMVALUES;
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.ORDPATTERN;
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.PATTERN;
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.TYPE;
 
 class SimpleTextDocValuesReader extends DocValuesProducer {
 
@@ -104,7 +105,7 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
       assert startsWith(TYPE) : scratch.get().utf8ToString();
 
       DocValuesType dvType = DocValuesType.valueOf(stripPrefix(TYPE));
-      assert dvType != null;
+      assert dvType != DocValuesType.NONE;
       if (dvType == DocValuesType.NUMERIC) {
         readLine();
         assert startsWith(MINVALUE): "got " + scratch.get().utf8ToString() + " field=" + fieldName + " ext=" + ext;
@@ -180,7 +181,7 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
           } catch (ParseException pe) {
             throw new CorruptIndexException("failed to parse BigDecimal value", in, pe);
           }
-          SimpleTextUtil.readLine(in, scratch); // read the line telling us if its real or not
+          SimpleTextUtil.readLine(in, scratch); // read the line telling us if it's real or not
           return BigInteger.valueOf(field.minValue).add(bd.toBigIntegerExact()).longValue();
         } catch (IOException ioe) {
           throw new RuntimeException(ioe);
@@ -511,7 +512,7 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
   }
 
   @Override
-  public Iterable<? extends Accountable> getChildResources() {
+  public Collection<Accountable> getChildResources() {
     return Collections.emptyList();
   }
 

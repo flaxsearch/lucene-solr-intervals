@@ -29,7 +29,8 @@ import org.apache.lucene.analysis.util.TokenizerFactory;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.*;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.DocValuesType;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
@@ -57,9 +58,9 @@ import org.apache.solr.search.SolrIndexSearcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.apache.lucene.index.FieldInfo.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS;
-import static org.apache.lucene.index.FieldInfo.IndexOptions.DOCS_AND_FREQS;
-import static org.apache.lucene.index.FieldInfo.IndexOptions.DOCS_ONLY;
+import static org.apache.lucene.index.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS;
+import static org.apache.lucene.index.IndexOptions.DOCS_AND_FREQS;
+import static org.apache.lucene.index.IndexOptions.DOCS;
 
 /**
  * This handler exposes the internal lucene index.  It is inspired by and 
@@ -177,17 +178,17 @@ public class LukeRequestHandler extends RequestHandlerBase
 
     StringBuilder flags = new StringBuilder();
 
-    flags.append( (f != null && f.fieldType().indexOptions() != null)                     ? FieldFlag.INDEXED.getAbbreviation() : '-' );
+    flags.append( (f != null && f.fieldType().indexOptions() != IndexOptions.NONE)                     ? FieldFlag.INDEXED.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().tokenized())                   ? FieldFlag.TOKENIZED.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().stored())                      ? FieldFlag.STORED.getAbbreviation() : '-' );
-    flags.append( (f != null && f.fieldType().docValueType() != null)        ? FieldFlag.DOC_VALUES.getAbbreviation() : "-" );
+    flags.append( (f != null && f.fieldType().docValuesType() != DocValuesType.NONE)        ? FieldFlag.DOC_VALUES.getAbbreviation() : "-" );
     flags.append( (false)                                          ? FieldFlag.MULTI_VALUED.getAbbreviation() : '-' ); // SchemaField Specific
     flags.append( (f != null && f.fieldType().storeTermVectors())            ? FieldFlag.TERM_VECTOR_STORED.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().storeTermVectorOffsets())   ? FieldFlag.TERM_VECTOR_OFFSET.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().storeTermVectorPositions()) ? FieldFlag.TERM_VECTOR_POSITION.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().omitNorms())                  ? FieldFlag.OMIT_NORMS.getAbbreviation() : '-' );
 
-    flags.append( (f != null && DOCS_ONLY == opts ) ?
+    flags.append( (f != null && DOCS == opts ) ?
         FieldFlag.OMIT_TF.getAbbreviation() : '-' );
 
     flags.append((f != null && DOCS_AND_FREQS == opts) ?
@@ -385,18 +386,18 @@ public class LukeRequestHandler extends RequestHandlerBase
   // Is there a better way to do this? Shouldn't actually be very costly
   // to do it this way.
   private static Document getFirstLiveDoc(Terms terms, LeafReader reader) throws IOException {
-    DocsEnum docsEnum = null;
+    PostingsEnum postingsEnum = null;
     TermsEnum termsEnum = terms.iterator(null);
     BytesRef text;
     // Deal with the chance that the first bunch of terms are in deleted documents. Is there a better way?
-    for (int idx = 0; idx < 1000 && docsEnum == null; ++idx) {
+    for (int idx = 0; idx < 1000 && postingsEnum == null; ++idx) {
       text = termsEnum.next();
       if (text == null) { // Ran off the end of the terms enum without finding any live docs with that field in them.
         return null;
       }
-      docsEnum = termsEnum.docs(reader.getLiveDocs(), docsEnum, DocsEnum.FLAG_NONE);
-      if (docsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-        return reader.document(docsEnum.docID());
+      postingsEnum = termsEnum.postings(reader.getLiveDocs(), postingsEnum, PostingsEnum.FLAG_NONE);
+      if (postingsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
+        return reader.document(postingsEnum.docID());
       }
     }
     return null;
@@ -596,14 +597,8 @@ public class LukeRequestHandler extends RequestHandlerBase
 
     final CharsRefBuilder spare = new CharsRefBuilder();
 
-    Fields fields = MultiFields.getFields(req.getSearcher().getIndexReader());
-
-    if (fields == null) { // No indexed fields
-      return;
-    }
-
-    Terms terms = fields.terms(field);
-    if (terms == null) {  // No terms in the field.
+    Terms terms = MultiFields.getTerms(req.getSearcher().getIndexReader(), field);
+    if (terms == null) {  // field does not exist
       return;
     }
     TermsEnum termsEnum = terms.iterator(null);

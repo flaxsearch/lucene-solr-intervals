@@ -17,6 +17,7 @@ package org.apache.lucene.store;
  * limitations under the License.
  */
 
+import java.io.Closeable;
 import java.io.IOException;
 
 import org.apache.lucene.util.LuceneTestCase;
@@ -38,6 +39,7 @@ public class MockIndexOutputWrapper extends IndexOutput {
 
   /** Construct an empty output buffer. */
   public MockIndexOutputWrapper(MockDirectoryWrapper dir, IndexOutput delegate, String name) {
+    super("MockIndexOutputWrapper(" + delegate + ")");
     this.dir = dir;
     this.name = name;
     this.delegate = delegate;
@@ -68,7 +70,7 @@ public class MockIndexOutputWrapper extends IndexOutput {
         if (b != null) {
           delegate.writeBytes(b, offset, (int) freeSpace);
         } else {
-          delegate.copyBytes(in, len);
+          delegate.copyBytes(in, (int) freeSpace);
         }
       }
       if (realUsage > dir.maxUsedSize) {
@@ -87,12 +89,21 @@ public class MockIndexOutputWrapper extends IndexOutput {
     }
   }
   
+  private boolean closed;
+  
   @Override
   public void close() throws IOException {
-    try {
+    if (closed) {
+      delegate.close(); // don't mask double-close bugs
+      return;
+    }
+    closed = true;
+    
+    try (Closeable delegate = this.delegate) {
+      assert delegate != null;
       dir.maybeThrowDeterministicException();
     } finally {
-      delegate.close();
+      dir.removeIndexOutput(this, name);
       if (dir.trackDiskUsage) {
         // Now compute actual disk usage & track the maxUsedSize
         // in the MockDirectoryWrapper:
@@ -101,7 +112,12 @@ public class MockIndexOutputWrapper extends IndexOutput {
           dir.maxUsedSize = size;
         }
       }
-      dir.removeIndexOutput(this, name);
+    }
+  }
+  
+  private void ensureOpen() {
+    if (closed) {
+      throw new AlreadyClosedException("Already closed: " + this);
     }
   }
 
@@ -113,6 +129,7 @@ public class MockIndexOutputWrapper extends IndexOutput {
   
   @Override
   public void writeBytes(byte[] b, int offset, int len) throws IOException {
+    ensureOpen();
     checkCrashed();
     checkDiskFull(b, offset, null, len);
     
@@ -142,6 +159,7 @@ public class MockIndexOutputWrapper extends IndexOutput {
 
   @Override
   public void copyBytes(DataInput input, long numBytes) throws IOException {
+    ensureOpen();
     checkCrashed();
     checkDiskFull(null, 0, input, numBytes);
     

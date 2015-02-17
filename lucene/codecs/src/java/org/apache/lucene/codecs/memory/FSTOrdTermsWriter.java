@@ -25,11 +25,11 @@ import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.PostingsWriterBase;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -63,9 +63,8 @@ import org.apache.lucene.util.fst.Util;
  *  <li><tt>.tix</tt>: <a href="#Termindex">Term Index</a></li>
  *  <li><tt>.tbk</tt>: <a href="#Termblock">Term Block</a></li>
  * </ul>
- * </p>
  *
- * <a name="Termindex" id="Termindex"></a>
+ * <a name="Termindex"></a>
  * <h3>Term Index</h3>
  * <p>
  *  The .tix contains a list of FSTs, one for each field.
@@ -75,7 +74,7 @@ import org.apache.lucene.util.fst.Util;
  * <ul>
  *  <li>TermIndex(.tix) --&gt; Header, TermFST<sup>NumFields</sup>, Footer</li>
  *  <li>TermFST --&gt; {@link FST FST&lt;long&gt;}</li>
- *  <li>Header --&gt; {@link CodecUtil#writeSegmentHeader SegmentHeader}</li>
+ *  <li>Header --&gt; {@link CodecUtil#writeIndexHeader IndexHeader}</li>
  *  <li>Footer --&gt; {@link CodecUtil#writeFooter CodecFooter}</li>
  * </ul>
  *
@@ -87,7 +86,7 @@ import org.apache.lucene.util.fst.Util;
  *  </li>
  * </ul>
  *
- * <a name="Termblock" id="Termblock"></a>
+ * <a name="Termblock"></a>
  * <h3>Term Block</h3>
  * <p>
  *  The .tbk contains all the statistics and metadata for terms, along with field summary (e.g. 
@@ -98,7 +97,6 @@ import org.apache.lucene.util.fst.Util;
  *   <li>metadata bytes block: encodes other parts of metadata; </li>
  *   <li>skip block: contains skip data, to speed up metadata seeking and decoding</li>
  *  </ul>
- * </p>
  *
  * <p>File Format:</p>
  * <ul>
@@ -113,7 +111,7 @@ import org.apache.lucene.util.fst.Util;
  *  <li>StatsBlock --&gt; &lt; DocFreq[Same?], (TotalTermFreq-DocFreq) ? &gt; <sup>NumTerms</sup>
  *  <li>MetaLongsBlock --&gt; &lt; LongDelta<sup>LongsSize</sup>, BytesSize &gt; <sup>NumTerms</sup>
  *  <li>MetaBytesBlock --&gt; Byte <sup>MetaBytesBlockLength</sup>
- *  <li>Header --&gt; {@link CodecUtil#writeSegmentHeader CodecHeader}</li>
+ *  <li>Header --&gt; {@link CodecUtil#writeIndexHeader IndexHeader}</li>
  *  <li>DirOffset --&gt; {@link DataOutput#writeLong Uint64}</li>
  *  <li>NumFields, FieldNumber, DocCount, DocFreq, LongsSize, 
  *        FieldNumber, DocCount --&gt; {@link DataOutput#writeVInt VInt}</li>
@@ -174,11 +172,11 @@ public class FSTOrdTermsWriter extends FieldsConsumer {
     try {
       this.indexOut = state.directory.createOutput(termsIndexFileName, state.context);
       this.blockOut = state.directory.createOutput(termsBlockFileName, state.context);
-      CodecUtil.writeSegmentHeader(indexOut, TERMS_INDEX_CODEC_NAME, VERSION_CURRENT, 
+      CodecUtil.writeIndexHeader(indexOut, TERMS_INDEX_CODEC_NAME, VERSION_CURRENT, 
                                              state.segmentInfo.getId(), state.segmentSuffix);
-      CodecUtil.writeSegmentHeader(blockOut, TERMS_CODEC_NAME, VERSION_CURRENT, 
+      CodecUtil.writeIndexHeader(blockOut, TERMS_CODEC_NAME, VERSION_CURRENT, 
                                              state.segmentInfo.getId(), state.segmentSuffix);
-      this.postingsWriter.init(blockOut); 
+      this.postingsWriter.init(blockOut, state); 
       success = true;
     } finally {
       if (!success) {
@@ -231,7 +229,7 @@ public class FSTOrdTermsWriter extends FieldsConsumer {
         for (FieldMetaData field : fields) {
           blockOut.writeVInt(field.fieldInfo.number);
           blockOut.writeVLong(field.numTerms);
-          if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+          if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
             blockOut.writeVLong(field.sumTotalTermFreq);
           }
           blockOut.writeVLong(field.sumDocFreq);
@@ -335,7 +333,7 @@ public class FSTOrdTermsWriter extends FieldsConsumer {
         if (delta == 0) {
           statsOut.writeVInt(state.docFreq<<1|1);
         } else {
-          statsOut.writeVInt(state.docFreq<<1|0);
+          statsOut.writeVInt(state.docFreq<<1);
           statsOut.writeVLong(state.totalTermFreq-state.docFreq);
         }
       } else {

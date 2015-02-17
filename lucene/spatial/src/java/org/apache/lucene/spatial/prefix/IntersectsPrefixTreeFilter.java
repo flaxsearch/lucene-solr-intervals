@@ -17,16 +17,17 @@ package org.apache.lucene.spatial.prefix;
  * limitations under the License.
  */
 
+import java.io.IOException;
+
 import com.spatial4j.core.shape.Shape;
 import com.spatial4j.core.shape.SpatialRelation;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.spatial.prefix.tree.Cell;
 import org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
-
-import java.io.IOException;
 
 /**
  * A Filter matching documents that have an {@link SpatialRelation#INTERSECTS}
@@ -36,18 +37,10 @@ import java.io.IOException;
  */
 public class IntersectsPrefixTreeFilter extends AbstractVisitingPrefixTreeFilter {
 
-  private final boolean hasIndexedLeaves;
-
   public IntersectsPrefixTreeFilter(Shape queryShape, String fieldName,
                                     SpatialPrefixTree grid, int detailLevel,
                                     int prefixGridScanLevel, boolean hasIndexedLeaves) {
-    super(queryShape, fieldName, grid, detailLevel, prefixGridScanLevel);
-    this.hasIndexedLeaves = hasIndexedLeaves;
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    return super.equals(o) && hasIndexedLeaves == ((IntersectsPrefixTreeFilter)o).hasIndexedLeaves;
+    super(queryShape, fieldName, grid, detailLevel, prefixGridScanLevel, hasIndexedLeaves);
   }
 
   @Override
@@ -61,7 +54,7 @@ public class IntersectsPrefixTreeFilter extends AbstractVisitingPrefixTreeFilter
     * Point query shape optimization when the only indexed data is a point (no leaves).  Result is a term query.
 
      */
-    return new VisitorTemplate(context, acceptDocs, hasIndexedLeaves) {
+    return new VisitorTemplate(context, acceptDocs) {
       private FixedBitSet results;
 
       @Override
@@ -71,7 +64,7 @@ public class IntersectsPrefixTreeFilter extends AbstractVisitingPrefixTreeFilter
 
       @Override
       protected DocIdSet finish() {
-        return results;
+        return new BitDocIdSet(results);
       }
 
       @Override
@@ -88,13 +81,18 @@ public class IntersectsPrefixTreeFilter extends AbstractVisitingPrefixTreeFilter
         collectDocs(results);
       }
 
-      @Override
-      protected void visitScanned(Cell cell) throws IOException {
-        if (queryShape.relate(cell.getShape()).intersects())
-          collectDocs(results);
-      }
-
     }.getDocIdSet();
+  }
+
+  @Override
+  public String toString(String field) {
+    return "IntersectsPrefixTreeFilter(" +
+        // TODO: print something about the shape?
+        "fieldName=" + fieldName + "," +
+        "detailLevel=" + detailLevel + "," +
+        "prefixGridScanLevel=" + prefixGridScanLevel + "," +
+        "hasIndexedLeaves=" + hasIndexedLeaves +
+        ")";
   }
 
 }

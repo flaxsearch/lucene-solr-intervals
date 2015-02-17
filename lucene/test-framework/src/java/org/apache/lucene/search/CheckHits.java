@@ -139,9 +139,10 @@ public class CheckHits {
     protected void doSetNextReader(LeafReaderContext context) throws IOException {
       base = context.docBase;
     }
+    
     @Override
-    public boolean acceptsDocsOutOfOrder() {
-      return true;
+    public boolean needsScores() {
+      return false;
     }
   }
 
@@ -342,13 +343,13 @@ public class CheckHits {
     if (!deep) return;
 
     Explanation detail[] = expl.getDetails();
-    // TODO: can we improve this entire method? its really geared to work only with TF/IDF
+    // TODO: can we improve this entire method? it's really geared to work only with TF/IDF
     if (expl.getDescription().endsWith("computed from:")) {
       return; // something more complicated.
     }
     if (detail!=null) {
       if (detail.length==1) {
-        // simple containment, unless its a freq of: (which lets a query explain how the freq is calculated), 
+        // simple containment, unless it's a freq of: (which lets a query explain how the freq is calculated), 
         // just verify contained expl has same score
         if (!expl.getDescription().endsWith("with freq of:"))
           verifyExplanation(q,doc,score,deep,detail[0]);
@@ -511,8 +512,9 @@ public class CheckHits {
     protected void doSetNextReader(LeafReaderContext context) throws IOException {
       base = context.docBase;
     }
+    
     @Override
-    public boolean acceptsDocsOutOfOrder() {
+    public boolean needsScores() {
       return true;
     }
   }

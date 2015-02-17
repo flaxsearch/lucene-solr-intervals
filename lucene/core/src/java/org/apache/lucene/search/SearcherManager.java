@@ -47,8 +47,8 @@ import org.apache.lucene.store.Directory;
  * <p>
  * In addition you should periodically call {@link #maybeRefresh}. While it's
  * possible to call this just before running each query, this is discouraged
- * since it penalizes the unlucky queries that do the reopen. It's better to use
- * a separate background thread, that periodically calls maybeReopen. Finally,
+ * since it penalizes the unlucky queries that need to refresh. It's better to use
+ * a separate background thread, that periodically calls {@link #maybeRefresh}. Finally,
  * be sure to call {@link #close} once you are done.
  * 
  * @see SearcherFactory
@@ -104,6 +104,25 @@ public final class SearcherManager extends ReferenceManager<IndexSearcher> {
     }
     this.searcherFactory = searcherFactory;
     current = getSearcher(searcherFactory, DirectoryReader.open(dir));
+  }
+
+  /**
+   * Creates and returns a new SearcherManager from an existing {@link DirectoryReader}.  Note that
+   * this steals the incoming reference.
+   *
+   * @param reader the DirectoryReader.
+   * @param searcherFactory An optional {@link SearcherFactory}. Pass
+   *        <code>null</code> if you don't require the searcher to be warmed
+   *        before going live or other custom behavior.
+   *        
+   * @throws IOException if there is a low-level I/O error
+   */
+  public SearcherManager(DirectoryReader reader, SearcherFactory searcherFactory) throws IOException {
+    if (searcherFactory == null) {
+      searcherFactory = new SearcherFactory();
+    }
+    this.searcherFactory = searcherFactory;
+    this.current = getSearcher(searcherFactory, reader);
   }
 
   @Override

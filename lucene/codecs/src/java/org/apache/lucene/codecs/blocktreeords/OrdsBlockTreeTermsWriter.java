@@ -27,11 +27,11 @@ import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.PostingsWriterBase;
 import org.apache.lucene.codecs.blocktree.BlockTreeTermsWriter; // javadocs
 import org.apache.lucene.codecs.blocktreeords.FSTOrdsOutputs.Output;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -82,7 +82,7 @@ import org.apache.lucene.util.packed.PackedInts;
 
 /**
  * This is just like {@link BlockTreeTermsWriter}, except it also stores a version per term, and adds a method to its TermsEnum
- * implementation to seekExact only if the version is >= the specified version.  The version is added to the terms index to avoid seeking if
+ * implementation to seekExact only if the version is &gt;= the specified version.  The version is added to the terms index to avoid seeking if
  * no term in the block has a high enough version.  The term blocks file is .tiv and the terms index extension is .tipv.
  *
  * @lucene.experimental
@@ -180,18 +180,7 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
                                   int maxItemsInBlock)
     throws IOException
   {
-    if (minItemsInBlock <= 1) {
-      throw new IllegalArgumentException("minItemsInBlock must be >= 2; got " + minItemsInBlock);
-    }
-    if (maxItemsInBlock <= 0) {
-      throw new IllegalArgumentException("maxItemsInBlock must be >= 1; got " + maxItemsInBlock);
-    }
-    if (minItemsInBlock > maxItemsInBlock) {
-      throw new IllegalArgumentException("maxItemsInBlock must be >= minItemsInBlock; got maxItemsInBlock=" + maxItemsInBlock + " minItemsInBlock=" + minItemsInBlock);
-    }
-    if (2*(minItemsInBlock-1) > maxItemsInBlock) {
-      throw new IllegalArgumentException("maxItemsInBlock must be at least 2*(minItemsInBlock-1); got maxItemsInBlock=" + maxItemsInBlock + " minItemsInBlock=" + minItemsInBlock);
-    }
+    BlockTreeTermsWriter.validateSettings(minItemsInBlock, maxItemsInBlock);
 
     maxDoc = state.segmentInfo.getDocCount();
 
@@ -203,18 +192,18 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
       fieldInfos = state.fieldInfos;
       this.minItemsInBlock = minItemsInBlock;
       this.maxItemsInBlock = maxItemsInBlock;
-      CodecUtil.writeSegmentHeader(out, TERMS_CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+      CodecUtil.writeIndexHeader(out, TERMS_CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
 
       final String termsIndexFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, TERMS_INDEX_EXTENSION);
       indexOut = state.directory.createOutput(termsIndexFileName, state.context);
-      CodecUtil.writeSegmentHeader(indexOut, TERMS_INDEX_CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+      CodecUtil.writeIndexHeader(indexOut, TERMS_INDEX_CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
 
       this.postingsWriter = postingsWriter;
       // segment = state.segmentInfo.name;
 
       // System.out.println("BTW.init seg=" + state.segmentName);
 
-      postingsWriter.init(out);                          // have consumer write its format/header
+      postingsWriter.init(out, state);                          // have consumer write its format/header
       success = true;
     } finally {
       if (!success) {
@@ -427,7 +416,7 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
         //  System.out.println("      add sub=" + indexEnt.input + " " + indexEnt.input + " output=" + indexEnt.output);
         //}
         Output output = indexEnt.output;
-        long blockTermCount = output.endOrd - output.startOrd + 1;
+        //long blockTermCount = output.endOrd - output.startOrd + 1;
         Output newOutput = FST_OUTPUTS.newOutput(output.bytes, termOrdOffset+output.startOrd, output.endOrd-termOrdOffset);
         //System.out.println("  append sub=" + indexEnt.input + " output=" + indexEnt.output + " termOrdOffset=" + termOrdOffset + " blockTermCount=" + blockTermCount  + " newOutput=" + newOutput  + " endOrd=" + (termOrdOffset+Long.MAX_VALUE-output.endOrd));
         builder.add(Util.toIntsRef(indexEnt.input, scratchIntsRef), newOutput);
@@ -612,9 +601,6 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
       // compact format in this case:
       boolean isLeafBlock = hasSubBlocks == false;
 
-      // Number of terms in this block
-      int termCount;
-
       // Number of terms in this block and all sub-blocks (recursively)
       long totalTermCount;
 
@@ -646,7 +632,7 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
 
           // Write term stats, to separate byte[] blob:
           statsWriter.writeVInt(state.docFreq);
-          if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+          if (fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
             assert state.totalTermFreq >= state.docFreq: state.totalTermFreq + " vs " + state.docFreq;
             statsWriter.writeVLong(state.totalTermFreq - state.docFreq);
           }
@@ -661,12 +647,10 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
           bytesWriter.reset();
           absolute = false;
         }
-        termCount = end-start;
         totalTermCount = end-start;
       } else {
         // Mixed terms and sub-blocks:
         subIndices = new ArrayList<>();
-        termCount = 0;
         totalTermCount = 0;
         for (int i=start;i<end;i++) {
           PendingEntry ent = pending.get(i);
@@ -691,7 +675,7 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
 
             // Write term stats, to separate byte[] blob:
             statsWriter.writeVInt(state.docFreq);
-            if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+            if (fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
               assert state.totalTermFreq >= state.docFreq;
               statsWriter.writeVLong(state.totalTermFreq - state.docFreq);
             }
@@ -714,7 +698,6 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
             bytesWriter.reset();
             absolute = false;
 
-            termCount++;
             totalTermCount++;
           } else {
             PendingBlock block = (PendingBlock) ent;
@@ -802,7 +785,7 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
       BlockTermState state = postingsWriter.writeTerm(text, termsEnum, docsSeen);
       if (state != null) {
         assert state.docFreq != 0;
-        assert fieldInfo.getIndexOptions() == IndexOptions.DOCS_ONLY || state.totalTermFreq >= state.docFreq: "postingsWriter=" + postingsWriter;
+        assert fieldInfo.getIndexOptions() == IndexOptions.DOCS || state.totalTermFreq >= state.docFreq: "postingsWriter=" + postingsWriter;
         sumDocFreq += state.docFreq;
         sumTotalTermFreq += state.totalTermFreq;
         pushTerm(text);
@@ -909,9 +892,15 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
     private final RAMOutputStream bytesWriter = new RAMOutputStream();
   }
 
+  private boolean closed;
+  
   @Override
   public void close() throws IOException {
-
+    if (closed) {
+      return;
+    }
+    closed = true;
+    
     boolean success = false;
     try {
       
@@ -927,7 +916,7 @@ public final class OrdsBlockTreeTermsWriter extends FieldsConsumer {
         out.writeVLong(field.numTerms);
         out.writeVInt(field.rootCode.bytes.length);
         out.writeBytes(field.rootCode.bytes.bytes, field.rootCode.bytes.offset, field.rootCode.bytes.length);
-        if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+        if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
           out.writeVLong(field.sumTotalTermFreq);
         }
         out.writeVLong(field.sumDocFreq);

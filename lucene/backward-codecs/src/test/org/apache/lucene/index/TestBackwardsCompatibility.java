@@ -51,7 +51,6 @@ import org.apache.lucene.document.SortedNumericDocValuesField;
 import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
@@ -251,7 +250,11 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       "4.10.0-cfs",
       "4.10.0-nocfs",
       "4.10.1-cfs",
-      "4.10.1-nocfs"
+      "4.10.1-nocfs",
+      "4.10.2-cfs",
+      "4.10.2-nocfs",
+      "4.10.3-cfs",
+      "4.10.3-nocfs",
   };
   
   final String[] unsupportedNames = {
@@ -302,7 +305,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       "3.6.1-cfs",
       "3.6.1-nocfs",
       "3.6.2-cfs",
-      "3.6.2-nocfs"
+      "3.6.2-nocfs",
+      "4x-with-3x-segments"
   };
   
   final static String[] oldSingleSegmentNames = {"4.0.0-optimized-cfs",
@@ -537,11 +541,11 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
   public void testAddOldIndexesReader() throws IOException {
     for (String name : oldNames) {
-      IndexReader reader = DirectoryReader.open(oldIndexDirs.get(name));
+      DirectoryReader reader = DirectoryReader.open(oldIndexDirs.get(name));
       
       Directory targetDir = newDirectory();
       IndexWriter w = new IndexWriter(targetDir, newIndexWriterConfig(new MockAnalyzer(random())));
-      w.addIndexes(reader);
+      TestUtil.addIndexesSlowly(w, reader);
       w.close();
       reader.close();
             
@@ -900,18 +904,18 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   private void addNoProxDoc(IndexWriter writer) throws IOException {
     Document doc = new Document();
     FieldType customType = new FieldType(TextField.TYPE_STORED);
-    customType.setIndexOptions(IndexOptions.DOCS_ONLY);
+    customType.setIndexOptions(IndexOptions.DOCS);
     Field f = new Field("content3", "aaa", customType);
     doc.add(f);
     FieldType customType2 = new FieldType();
     customType2.setStored(true);
-    customType2.setIndexOptions(IndexOptions.DOCS_ONLY);
+    customType2.setIndexOptions(IndexOptions.DOCS);
     f = new Field("content4", "aaa", customType2);
     doc.add(f);
     writer.addDocument(doc);
   }
 
-  private int countDocs(DocsEnum docs) throws IOException {
+  private int countDocs(PostingsEnum docs) throws IOException {
     int count = 0;
     while((docs.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
       count ++;
@@ -937,7 +941,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       // should be found exactly
       assertEquals(TermsEnum.SeekStatus.FOUND,
                    terms.seekCeil(aaaTerm));
-      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, DocsEnum.FLAG_NONE)));
+      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.FLAG_NONE)));
       assertNull(terms.next());
 
       // should hit end of field
@@ -949,12 +953,12 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       assertEquals(TermsEnum.SeekStatus.NOT_FOUND,
                    terms.seekCeil(new BytesRef("a")));
       assertTrue(terms.term().bytesEquals(aaaTerm));
-      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, DocsEnum.FLAG_NONE)));
+      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.FLAG_NONE)));
       assertNull(terms.next());
 
       assertEquals(TermsEnum.SeekStatus.FOUND,
                    terms.seekCeil(aaaTerm));
-      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, DocsEnum.FLAG_NONE)));
+      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.FLAG_NONE)));
       assertNull(terms.next());
 
       r.close();
@@ -1057,8 +1061,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   }
   
   private int checkAllSegmentsUpgraded(Directory dir) throws IOException {
-    final SegmentInfos infos = new SegmentInfos();
-    infos.read(dir);
+    final SegmentInfos infos = SegmentInfos.readLatestCommit(dir);
     if (VERBOSE) {
       System.out.println("checkAllSegmentsUpgraded: " + infos);
     }
@@ -1069,8 +1072,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   }
   
   private int getNumberOfSegments(Directory dir) throws IOException {
-    final SegmentInfos infos = new SegmentInfos();
-    infos.read(dir);
+    final SegmentInfos infos = SegmentInfos.readLatestCommit(dir);
     return infos.size();
   }
 
@@ -1288,7 +1290,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       writer.forceMerge(1);
       writer.commit();
       writer.rollback();
-      new SegmentInfos().read(dir);
+      SegmentInfos.readLatestCommit(dir);
       dir.close();
     }
   }

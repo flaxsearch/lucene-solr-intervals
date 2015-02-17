@@ -26,20 +26,16 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.store.BaseDirectoryWrapper;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.TimeUnits;
 import org.apache.lucene.util.LuceneTestCase.Monster;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
-import com.carrotsearch.randomizedtesting.annotations.TimeoutSuite;
-
 /**
  * Test indexes 2B docs with 65k freqs each, 
- * so you get > Integer.MAX_VALUE postings data for the term
+ * so you get &gt; Integer.MAX_VALUE postings data for the term
  * @lucene.experimental
  */
 @SuppressCodecs({ "SimpleText", "Memory", "Direct" })
@@ -88,31 +84,29 @@ public class Test2BPostingsBytes extends LuceneTestCase {
     w.close();
     
     DirectoryReader oneThousand = DirectoryReader.open(dir);
-    IndexReader subReaders[] = new IndexReader[1000];
+    DirectoryReader subReaders[] = new DirectoryReader[1000];
     Arrays.fill(subReaders, oneThousand);
-    MultiReader mr = new MultiReader(subReaders);
     BaseDirectoryWrapper dir2 = newFSDirectory(createTempDir("2BPostingsBytes2"));
     if (dir2 instanceof MockDirectoryWrapper) {
       ((MockDirectoryWrapper)dir2).setThrottling(MockDirectoryWrapper.Throttling.NEVER);
     }
     IndexWriter w2 = new IndexWriter(dir2,
         new IndexWriterConfig(null));
-    w2.addIndexes(mr);
+    TestUtil.addIndexesSlowly(w2, subReaders);
     w2.forceMerge(1);
     w2.close();
     oneThousand.close();
     
     DirectoryReader oneMillion = DirectoryReader.open(dir2);
-    subReaders = new IndexReader[2000];
+    subReaders = new DirectoryReader[2000];
     Arrays.fill(subReaders, oneMillion);
-    mr = new MultiReader(subReaders);
     BaseDirectoryWrapper dir3 = newFSDirectory(createTempDir("2BPostingsBytes3"));
     if (dir3 instanceof MockDirectoryWrapper) {
       ((MockDirectoryWrapper)dir3).setThrottling(MockDirectoryWrapper.Throttling.NEVER);
     }
     IndexWriter w3 = new IndexWriter(dir3,
         new IndexWriterConfig(null));
-    w3.addIndexes(mr);
+    TestUtil.addIndexesSlowly(w3, subReaders);
     w3.forceMerge(1);
     w3.close();
     oneMillion.close();

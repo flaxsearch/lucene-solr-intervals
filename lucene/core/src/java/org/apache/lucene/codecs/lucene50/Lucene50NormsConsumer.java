@@ -19,9 +19,7 @@ package org.apache.lucene.codecs.lucene50;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Map;
 
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.NormsConsumer;
@@ -31,6 +29,7 @@ import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.FilterIterator;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.InPlaceMergeSorter;
 import org.apache.lucene.util.packed.BlockPackedWriter;
 import org.apache.lucene.util.packed.MonotonicBlockPackedWriter;
 import org.apache.lucene.util.packed.PackedInts;
@@ -47,6 +46,8 @@ class Lucene50NormsConsumer extends NormsConsumer {
   static final byte CONST_COMPRESSED = 2;
   static final byte UNCOMPRESSED = 3;
   static final byte INDIRECT = 4;
+  static final byte PATCHED_BITSET = 5;
+  static final byte PATCHED_TABLE = 6;
   static final int BLOCK_SIZE = 1 << 14;
   
   // threshold for indirect encoding, computed as 1 - 1/log2(maxint)
@@ -61,10 +62,10 @@ class Lucene50NormsConsumer extends NormsConsumer {
     try {
       String dataName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, dataExtension);
       data = state.directory.createOutput(dataName, state.context);
-      CodecUtil.writeSegmentHeader(data, dataCodec, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+      CodecUtil.writeIndexHeader(data, dataCodec, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
       String metaName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, metaExtension);
       meta = state.directory.createOutput(metaName, state.context);
-      CodecUtil.writeSegmentHeader(meta, metaCodec, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
+      CodecUtil.writeIndexHeader(meta, metaCodec, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
       success = true;
     } finally {
       if (!success) {
@@ -82,54 +83,88 @@ class Lucene50NormsConsumer extends NormsConsumer {
 
   @Override
   public void addNormsField(FieldInfo field, Iterable<Number> values) throws IOException {
+    writeNormsField(field, values, 0);
+  }
+  
+  private void writeNormsField(FieldInfo field, Iterable<Number> values, int level) throws IOException {
+    assert level <= 1; // we only "recurse" once in the indirect case
     meta.writeVInt(field.number);
-    long minValue = Long.MAX_VALUE;
-    long maxValue = Long.MIN_VALUE;
-    // TODO: more efficient?
     NormMap uniqueValues = new NormMap();
-    
     int count = 0;
-    int missingCount = 0;
     
     for (Number nv : values) {
       if (nv == null) {
         throw new IllegalStateException("illegal norms data for field " + field.name + ", got null for value: " + count);
       }
       final long v = nv.longValue();
-      if (v == 0) {
-        missingCount++;
-      }
-      
-      minValue = Math.min(minValue, v);
-      maxValue = Math.max(maxValue, v);
-      
+
       if (uniqueValues != null) {
-        if (uniqueValues.add(v)) {
-          if (uniqueValues.size > 256) {
-            uniqueValues = null;
+        if (v >= Byte.MIN_VALUE && v <= Byte.MAX_VALUE) {
+          if (uniqueValues.add((byte) v)) {
+            if (uniqueValues.size > 256) {
+              uniqueValues = null;
+            }
           }
+        } else {
+          // anything outside an 8 bit float comes from a custom scorer, which is an extreme edge case
+          uniqueValues = null;
         }
       }
       count++;
     }
-    if (uniqueValues != null && uniqueValues.size == 1) {
-      // 0 bpv
-      addConstant(minValue);
-    } else if (count > 256 && missingCount > count * INDIRECT_THRESHOLD) {
-      // sparse encoding
-      addIndirect(field, values, count, missingCount);
-    } else if (uniqueValues != null) {
-      // small number of unique values: this is the typical case:
-      FormatAndBits compression = fastestFormatAndBits(uniqueValues.size-1);
-      
-      if (compression.bitsPerValue == 8 && minValue >= Byte.MIN_VALUE && maxValue <= Byte.MAX_VALUE) {
-        addUncompressed(values, count);
-      } else {
-        addTableCompressed(values, compression, count, uniqueValues);
-      }
-    } else {
+
+    if (uniqueValues == null) {
       addDeltaCompressed(values, count);
+    } else if (uniqueValues.size == 1) {
+      // 0 bpv
+      addConstant(uniqueValues.values[0]);
+    } else {
+      // small number of unique values: this is the typical case
+      uniqueValues.optimizeOrdinals();
+      
+      int numCommonValues = -1;
+      int commonValuesCount = 0;
+      if (level == 0 && count > 256) {
+        float threshold_count = count * INDIRECT_THRESHOLD;
+        if (uniqueValues.freqs[0] > threshold_count) {
+          numCommonValues = 1;
+        } else if ((commonValuesCount = sum(uniqueValues.freqs, 0, 3)) > threshold_count && uniqueValues.size > 4) {
+          numCommonValues = 3;
+        } else if ((commonValuesCount = sum(uniqueValues.freqs, 0, 15)) > threshold_count && uniqueValues.size > 16) {
+          numCommonValues = 15;
+        }
+      }
+
+      if (numCommonValues == -1) {
+        // no pattern in values, just find the most efficient way to pack the values
+        FormatAndBits compression = fastestFormatAndBits(uniqueValues.size - 1);
+        if (compression.bitsPerValue == 8) {
+          addUncompressed(values, count);
+        } else {
+          addTableCompressed(values, compression, count, uniqueValues);
+        }
+        
+      } else if (numCommonValues == 1) {
+        byte commonValue = uniqueValues.values[0];
+        if (commonValue == 0) {
+          // if the common value is missing, don't waste RAM on a bitset, since we won't be searching those docs
+          addIndirect(field, values, count, uniqueValues, 0);
+        } else {
+          // otherwise, write a sparse bitset, where 1 indicates 'uncommon value'.
+          addPatchedBitset(field, values, count, uniqueValues);
+        }
+      } else {
+        addPatchedTable(field, values, numCommonValues, commonValuesCount, count, uniqueValues);
+      }
     }
+  }
+  
+  private int sum(int[] freqs, int start, int end) {
+    int accum = 0;
+    for (int i = start; i < end; ++i) {
+      accum += freqs[i];
+    }
+    return accum;
   }
   
   private FormatAndBits fastestFormatAndBits(int max) {
@@ -144,18 +179,18 @@ class Lucene50NormsConsumer extends NormsConsumer {
     return new FormatAndBits(format, bitsPerValue);
   }
   
-  private void addConstant(long constant) throws IOException {
+  private void addConstant(byte constant) throws IOException {
     meta.writeVInt(0);
     meta.writeByte(CONST_COMPRESSED);
     meta.writeLong(constant);
   }
-  
+
   private void addUncompressed(Iterable<Number> values, int count) throws IOException {
     meta.writeVInt(count);
     meta.writeByte(UNCOMPRESSED); // uncompressed byte[]
     meta.writeLong(data.getFilePointer());
     for (Number nv : values) {
-      data.writeByte((byte) nv.longValue());
+      data.writeByte(nv.byteValue());
     }
   }
   
@@ -163,25 +198,28 @@ class Lucene50NormsConsumer extends NormsConsumer {
     meta.writeVInt(count);
     meta.writeByte(TABLE_COMPRESSED); // table-compressed
     meta.writeLong(data.getFilePointer());
-    data.writeVInt(PackedInts.VERSION_CURRENT);
-    
-    long[] decode = uniqueValues.getDecodeTable();
-    // upgrade to power of two sized array
-    int size = 1 << compression.bitsPerValue;
-    data.writeVInt(size);
-    for (int i = 0; i < decode.length; i++) {
-      data.writeLong(decode[i]);
-    }
-    for (int i = decode.length; i < size; i++) {
-      data.writeLong(0);
-    }
 
+    writeTable(values, compression, count, uniqueValues, uniqueValues.size);
+  }
+
+  private void writeTable(Iterable<Number> values, FormatAndBits compression, int count, NormMap uniqueValues, int numOrds) throws IOException {
+    data.writeVInt(PackedInts.VERSION_CURRENT);
     data.writeVInt(compression.format.getId());
     data.writeVInt(compression.bitsPerValue);
+    
+    data.writeVInt(numOrds);
+    for (int i = 0; i < numOrds; i++) {
+      data.writeByte(uniqueValues.values[i]);
+    }
 
     final PackedInts.Writer writer = PackedInts.getWriterNoHeader(data, compression.format, count, compression.bitsPerValue, PackedInts.DEFAULT_BUFFER_SIZE);
     for(Number nv : values) {
-      writer.add(uniqueValues.getOrd(nv.longValue()));
+      int ord = uniqueValues.ord(nv.byteValue());
+      if (ord < numOrds) {
+        writer.add(ord);
+      } else {
+        writer.add(numOrds); // collapses all ords >= numOrds into a single value
+      }
     }
     writer.finish();
   }
@@ -200,10 +238,77 @@ class Lucene50NormsConsumer extends NormsConsumer {
     writer.finish();
   }
   
-  private void addIndirect(FieldInfo field, final Iterable<Number> values, int count, int missingCount) throws IOException {
-    meta.writeVInt(count - missingCount);
+  // encodes only uncommon values in a sparse bitset
+  // access is constant time, and the common case is predictable
+  // exceptions nest either to CONST (if there are only 2 values), or INDIRECT (if there are > 2 values)
+  private void addPatchedBitset(FieldInfo field, final Iterable<Number> values, int count, NormMap uniqueValues) throws IOException {
+    int commonCount = uniqueValues.freqs[0];
+    
+    meta.writeVInt(count - commonCount);
+    meta.writeByte(PATCHED_BITSET);
+    meta.writeLong(data.getFilePointer());
+    
+    // write docs with value
+    writeDocsWithValue(values, uniqueValues, 0);
+    
+    // write exceptions: only two cases make sense
+    // bpv = 1 (folded into sparse bitset already)
+    // bpv > 1 (add indirect exception table)
+    meta.writeVInt(field.number);
+    if (uniqueValues.size == 2) {
+      // special case: implicit in bitset
+      addConstant(uniqueValues.values[1]);
+    } else {
+      // exception table
+      addIndirect(field, values, count, uniqueValues, 0);
+    }
+  }
+
+  // encodes common values in a table, and the rest of the values as exceptions using INDIRECT.
+  // the exceptions should not be accessed very often, since the values are uncommon
+  private void addPatchedTable(FieldInfo field, final Iterable<Number> values, final int numCommonValues, int commonValuesCount, int count, final NormMap uniqueValues) throws IOException {
+    meta.writeVInt(count);
+    meta.writeByte(PATCHED_TABLE);
+    meta.writeLong(data.getFilePointer());
+
+    assert numCommonValues == 3 || numCommonValues == 15;
+    FormatAndBits compression = fastestFormatAndBits(numCommonValues);
+    
+    writeTable(values, compression, count, uniqueValues, numCommonValues);
+
+    meta.writeVInt(field.number);
+    addIndirect(field, values, count - commonValuesCount, uniqueValues, numCommonValues);
+  }
+  
+  // encodes values as sparse array: keys[] and values[]
+  // access is log(N) where N = keys.length (slow!)
+  // so this is only appropriate as an exception table for patched, or when common value is 0 (wont be accessed by searching) 
+  private void addIndirect(FieldInfo field, final Iterable<Number> values, int count, final NormMap uniqueValues, final int minOrd) throws IOException {
+    int commonCount = uniqueValues.freqs[minOrd];
+    
+    meta.writeVInt(count - commonCount);
     meta.writeByte(INDIRECT);
     meta.writeLong(data.getFilePointer());
+    
+    // write docs with value
+    writeDocsWithValue(values, uniqueValues, minOrd);
+    
+    // write actual values
+    writeNormsField(field, new Iterable<Number>() {
+      @Override
+      public Iterator<Number> iterator() {
+        return new FilterIterator<Number, Number>(values.iterator()) {
+          @Override
+          protected boolean predicateFunction(Number value) {
+            return uniqueValues.ord(value.byteValue()) > minOrd;
+          }
+        };
+      }
+    }, 1);
+  }
+  
+  private void writeDocsWithValue(final Iterable<Number> values, NormMap uniqueValues, int minOrd) throws IOException {
+    data.writeLong(uniqueValues.values[minOrd]);
     data.writeVInt(PackedInts.VERSION_CURRENT);
     data.writeVInt(BLOCK_SIZE);
     
@@ -211,26 +316,13 @@ class Lucene50NormsConsumer extends NormsConsumer {
     final MonotonicBlockPackedWriter writer = new MonotonicBlockPackedWriter(data, BLOCK_SIZE);
     int doc = 0;
     for (Number n : values) {
-      long v = n.longValue();
-      if (v != 0) {
+      int ord = uniqueValues.ord(n.byteValue());
+      if (ord > minOrd) {
         writer.add(doc);
       }
       doc++;
     }
     writer.finish();
-    
-    // write actual values
-    addNormsField(field, new Iterable<Number>() {
-      @Override
-      public Iterator<Number> iterator() {
-        return new FilterIterator<Number,Number>(values.iterator()) {
-          @Override
-          protected boolean predicateFunction(Number value) {
-            return value.longValue() != 0;
-          }
-        };
-      }
-    });
   }
   
   @Override
@@ -254,66 +346,63 @@ class Lucene50NormsConsumer extends NormsConsumer {
       meta = data = null;
     }
   }
-  
+
   // specialized deduplication of long->ord for norms: 99.99999% of the time this will be a single-byte range.
   static class NormMap {
-    // we use short: at most we will add 257 values to this map before its rejected as too big above.
-    final short[] singleByteRange = new short[256];
-    final Map<Long,Short> other = new HashMap<Long,Short>();
+    // we use short: at most we will add 257 values to this map before it's rejected as too big above.
+    private final short[] ords = new short[256];
+    final int[] freqs = new int[257];
+    final byte[] values = new byte[257];
     int size;
-    
+
     {
-      Arrays.fill(singleByteRange, (short)-1);
+      Arrays.fill(ords, (short)-1);
     }
 
-    /** adds an item to the mapping. returns true if actually added */
-    public boolean add(long l) {
+    // adds an item to the mapping. returns true if actually added
+    public boolean add(byte l) {
       assert size <= 256; // once we add > 256 values, we nullify the map in addNumericField and don't use this strategy
-      if (l >= Byte.MIN_VALUE && l <= Byte.MAX_VALUE) {
-        int index = (int) (l + 128);
-        short previous = singleByteRange[index];
-        if (previous < 0) {
-          singleByteRange[index] = (short) size;
-          size++;
-          return true;
-        } else {
-          return false;
-        }
+      int index = (int)l + 128;
+      short previous = ords[index];
+      if (previous < 0) {
+        short slot = (short)size;
+        ords[index] = slot;
+        freqs[slot]++;
+        values[slot] = l;
+        size++;
+        return true;
       } else {
-        if (!other.containsKey(l)) {
-          other.put(l, (short)size);
-          size++;
-          return true;
-        } else {
-          return false;
-        }
+        freqs[previous]++;
+        return false;
       }
     }
-    
-    /** gets the ordinal for a previously added item */
-    public int getOrd(long l) {
-      if (l >= Byte.MIN_VALUE && l <= Byte.MAX_VALUE) {
-        int index = (int) (l + 128);
-        return singleByteRange[index];
-      } else {
-        // NPE if something is screwed up
-        return other.get(l);
-      }
+
+    public int ord(byte value) {
+      return ords[(int)value + 128];
     }
-    
-    /** retrieves the ordinal table for previously added items */
-    public long[] getDecodeTable() {
-      long decode[] = new long[size];
-      for (int i = 0; i < singleByteRange.length; i++) {
-        short s = singleByteRange[i];
-        if (s >= 0) {
-          decode[s] = i - 128;
+
+    // reassign ordinals so higher frequencies have lower ordinals
+    public void optimizeOrdinals() {
+      new InPlaceMergeSorter() {
+        @Override
+        protected int compare(int i, int j) {
+          return freqs[j] - freqs[i]; // sort descending
         }
-      }
-      for (Map.Entry<Long,Short> entry : other.entrySet()) {
-        decode[entry.getValue()] = entry.getKey();
-      }
-      return decode;
+        @Override
+        protected void swap(int i, int j) {
+          // swap ordinal i with ordinal j
+          ords[(int)values[i] + 128] = (short)j;
+          ords[(int)values[j] + 128] = (short)i;
+
+          int tmpFreq = freqs[i];
+          byte tmpValue = values[i];
+          freqs[i] = freqs[j];
+          values[i] = values[j];
+          freqs[j] = tmpFreq;
+          values[j] = tmpValue;
+        }
+      }.sort(0, size);
     }
   }
+
 }

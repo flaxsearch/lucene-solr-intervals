@@ -51,8 +51,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * TODO!
- *
+ * Computes facets -- aggregations with counts of terms or ranges over the whole search results.
  *
  * @since solr 1.3
  */
@@ -66,9 +65,9 @@ public class FacetComponent extends SearchComponent {
   private static final String PIVOT_REFINE_PREFIX = "{!"+PivotFacet.REFINE_PARAM+"=";
 
   /**
-   * incrememented counter used to track the values being refined in a given request.  
+   * Incremented counter used to track the values being refined in a given request.
    * This counter is used in conjunction with {@link PivotFacet#REFINE_PARAM} to identify
-   * which refinement values are associated with which pivots
+   * which refinement values are associated with which pivots.
    */
   int pivotRefinementCounter = 0;
 
@@ -214,6 +213,7 @@ public class FacetComponent extends SearchComponent {
           shardsRefineRequest.params.set(FacetParams.FACET, "true");
           shardsRefineRequest.params.remove(FacetParams.FACET_FIELD);
           shardsRefineRequest.params.remove(FacetParams.FACET_QUERY);
+          //TODO remove interval faceting, and ranges and heatmap too?
 
           for (int i = 0; i < distribFieldFacetRefinements.size();) {
             String facetCommand = distribFieldFacetRefinements.get(i++);
@@ -237,7 +237,7 @@ public class FacetComponent extends SearchComponent {
             shardsRefineRequest.params.remove(FacetParams.FACET_PIVOT_MINCOUNT);
           }
           
-          enqueuePivotFacetShardRequests(null, rb, shardNum);
+          enqueuePivotFacetShardRequests(rb, shardNum);
         }
       }
     }
@@ -245,9 +245,7 @@ public class FacetComponent extends SearchComponent {
     return ResponseBuilder.STAGE_DONE;
   }
   
-  private void enqueuePivotFacetShardRequests
-    (HashMap<String,List<String>> pivotFacetRefinements, 
-     ResponseBuilder rb, int shardNum) {
+  private void enqueuePivotFacetShardRequests(ResponseBuilder rb, int shardNum) {
     
     FacetInfo fi = rb._facetInfo;
     
@@ -315,9 +313,11 @@ public class FacetComponent extends SearchComponent {
       
       modifyRequestForFieldFacets(rb, sreq, fi);
 
-      modifyRequestForRangeFacets(sreq, fi);
+      modifyRequestForRangeFacets(sreq);
       
       modifyRequestForPivotFacets(rb, sreq, fi.pivotFacets);
+
+      SpatialHeatmapFacets.distribModifyRequest(sreq, fi.heatmapFacets);
       
       sreq.params.remove(FacetParams.FACET_MINCOUNT);
       sreq.params.remove(FacetParams.FACET_OFFSET);
@@ -330,19 +330,13 @@ public class FacetComponent extends SearchComponent {
   }
 
   // we must get all the range buckets back in order to have coherent lists at the end, see SOLR-6154
-  private void modifyRequestForRangeFacets(ShardRequest sreq, FacetInfo fi) {
+  private void modifyRequestForRangeFacets(ShardRequest sreq) {
     // Collect all the range fields.
-    if (sreq.params.getParams(FacetParams.FACET_RANGE) == null) {
-      return;
-    }
-    List<String> rangeFields = new ArrayList<>();
-    for (String field : sreq.params.getParams(FacetParams.FACET_RANGE)) {
-      rangeFields.add(field);
-    }
-
-    for (String field : rangeFields) {
-      sreq.params.remove("f." + field + ".facet.mincount");
-      sreq.params.add("f." + field + ".facet.mincount", "0");
+    final String[] fields = sreq.params.getParams(FacetParams.FACET_RANGE);
+    if (fields != null) {
+      for (String field : fields) {
+        sreq.params.set("f." + field + ".facet.mincount", "0");
+      }
     }
   }
 
@@ -550,6 +544,9 @@ public class FacetComponent extends SearchComponent {
       // refinement reqs still needed (below) once we've considered every shard
       doDistribPivots(rb, shardNum, facet_counts);
 
+      // Distributed facet_heatmaps
+      SpatialHeatmapFacets.distribHandleResponse(fi.heatmapFacets, facet_counts);
+
     } // end for-each-response-in-shard-request...
     
     // refine each pivot based on the new shard data
@@ -597,7 +594,7 @@ public class FacetComponent extends SearchComponent {
             // fbs can be null if a shard request failed
             if (fbs != null && (sfc.termNum >= fbs.length() || !fbs.get(sfc.termNum))) {
               // if missing from this shard, add the max it could be
-              maxCount += dff.maxPossible(sfc, shardNum);
+              maxCount += dff.maxPossible(shardNum);
             }
           }
           if (maxCount >= smallestCount) {
@@ -613,7 +610,7 @@ public class FacetComponent extends SearchComponent {
             // fbs can be null if a shard request failed
             if (fbs != null &&
                 (sfc.termNum >= fbs.length() || !fbs.get(sfc.termNum)) &&
-                dff.maxPossible(sfc, shardNum) > 0) {
+                dff.maxPossible(shardNum) > 0) {
 
               dff.needRefinements = true;
               List<String> lst = dff._toRefine[shardNum];
@@ -966,7 +963,7 @@ public class FacetComponent extends SearchComponent {
   private void reQueuePivotFacetShardRequests(ResponseBuilder rb) {
     for (int shardNum = 0; shardNum < rb.shards.length; shardNum++) {
       if (doAnyPivotFacetRefinementRequestsExistForShard(rb._facetInfo, shardNum)) {
-        enqueuePivotFacetShardRequests(null, rb, shardNum);
+        enqueuePivotFacetShardRequests(rb, shardNum);
       }
     }
   }
@@ -1046,6 +1043,8 @@ public class FacetComponent extends SearchComponent {
     facet_counts.add("facet_dates", fi.dateFacets);
     facet_counts.add("facet_ranges", fi.rangeFacets);
     facet_counts.add("facet_intervals", fi.intervalFacets);
+    facet_counts.add(SpatialHeatmapFacets.RESPONSE_KEY,
+        SpatialHeatmapFacets.distribFinish(fi.heatmapFacets, rb));
 
     if (fi.pivotFacets != null && fi.pivotFacets.size() > 0) {
       facet_counts.add(PIVOT_KEY, createPivotFacetOutput(rb));
@@ -1062,7 +1061,7 @@ public class FacetComponent extends SearchComponent {
     for (Entry<String,PivotFacet> entry : rb._facetInfo.pivotFacets) {
       String key = entry.getKey();
       PivotFacet pivot = entry.getValue();
-      List<NamedList<Object>> trimmedPivots = pivot.getTrimmedPivotsAsListOfNamedLists(rb);
+      List<NamedList<Object>> trimmedPivots = pivot.getTrimmedPivotsAsListOfNamedLists();
       if (null == trimmedPivots) {
         trimmedPivots = Collections.<NamedList<Object>>emptyList();
       }
@@ -1112,6 +1111,7 @@ public class FacetComponent extends SearchComponent {
       = new SimpleOrderedMap<>();
     public SimpleOrderedMap<PivotFacet> pivotFacets
       = new SimpleOrderedMap<>();
+    public LinkedHashMap<String,SpatialHeatmapFacets.HeatmapFacet> heatmapFacets;
 
     void parse(SolrParams params, ResponseBuilder rb) {
       queryFacets = new LinkedHashMap<>();
@@ -1142,6 +1142,8 @@ public class FacetComponent extends SearchComponent {
           pivotFacets.add(pf.getKey(), pf);
         }
       }
+
+      heatmapFacets = SpatialHeatmapFacets.distribParse(params, rb);
     }
   }
   
@@ -1356,7 +1358,7 @@ public class FacetComponent extends SearchComponent {
     
     // returns the max possible value this ShardFacetCount could have for this shard
     // (assumes the shard did not report a count for this value)
-    long maxPossible(ShardFacetCount sfc, int shardNum) {
+    long maxPossible(int shardNum) {
       return missingMax[shardNum];
       // TODO: could store the last term in the shard to tell if this term
       // comes before or after it. If it comes before, we could subtract 1

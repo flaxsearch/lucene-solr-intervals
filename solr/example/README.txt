@@ -16,45 +16,43 @@
 Solr example
 ------------
 
-This directory contains an instance of the Jetty Servlet container setup to 
-run Solr using an example configuration.
+This directory contains Solr examples. Each example is contained in a 
+separate directory. To run a specific example, do:
 
-To run this example:
+  bin/solr -e <EXAMPLE> where <EXAMPLE> is one of:
+  
+    cloud        : SolrCloud example
+    dih          : Data Import Handler (rdbms, mail, rss, tika)
+    schemaless   : Schema-less example (schema is inferred from data during indexing)
+    techproducts : Kitchen sink example providing comprehensive examples of Solr features
 
-  java -jar start.jar
+For instance, if you want to run the Solr Data Import Handler example, do:
 
-in this example directory, and when Solr is started connect to 
+  bin/solr -e dih
+  
+To see all the options available when starting Solr:
+
+  bin/solr start -help
+
+After starting a Solr example, direct your Web browser to:
 
   http://localhost:8983/solr/
 
-To add documents to the index, use the post.jar (or post.sh script) in
-the example/exampledocs subdirectory (while Solr is running), for example:
+To add documents to the index, use bin/post.  For example:
 
-     cd exampledocs
-     java -jar post.jar *.xml
-Or:  sh post.sh *.xml
+     bin/post -c techproducts example/exampledocs/*.xml
 
 For more information about this example please read...
 
  * example/solr/README.txt
    For more information about the "Solr Home" and Solr specific configuration
- * http://lucene.apache.org/solr/tutorial.html
+ * http://lucene.apache.org/solr/quickstart.html
    For a Tutorial using this example configuration
  * http://wiki.apache.org/solr/SolrResources 
    For a list of other tutorials and introductory articles.
 
 Notes About These Examples
 --------------------------
-
-* SolrHome *
-
-By default, start.jar starts Solr in Jetty using the default Solr Home
-directory of "./solr/" (relative to the working directory of hte servlet 
-container).  To run other example configurations, you can specify the 
-solr.solr.home system property when starting jetty...
-
-  java -Dsolr.solr.home=multicore -jar start.jar
-  java -Dsolr.solr.home=example-DIH/solr -jar start.jar
 
 * References to Jar Files Outside This Directory *
 

@@ -23,18 +23,18 @@ import org.apache.lucene.facet.FacetsConfig;
 import org.apache.lucene.facet.taxonomy.FacetLabel;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 import org.apache.lucene.facet.taxonomy.TaxonomyWriter;
-import org.apache.lucene.facet.taxonomy.writercache.TaxonomyWriterCache;
 import org.apache.lucene.facet.taxonomy.writercache.Cl2oTaxonomyWriterCache;
 import org.apache.lucene.facet.taxonomy.writercache.LruTaxonomyWriterCache;
-import org.apache.lucene.index.LeafReader;
-import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.facet.taxonomy.writercache.TaxonomyWriterCache;
 import org.apache.lucene.index.CorruptIndexException; // javadocs
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.LogByteSizeMergePolicy;
 import org.apache.lucene.index.ReaderManager;
 import org.apache.lucene.index.SegmentInfos;
@@ -44,8 +44,6 @@ import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.LockObtainFailedException; // javadocs
-import org.apache.lucene.store.NativeFSLockFactory;
-import org.apache.lucene.store.SimpleFSLockFactory;
 import org.apache.lucene.util.BytesRef;
 
 /*
@@ -131,27 +129,10 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
 
   /** Reads the commit data from a Directory. */
   private static Map<String, String> readCommitData(Directory dir) throws IOException {
-    SegmentInfos infos = new SegmentInfos();
-    infos.read(dir);
+    SegmentInfos infos = SegmentInfos.readLatestCommit(dir);
     return infos.getUserData();
   }
   
-  /**
-   * Forcibly unlocks the taxonomy in the named directory.
-   * <P>
-   * Caution: this should only be used by failure recovery code, when it is
-   * known that no other process nor thread is in fact currently accessing
-   * this taxonomy.
-   * <P>
-   * This method is unnecessary if your {@link Directory} uses a
-   * {@link NativeFSLockFactory} instead of the default
-   * {@link SimpleFSLockFactory}. When the "native" lock is used, a lock
-   * does not stay behind forever when the process using it dies. 
-   */
-  public static void unlock(Directory directory) throws IOException {
-    IndexWriter.unlock(directory);
-  }
-
   /**
    * Construct a Taxonomy writer.
    * 
@@ -174,10 +155,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * @throws CorruptIndexException
    *     if the taxonomy is corrupted.
    * @throws LockObtainFailedException
-   *     if the taxonomy is locked by another writer. If it is known
-   *     that no other concurrent writer is active, the lock might
-   *     have been left around by an old dead process, and should be
-   *     removed using {@link #unlock(Directory)}.
+   *     if the taxonomy is locked by another writer.
    * @throws IOException
    *     if another error occurred.
    */
@@ -404,14 +382,14 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     try {
       final BytesRef catTerm = new BytesRef(FacetsConfig.pathToString(categoryPath.components, categoryPath.length));
       TermsEnum termsEnum = null; // reuse
-      DocsEnum docs = null; // reuse
+      PostingsEnum docs = null; // reuse
       for (LeafReaderContext ctx : reader.leaves()) {
         Terms terms = ctx.reader().terms(Consts.FULL);
         if (terms != null) {
           termsEnum = terms.iterator(termsEnum);
           if (termsEnum.seekExact(catTerm)) {
             // liveDocs=null because the taxonomy has no deletes
-            docs = termsEnum.docs(null, docs, 0 /* freqs not required */);
+            docs = termsEnum.postings(null, docs, 0 /* freqs not required */);
             // if the term was found, we know it has exactly one document.
             doc = docs.nextDoc() + ctx.docBase;
             break;
@@ -551,9 +529,9 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
      * Note that when TermPositions.nextPosition() is later used to
      * retrieve this value, val-1 will be returned, not val.
      * <P>
-     * IMPORTANT NOTE: Before Lucene 2.9, val>=0 were safe (for val==0,
+     * IMPORTANT NOTE: Before Lucene 2.9, val&gt;=0 were safe (for val==0,
      * the retrieved position would be -1). But starting with Lucene 2.9,
-     * this unfortunately changed, and only val>0 are safe. val=0 can
+     * this unfortunately changed, and only val&gt;0 are safe. val=0 can
      * still be used, but don't count on the value you retrieve later
      * (it could be 0 or -1, depending on circumstances or versions).
      * This change is described in Lucene's JIRA: LUCENE-1542. 
@@ -697,7 +675,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     DirectoryReader reader = readerManager.acquire();
     try {
       TermsEnum termsEnum = null;
-      DocsEnum docsEnum = null;
+      PostingsEnum postingsEnum = null;
       for (LeafReaderContext ctx : reader.leaves()) {
         Terms terms = ctx.reader().terms(Consts.FULL);
         if (terms != null) { // cannot really happen, but be on the safe side
@@ -711,8 +689,8 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
               // is sufficient to call next(), and then doc(), exactly once with no
               // 'validation' checks.
               FacetLabel cp = new FacetLabel(FacetsConfig.stringToPath(t.utf8ToString()));
-              docsEnum = termsEnum.docs(null, docsEnum, DocsEnum.FLAG_NONE);
-              boolean res = cache.put(cp, docsEnum.nextDoc() + ctx.docBase);
+              postingsEnum = termsEnum.postings(null, postingsEnum, PostingsEnum.FLAG_NONE);
+              boolean res = cache.put(cp, postingsEnum.nextDoc() + ctx.docBase);
               assert !res : "entries should not have been evicted from the cache";
             } else {
               // the cache is full and the next put() will evict entries from it, therefore abort the iteration.
@@ -793,7 +771,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
       ordinalMap.setSize(size);
       int base = 0;
       TermsEnum te = null;
-      DocsEnum docs = null;
+      PostingsEnum docs = null;
       for (final LeafReaderContext ctx : r.leaves()) {
         final LeafReader ar = ctx.reader();
         final Terms terms = ar.terms(Consts.FULL);
@@ -801,7 +779,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
         while (te.next() != null) {
           FacetLabel cp = new FacetLabel(FacetsConfig.stringToPath(te.term().utf8ToString()));
           final int ordinal = addCategory(cp);
-          docs = te.docs(null, docs, DocsEnum.FLAG_NONE);
+          docs = te.postings(null, docs, PostingsEnum.FLAG_NONE);
           ordinalMap.addMapping(docs.nextDoc() + base, ordinal);
         }
         base += ar.maxDoc(); // no deletions, so we're ok

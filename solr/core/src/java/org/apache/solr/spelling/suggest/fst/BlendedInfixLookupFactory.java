@@ -19,13 +19,17 @@ package org.apache.solr.spelling.suggest.fst;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.analyzing.AnalyzingInfixSuggester;
-import org.apache.lucene.search.suggest.analyzing.BlendedInfixSuggester.BlenderType;
 import org.apache.lucene.search.suggest.analyzing.BlendedInfixSuggester;
+import org.apache.lucene.search.suggest.analyzing.BlendedInfixSuggester.BlenderType;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.schema.FieldType;
@@ -89,6 +93,14 @@ public class BlendedInfixLookupFactory extends AnalyzingInfixLookupFactory {
     int minPrefixChars = params.get(MIN_PREFIX_CHARS) != null
     ? Integer.parseInt(params.get(MIN_PREFIX_CHARS).toString())
     : AnalyzingInfixSuggester.DEFAULT_MIN_PREFIX_CHARS;
+    
+    boolean allTermsRequired = params.get(ALL_TERMS_REQUIRED) != null
+    ? Boolean.getBoolean(params.get(ALL_TERMS_REQUIRED).toString())
+    : AnalyzingInfixSuggester.DEFAULT_ALL_TERMS_REQUIRED;
+    
+    boolean highlight = params.get(HIGHLIGHT) != null
+    ? Boolean.getBoolean(params.get(HIGHLIGHT).toString())
+    : AnalyzingInfixSuggester.DEFAULT_HIGHLIGHT;
 
     BlenderType blenderType = getBlenderType(params.get(BLENDER_TYPE));
     
@@ -97,10 +109,28 @@ public class BlendedInfixLookupFactory extends AnalyzingInfixLookupFactory {
     : BlendedInfixSuggester.DEFAULT_NUM_FACTOR;
     
     try {
-      return new BlendedInfixSuggester(core.getSolrConfig().luceneMatchVersion, 
-                                       FSDirectory.open(new File(indexPath).toPath()),
+      return new BlendedInfixSuggester(FSDirectory.open(new File(indexPath).toPath()),
                                        indexAnalyzer, queryAnalyzer, minPrefixChars,
-                                       blenderType, numFactor, true);
+                                       blenderType, numFactor, true,
+                                       allTermsRequired, highlight) {
+        @Override
+        public List<LookupResult> lookup(CharSequence key, Set<BytesRef> contexts, int num, boolean allTermsRequired, boolean doHighlight) throws IOException {
+          List<LookupResult> res = super.lookup(key, contexts, num, allTermsRequired, doHighlight);
+          if (doHighlight) {
+            List<LookupResult> res2 = new ArrayList<>();
+            for(LookupResult hit : res) {
+              res2.add(new LookupResult(hit.highlightKey.toString(),
+                                        hit.highlightKey,
+                                        hit.value,
+                                        hit.payload,
+                                        hit.contexts));
+            }
+            res = res2;
+          }
+
+          return res;
+        }
+      };
     } catch (IOException e) {
       throw new RuntimeException();
     }

@@ -137,7 +137,7 @@ public class GermanStemmer
         strip( buffer );
       }
       // Additional step for irregular plural nouns like "Matrizen -> Matrix".
-      // NOTE: this length constraint is probably not a great value, its just to prevent AIOOBE on empty terms
+      // NOTE: this length constraint is probably not a great value, it's just to prevent AIOOBE on empty terms
       if ( buffer.length() > 0 && buffer.charAt( buffer.length() - 1 ) == ( 'z' ) ) {
         buffer.setCharAt( buffer.length() - 1, 'x' );
       }
@@ -161,12 +161,12 @@ public class GermanStemmer
     /**
      * Do some substitutions for the term to reduce overstemming:
      *
-     * - Substitute Umlauts with their corresponding vowel: äöü -> aou,
+     * - Substitute Umlauts with their corresponding vowel:{@code äöü -> aou},
      *   "ß" is substituted by "ss"
      * - Substitute a second char of a pair of equal characters with
-     *   an asterisk: ?? -> ?*
+     *   an asterisk: {@code ?? -> ?*}
      * - Substitute some common character combinations with a token:
-     *   sch/ch/ei/ie/ig/st -> $/§/%/&/#/!
+     *   {@code sch/ch/ei/ie/ig/st -> $/§/%/&/#/!}
      */
     private void substitute( StringBuilder buffer )
     {

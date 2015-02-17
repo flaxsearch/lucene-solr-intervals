@@ -25,9 +25,6 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import org.apache.lucene.index.FieldInfo.DocValuesType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
-
 /** 
  * Collection of {@link FieldInfo}s (accessible by number or by name).
  *  @lucene.experimental
@@ -71,11 +68,11 @@ public class FieldInfos implements Iterable<FieldInfo> {
       }
       
       hasVectors |= info.hasVectors();
-      hasProx |= info.isIndexed() && info.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
-      hasFreq |= info.isIndexed() && info.getIndexOptions() != IndexOptions.DOCS_ONLY;
-      hasOffsets |= info.isIndexed() && info.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
+      hasProx |= info.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
+      hasFreq |= info.getIndexOptions() != IndexOptions.DOCS;
+      hasOffsets |= info.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
       hasNorms |= info.hasNorms();
-      hasDocValues |= info.hasDocValues();
+      hasDocValues |= info.getDocValuesType() != DocValuesType.NONE;
       hasPayloads |= info.hasPayloads();
     }
     
@@ -190,18 +187,17 @@ public class FieldInfos implements Iterable<FieldInfo> {
      * is used as the field number.
      */
     synchronized int addOrGet(String fieldName, int preferredFieldNumber, DocValuesType dvType) {
-      if (dvType != null) {
+      if (dvType != DocValuesType.NONE) {
         DocValuesType currentDVType = docValuesType.get(fieldName);
         if (currentDVType == null) {
           docValuesType.put(fieldName, dvType);
-        } else if (currentDVType != null && currentDVType != dvType) {
+        } else if (currentDVType != DocValuesType.NONE && currentDVType != dvType) {
           throw new IllegalArgumentException("cannot change DocValues type from " + currentDVType + " to " + dvType + " for field \"" + fieldName + "\"");
         }
       }
       Integer fieldNumber = nameToNumber.get(fieldName);
       if (fieldNumber == null) {
         final Integer preferredBoxed = Integer.valueOf(preferredFieldNumber);
-
         if (preferredFieldNumber != -1 && !numberToName.containsKey(preferredBoxed)) {
           // cool - we can use this number globally
           fieldNumber = preferredBoxed;
@@ -212,7 +208,7 @@ public class FieldInfos implements Iterable<FieldInfo> {
           }
           fieldNumber = lowestUnassignedFieldNumber;
         }
-        
+        assert fieldNumber >= 0;
         numberToName.put(fieldNumber, fieldName);
         nameToNumber.put(fieldName, fieldNumber);
       }
@@ -220,11 +216,17 @@ public class FieldInfos implements Iterable<FieldInfo> {
       return fieldNumber.intValue();
     }
 
-    // used by assert
-    synchronized boolean containsConsistent(Integer number, String name, DocValuesType dvType) {
-      return name.equals(numberToName.get(number))
-          && number.equals(nameToNumber.get(name)) &&
-        (dvType == null || docValuesType.get(name) == null || dvType == docValuesType.get(name));
+    synchronized void verifyConsistent(Integer number, String name, DocValuesType dvType) {
+      if (name.equals(numberToName.get(number)) == false) {
+        throw new IllegalArgumentException("field number " + number + " is already mapped to field name \"" + numberToName.get(number) + "\", not \"" + name + "\"");
+      }
+      if (number.equals(nameToNumber.get(name)) == false) {
+        throw new IllegalArgumentException("field name \"" + name + "\" is already mapped to field number \"" + nameToNumber.get(name) + "\", not \"" + number + "\"");
+      }
+      DocValuesType currentDVType = docValuesType.get(name);
+      if (dvType != DocValuesType.NONE && currentDVType != null && currentDVType != DocValuesType.NONE && dvType != currentDVType) {
+        throw new IllegalArgumentException("cannot change DocValues type from " + currentDVType + " to " + dvType + " for field \"" + name + "\"");
+      }
     }
 
     /**
@@ -248,7 +250,7 @@ public class FieldInfos implements Iterable<FieldInfo> {
     }
 
     synchronized void setDocValuesType(int number, String name, DocValuesType dvType) {
-      assert containsConsistent(number, name, dvType);
+      verifyConsistent(number, name, dvType);
       docValuesType.put(name, dvType);
     }
   }
@@ -274,24 +276,32 @@ public class FieldInfos implements Iterable<FieldInfo> {
         add(fieldInfo);
       }
     }
-   
-    /** NOTE: this method does not carry over termVector
-     *  the indexer chain must set these fields when they
-     *  succeed in consuming the document */
-    public FieldInfo addOrUpdate(String name, IndexableFieldType fieldType) {
-      // TODO: really, indexer shouldn't even call this
-      // method (it's only called from DocFieldProcessor);
-      // rather, each component in the chain should update
-      // what it "owns".  EG fieldType.indexOptions() should
-      // be updated by maybe FreqProxTermsWriterPerField:
-      return addOrUpdateInternal(name, -1, false,
-                                 fieldType.omitNorms(), false,
-                                 fieldType.indexOptions(), fieldType.docValueType());
-    }
 
+    /** Create a new field, or return existing one. */
+    public FieldInfo getOrAdd(String name) {
+      FieldInfo fi = fieldInfo(name);
+      if (fi == null) {
+        // This field wasn't yet added to this in-RAM
+        // segment's FieldInfo, so now we get a global
+        // number for this field.  If the field was seen
+        // before then we'll get the same name and number,
+        // else we'll allocate a new one:
+        final int fieldNumber = globalFieldNumbers.addOrGet(name, -1, DocValuesType.NONE);
+        fi = new FieldInfo(name, fieldNumber, false, false, false, IndexOptions.NONE, DocValuesType.NONE, -1, null);
+        assert !byName.containsKey(fi.name);
+        globalFieldNumbers.verifyConsistent(Integer.valueOf(fi.number), fi.name, DocValuesType.NONE);
+        byName.put(fi.name, fi);
+      }
+
+      return fi;
+    }
+   
     private FieldInfo addOrUpdateInternal(String name, int preferredFieldNumber,
         boolean storeTermVector,
         boolean omitNorms, boolean storePayloads, IndexOptions indexOptions, DocValuesType docValues) {
+      if (docValues == null) {
+        throw new NullPointerException("DocValuesType cannot be null");
+      }
       FieldInfo fi = fieldInfo(name);
       if (fi == null) {
         // This field wasn't yet added to this in-RAM
@@ -302,20 +312,22 @@ public class FieldInfos implements Iterable<FieldInfo> {
         final int fieldNumber = globalFieldNumbers.addOrGet(name, preferredFieldNumber, docValues);
         fi = new FieldInfo(name, fieldNumber, storeTermVector, omitNorms, storePayloads, indexOptions, docValues, -1, null);
         assert !byName.containsKey(fi.name);
-        assert globalFieldNumbers.containsConsistent(Integer.valueOf(fi.number), fi.name, fi.getDocValuesType());
+        globalFieldNumbers.verifyConsistent(Integer.valueOf(fi.number), fi.name, fi.getDocValuesType());
         byName.put(fi.name, fi);
       } else {
         fi.update(storeTermVector, omitNorms, storePayloads, indexOptions);
 
-        if (docValues != null) {
-          // only pay the synchronization cost if fi does not already have a DVType
-          boolean updateGlobal = !fi.hasDocValues();
-          fi.setDocValuesType(docValues); // this will also perform the consistency check.
+        if (docValues != DocValuesType.NONE) {
+          // Only pay the synchronization cost if fi does not already have a DVType
+          boolean updateGlobal = fi.getDocValuesType() == DocValuesType.NONE;
           if (updateGlobal) {
-            // must also update docValuesType map so it's
-            // aware of this field's DocValueType 
+            // Must also update docValuesType map so it's
+            // aware of this field's DocValuesType.  This will throw IllegalArgumentException if
+            // an illegal type change was attempted.
             globalFieldNumbers.setDocValuesType(fi.number, name, docValues);
           }
+
+          fi.setDocValuesType(docValues); // this will also perform the consistency check.
         }
       }
       return fi;

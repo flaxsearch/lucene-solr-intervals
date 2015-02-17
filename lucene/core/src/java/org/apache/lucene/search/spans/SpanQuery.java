@@ -17,16 +17,16 @@ package org.apache.lucene.search.spans;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.Map;
-
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
-import org.apache.lucene.search.Query;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.Bits;
+
+import java.io.IOException;
+import java.util.Map;
 
 /** Base class for span-based queries. */
 public abstract class SpanQuery extends Query {
@@ -42,7 +42,7 @@ public abstract class SpanQuery extends Query {
   public abstract String getField();
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
     return new SpanWeight(this, searcher);
   }
 

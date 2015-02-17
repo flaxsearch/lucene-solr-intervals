@@ -32,10 +32,12 @@ import org.apache.lucene.document.SortedSetDocValuesField; // javadocs
 import org.apache.lucene.document.StringField; // javadocs
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.FilterDirectoryReader;
 import org.apache.lucene.index.FilterLeafReader;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedDocValues;
@@ -183,8 +185,8 @@ public class UninvertingReader extends FilterLeafReader {
     this.mapping = mapping;
     ArrayList<FieldInfo> filteredInfos = new ArrayList<>();
     for (FieldInfo fi : in.getFieldInfos()) {
-      FieldInfo.DocValuesType type = fi.getDocValuesType();
-      if (fi.isIndexed() && !fi.hasDocValues()) {
+      DocValuesType type = fi.getDocValuesType();
+      if (fi.getIndexOptions() != IndexOptions.NONE && fi.getDocValuesType() == DocValuesType.NONE) {
         Type t = mapping.get(fi.name);
         if (t != null) {
           switch(t) {
@@ -192,20 +194,20 @@ public class UninvertingReader extends FilterLeafReader {
             case LONG:
             case FLOAT:
             case DOUBLE:
-              type = FieldInfo.DocValuesType.NUMERIC;
+              type = DocValuesType.NUMERIC;
               break;
             case BINARY:
-              type = FieldInfo.DocValuesType.BINARY;
+              type = DocValuesType.BINARY;
               break;
             case SORTED:
-              type = FieldInfo.DocValuesType.SORTED;
+              type = DocValuesType.SORTED;
               break;
             case SORTED_SET_BINARY:
             case SORTED_SET_INTEGER:
             case SORTED_SET_FLOAT:
             case SORTED_SET_LONG:
             case SORTED_SET_DOUBLE:
-              type = FieldInfo.DocValuesType.SORTED_SET;
+              type = DocValuesType.SORTED_SET;
               break;
             default:
               throw new AssertionError();
@@ -290,7 +292,7 @@ public class UninvertingReader extends FilterLeafReader {
    */
   private Type getType(String field) {
     FieldInfo info = fieldInfos.fieldInfo(field);
-    if (info == null || info.hasDocValues() == false) {
+    if (info == null || info.getDocValuesType() == DocValuesType.NONE) {
       return null;
     }
     return mapping.get(field);

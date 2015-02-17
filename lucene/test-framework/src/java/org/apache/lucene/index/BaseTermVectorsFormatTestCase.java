@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.carrotsearch.randomizedtesting.generators.RandomPicks;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
@@ -48,8 +49,6 @@ import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.TestUtil;
-
-import com.carrotsearch.randomizedtesting.generators.RandomPicks;
 
 /**
  * Base class aiming at testing {@link TermVectorsFormat term vectors formats}.
@@ -93,17 +92,6 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
     ft.setStoreTermVectorPayloads(options.payloads);
     ft.freeze();
     return ft;
-  }
-
-  protected BytesRef randomPayload() {
-    final int len = random().nextInt(5);
-    if (len == 0) {
-      return null;
-    }
-    final BytesRef payload = new BytesRef(len);
-    random().nextBytes(payload.bytes);
-    payload.length = len;
-    return payload;
   }
 
   @Override
@@ -172,7 +160,9 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
   }
 
   // TODO: use CannedTokenStream?
-  protected class RandomTokenStream extends TokenStream {
+  // TODO: pull out and make top-level-utility, separate from TermVectors
+  /** Produces a random TokenStream based off of provided terms. */
+  public static class RandomTokenStream extends TokenStream {
 
     final String[] terms;
     final BytesRef[] termBytes;
@@ -191,11 +181,11 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
     final PayloadAttribute pAtt;
     int i = 0;
 
-    protected RandomTokenStream(int len, String[] sampleTerms, BytesRef[] sampleTermBytes) {
+    public RandomTokenStream(int len, String[] sampleTerms, BytesRef[] sampleTermBytes) {
       this(len, sampleTerms, sampleTermBytes, rarely());
     }
 
-    protected RandomTokenStream(int len, String[] sampleTerms, BytesRef[] sampleTermBytes, boolean offsetsGoBackwards) {
+    public RandomTokenStream(int len, String[] sampleTerms, BytesRef[] sampleTermBytes, boolean offsetsGoBackwards) {
       terms = new String[len];
       termBytes = new BytesRef[len];
       positionsIncrements = new int[len];
@@ -266,6 +256,17 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
       pAtt = addAttribute(PayloadAttribute.class);
     }
 
+    protected BytesRef randomPayload() {
+      final int len = random().nextInt(5);
+      if (len == 0) {
+        return null;
+      }
+      final BytesRef payload = new BytesRef(len);
+      random().nextBytes(payload.bytes);
+      payload.length = len;
+      return payload;
+    }
+
     public boolean hasPayloads() {
       for (BytesRef payload : payloads) {
         if (payload != null && payload.length > 0) {
@@ -275,9 +276,40 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
       return false;
     }
 
+    public String[] getTerms() {
+      return terms;
+    }
+
+    public BytesRef[] getTermBytes() {
+      return termBytes;
+    }
+
+    public int[] getPositionsIncrements() {
+      return positionsIncrements;
+    }
+
+    public int[] getStartOffsets() {
+      return startOffsets;
+    }
+
+    public int[] getEndOffsets() {
+      return endOffsets;
+    }
+
+    public BytesRef[] getPayloads() {
+      return payloads;
+    }
+
+    @Override
+    public void reset() throws IOException {
+      i = 0;
+      super.reset();
+    }
+
     @Override
     public final boolean incrementToken() throws IOException {
       if (i < terms.length) {
+        clearAttributes();
         termAtt.setLength(0).append(terms[i]);
         piAtt.setPositionIncrement(positionsIncrements[i]);
         oAtt.setOffset(startOffsets[i], endOffsets[i]);
@@ -381,8 +413,8 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
 
   // to test reuse
   private final ThreadLocal<TermsEnum> termsEnum = new ThreadLocal<>();
-  private final ThreadLocal<DocsEnum> docsEnum = new ThreadLocal<>();
-  private final ThreadLocal<DocsAndPositionsEnum> docsAndPositionsEnum = new ThreadLocal<>();
+  private final ThreadLocal<PostingsEnum> docsEnum = new ThreadLocal<>();
+  private final ThreadLocal<PostingsEnum> docsAndPositionsEnum = new ThreadLocal<>();
 
   protected void assertEquals(RandomTokenStream tk, FieldType ft, Terms terms) throws IOException {
     assertEquals(1, terms.getDocCount());
@@ -407,27 +439,27 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
       assertEquals(1, termsEnum.docFreq());
 
       final FixedBitSet bits = new FixedBitSet(1);
-      DocsEnum docsEnum = termsEnum.docs(bits, random().nextBoolean() ? null : this.docsEnum.get());
-      assertEquals(DocsEnum.NO_MORE_DOCS, docsEnum.nextDoc());
+      PostingsEnum postingsEnum = termsEnum.postings(bits, random().nextBoolean() ? null : this.docsEnum.get());
+      assertEquals(PostingsEnum.NO_MORE_DOCS, postingsEnum.nextDoc());
       bits.set(0);
 
-      docsEnum = termsEnum.docs(random().nextBoolean() ? bits : null, random().nextBoolean() ? null : docsEnum);
-      assertNotNull(docsEnum);
-      assertEquals(0, docsEnum.nextDoc());
-      assertEquals(0, docsEnum.docID());
-      assertEquals(tk.freqs.get(termsEnum.term().utf8ToString()), (Integer) docsEnum.freq());
-      assertEquals(DocsEnum.NO_MORE_DOCS, docsEnum.nextDoc());
-      this.docsEnum.set(docsEnum);
+      postingsEnum = termsEnum.postings(random().nextBoolean() ? bits : null, random().nextBoolean() ? null : postingsEnum);
+      assertNotNull(postingsEnum);
+      assertEquals(0, postingsEnum.nextDoc());
+      assertEquals(0, postingsEnum.docID());
+      assertEquals(tk.freqs.get(termsEnum.term().utf8ToString()), (Integer) postingsEnum.freq());
+      assertEquals(PostingsEnum.NO_MORE_DOCS, postingsEnum.nextDoc());
+      this.docsEnum.set(postingsEnum);
 
       bits.clear(0);
-      DocsAndPositionsEnum docsAndPositionsEnum = termsEnum.docsAndPositions(bits, random().nextBoolean() ? null : this.docsAndPositionsEnum.get());
+      PostingsEnum docsAndPositionsEnum = termsEnum.postings(bits, random().nextBoolean() ? null : this.docsEnum.get(), PostingsEnum.FLAG_POSITIONS);
       assertEquals(ft.storeTermVectorOffsets() || ft.storeTermVectorPositions(), docsAndPositionsEnum != null);
       if (docsAndPositionsEnum != null) {
-        assertEquals(DocsEnum.NO_MORE_DOCS, docsAndPositionsEnum.nextDoc());
+        assertEquals(PostingsEnum.NO_MORE_DOCS, docsAndPositionsEnum.nextDoc());
       }
       bits.set(0);
 
-      docsAndPositionsEnum = termsEnum.docsAndPositions(random().nextBoolean() ? bits : null, random().nextBoolean() ? null : docsAndPositionsEnum);
+      docsAndPositionsEnum = termsEnum.postings(random().nextBoolean() ? bits : null, random().nextBoolean() ? null : docsAndPositionsEnum, PostingsEnum.FLAG_POSITIONS);
       assertEquals(ft.storeTermVectorOffsets() || ft.storeTermVectorPositions(), docsAndPositionsEnum != null);
       if (terms.hasPositions() || terms.hasOffsets()) {
         assertEquals(0, docsAndPositionsEnum.nextDoc());
@@ -478,15 +510,13 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
           try {
             docsAndPositionsEnum.nextPosition();
             fail();
-          } catch (Exception e) {
-            // ok
-          } catch (AssertionError e) {
+          } catch (Exception | AssertionError e) {
             // ok
           }
         }
-        assertEquals(DocsEnum.NO_MORE_DOCS, docsAndPositionsEnum.nextDoc());
+        assertEquals(PostingsEnum.NO_MORE_DOCS, docsAndPositionsEnum.nextDoc());
       }
-      this.docsAndPositionsEnum.set(docsAndPositionsEnum);
+      this.docsEnum.set(docsAndPositionsEnum);
     }
     assertNull(termsEnum.next());
     for (int i = 0; i < 5; ++i) {

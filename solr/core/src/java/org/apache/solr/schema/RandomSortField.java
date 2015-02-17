@@ -53,10 +53,10 @@ import org.apache.solr.search.QParser;
  * 
  * Examples of queries:
  * <ul>
- * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=random_1234%20desc</li>
- * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=random_2345%20desc</li>
- * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=random_ABDC%20desc</li>
- * <li>http://localhost:8983/solr/select/?q=*:*&fl=name&sort=random_21%20desc</li>
+ * <li>http://localhost:8983/solr/select/?q=*:*&amp;fl=name&amp;sort=random_1234%20desc</li>
+ * <li>http://localhost:8983/solr/select/?q=*:*&amp;fl=name&amp;sort=random_2345%20desc</li>
+ * <li>http://localhost:8983/solr/select/?q=*:*&amp;fl=name&amp;sort=random_ABDC%20desc</li>
+ * <li>http://localhost:8983/solr/select/?q=*:*&amp;fl=name&amp;sort=random_21%20desc</li>
  * </ul>
  * Note that multiple calls to the same URL will return the same sorting order.
  * 
@@ -109,7 +109,7 @@ public class RandomSortField extends FieldType {
   private static FieldComparatorSource randomComparatorSource = new FieldComparatorSource() {
     @Override
     public FieldComparator<Integer> newComparator(final String fieldname, final int numHits, int sortPos, boolean reversed) {
-      return new FieldComparator<Integer>() {
+      return new SimpleFieldComparator<Integer>() {
         int seed;
         private final int[] values = new int[numHits];
         int bottomVal;
@@ -141,9 +141,8 @@ public class RandomSortField extends FieldType {
         }
 
         @Override
-        public FieldComparator setNextReader(LeafReaderContext context) {
+        protected void doSetNextReader(LeafReaderContext context) {
           seed = getSeed(fieldname, context);
-          return this;
         }
 
         @Override

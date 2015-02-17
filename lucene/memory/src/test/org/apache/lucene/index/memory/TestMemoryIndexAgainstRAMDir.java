@@ -34,9 +34,9 @@ import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.CompositeReader;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Fields;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -115,7 +115,7 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
    * runs random tests, up to ITERATIONS times.
    */
   public void testRandomQueries() throws Exception {
-    MemoryIndex index =  new MemoryIndex(random().nextBoolean(), random().nextInt(50) * 1024 * 1024);
+    MemoryIndex index = randomMemoryIndex();
     for (int i = 0; i < ITERATIONS; i++) {
       assertAgainstRAMDirectory(index);
     }
@@ -147,7 +147,8 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
     Directory ramdir = new RAMDirectory();
     Analyzer analyzer = randomAnalyzer();
     IndexWriter writer = new IndexWriter(ramdir,
-                                         new IndexWriterConfig(analyzer).setCodec(TestUtil.alwaysPostingsFormat(TestUtil.getDefaultPostingsFormat())));
+                                         new IndexWriterConfig(analyzer).setCodec(
+                                             TestUtil.alwaysPostingsFormat(TestUtil.getDefaultPostingsFormat())));
     Document doc = new Document();
     Field field1 = newTextField("foo", fooField.toString(), Field.Store.NO);
     Field field2 = newTextField("term", termField.toString(), Field.Store.NO);
@@ -197,9 +198,9 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
           while(iwTermsIter.next() != null) {
             assertNotNull(memTermsIter.next());
             assertEquals(iwTermsIter.term(), memTermsIter.term());
-            DocsAndPositionsEnum iwDocsAndPos = iwTermsIter.docsAndPositions(null, null);
-            DocsAndPositionsEnum memDocsAndPos = memTermsIter.docsAndPositions(null, null);
-            while(iwDocsAndPos.nextDoc() != DocsAndPositionsEnum.NO_MORE_DOCS) {
+            PostingsEnum iwDocsAndPos = iwTermsIter.postings(null, null, PostingsEnum.FLAG_ALL);
+            PostingsEnum memDocsAndPos = memTermsIter.postings(null, null, PostingsEnum.FLAG_ALL);
+            while(iwDocsAndPos.nextDoc() != PostingsEnum.NO_MORE_DOCS) {
               assertEquals(iwDocsAndPos.docID(), memDocsAndPos.nextDoc());
               assertEquals(iwDocsAndPos.freq(), memDocsAndPos.freq());
               for (int i = 0; i < iwDocsAndPos.freq(); i++) {
@@ -207,6 +208,10 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
                 if (offsets) {
                   assertEquals(iwDocsAndPos.startOffset(), memDocsAndPos.startOffset());
                   assertEquals(iwDocsAndPos.endOffset(), memDocsAndPos.endOffset());
+                }
+
+                if (iwTerms.hasPayloads()) {
+                  assertEquals(iwDocsAndPos.getPayload(), memDocsAndPos.getPayload());
                 }
               }
               
@@ -216,9 +221,9 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
         } else {
           while(iwTermsIter.next() != null) {
             assertEquals(iwTermsIter.term(), memTermsIter.term());
-            DocsEnum iwDocsAndPos = iwTermsIter.docs(null, null);
-            DocsEnum memDocsAndPos = memTermsIter.docs(null, null);
-            while(iwDocsAndPos.nextDoc() != DocsAndPositionsEnum.NO_MORE_DOCS) {
+            PostingsEnum iwDocsAndPos = iwTermsIter.postings(null, null);
+            PostingsEnum memDocsAndPos = memTermsIter.postings(null, null);
+            while(iwDocsAndPos.nextDoc() != PostingsEnum.NO_MORE_DOCS) {
               assertEquals(iwDocsAndPos.docID(), memDocsAndPos.nextDoc());
               assertEquals(iwDocsAndPos.freq(), memDocsAndPos.freq());
             }
@@ -310,10 +315,10 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
   
   public void testDocsEnumStart() throws Exception {
     Analyzer analyzer = new MockAnalyzer(random());
-    MemoryIndex memory = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
+    MemoryIndex memory = new MemoryIndex(random().nextBoolean(), false, random().nextInt(50) * 1024 * 1024);
     memory.addField("foo", "bar", analyzer);
     LeafReader reader = (LeafReader) memory.createSearcher().getIndexReader();
-    DocsEnum disi = TestUtil.docs(random(), reader, "foo", new BytesRef("bar"), null, null, DocsEnum.FLAG_NONE);
+    PostingsEnum disi = TestUtil.docs(random(), reader, "foo", new BytesRef("bar"), null, null, PostingsEnum.FLAG_NONE);
     int docid = disi.docID();
     assertEquals(-1, docid);
     assertTrue(disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -321,7 +326,7 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
     // now reuse and check again
     TermsEnum te = reader.terms("foo").iterator(null);
     assertTrue(te.seekExact(new BytesRef("bar")));
-    disi = te.docs(null, disi, DocsEnum.FLAG_NONE);
+    disi = te.postings(null, disi, PostingsEnum.FLAG_NONE);
     docid = disi.docID();
     assertEquals(-1, docid);
     assertTrue(disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -335,16 +340,20 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
       return new ByteBlockPool.DirectAllocator();
     }
   }
-  
+
+  private MemoryIndex randomMemoryIndex() {
+    return new MemoryIndex(random().nextBoolean(), random().nextBoolean(), random().nextInt(50) * 1024 * 1024);
+  }
+
   public void testDocsAndPositionsEnumStart() throws Exception {
     Analyzer analyzer = new MockAnalyzer(random());
     int numIters = atLeast(3);
-    MemoryIndex memory = new MemoryIndex(true,  random().nextInt(50) * 1024 * 1024);
+    MemoryIndex memory = new MemoryIndex(true, false, random().nextInt(50) * 1024 * 1024);
     for (int i = 0; i < numIters; i++) { // check reuse
       memory.addField("foo", "bar", analyzer);
       LeafReader reader = (LeafReader) memory.createSearcher().getIndexReader();
       assertEquals(1, reader.terms("foo").getSumTotalTermFreq());
-      DocsAndPositionsEnum disi = reader.termPositionsEnum(new Term("foo", "bar"));
+      PostingsEnum disi = reader.termDocsEnum(new Term("foo", "bar"), PostingsEnum.FLAG_ALL);
       int docid = disi.docID();
       assertEquals(-1, docid);
       assertTrue(disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -355,7 +364,7 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
       // now reuse and check again
       TermsEnum te = reader.terms("foo").iterator(null);
       assertTrue(te.seekExact(new BytesRef("bar")));
-      disi = te.docsAndPositions(null, disi);
+      disi = te.postings(null, disi);
       docid = disi.docID();
       assertEquals(-1, docid);
       assertTrue(disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -369,7 +378,7 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
     RegexpQuery regex = new RegexpQuery(new Term("field", "worl."));
     SpanQuery wrappedquery = new SpanMultiTermQueryWrapper<>(regex);
         
-    MemoryIndex mindex = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
+    MemoryIndex mindex = randomMemoryIndex();
     mindex.addField("field", new MockAnalyzer(random()).tokenStream("field", "hello there"));
 
     // This throws an NPE
@@ -381,7 +390,7 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
     RegexpQuery regex = new RegexpQuery(new Term("field", "worl."));
     SpanQuery wrappedquery = new SpanOrQuery(new SpanMultiTermQueryWrapper<>(regex));
 
-    MemoryIndex mindex = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
+    MemoryIndex mindex = randomMemoryIndex();
     mindex.addField("field", new MockAnalyzer(random()).tokenStream("field", "hello there"));
 
     // This passes though
@@ -389,7 +398,7 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
   }
   
   public void testSameFieldAddedMultipleTimes() throws IOException {
-    MemoryIndex mindex = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
+    MemoryIndex mindex = randomMemoryIndex();
     MockAnalyzer mockAnalyzer = new MockAnalyzer(random());
     mindex.addField("field", "the quick brown fox", mockAnalyzer);
     mindex.addField("field", "jumps over the", mockAnalyzer);
@@ -408,22 +417,22 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
     assertTrue("posGap" + mockAnalyzer.getPositionIncrementGap("field") , mindex.search(query) > 0.0001);
   }
   
-  public void testNonExistingsField() throws IOException {
-    MemoryIndex mindex = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
+  public void testNonExistentField() throws IOException {
+    MemoryIndex mindex = randomMemoryIndex();
     MockAnalyzer mockAnalyzer = new MockAnalyzer(random());
     mindex.addField("field", "the quick brown fox", mockAnalyzer);
     LeafReader reader = (LeafReader) mindex.createSearcher().getIndexReader();
     assertNull(reader.getNumericDocValues("not-in-index"));
     assertNull(reader.getNormValues("not-in-index"));
     assertNull(reader.termDocsEnum(new Term("not-in-index", "foo")));
-    assertNull(reader.termPositionsEnum(new Term("not-in-index", "foo")));
+    assertNull(reader.termDocsEnum(new Term("not-in-index", "foo"), PostingsEnum.FLAG_ALL));
     assertNull(reader.terms("not-in-index"));
   }
-  
+
   public void testDuellMemIndex() throws IOException {
     LineFileDocs lineFileDocs = new LineFileDocs(random());
     int numDocs = atLeast(10);
-    MemoryIndex memory = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
+    MemoryIndex memory = randomMemoryIndex();
     for (int i = 0; i < numDocs; i++) {
       Directory dir = newDirectory();
       MockAnalyzer mockAnalyzer = new MockAnalyzer(random());
@@ -432,7 +441,7 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
       Document nextDoc = lineFileDocs.nextDoc();
       Document doc = new Document();
       for (IndexableField field : nextDoc.getFields()) {
-        if (field.fieldType().indexOptions() != null) {
+        if (field.fieldType().indexOptions() != IndexOptions.NONE) {
           doc.add(field);
           if (random().nextInt(3) == 0) {
             doc.add(field);  // randomly add the same field twice
@@ -516,8 +525,8 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
       assertNotNull(memTermEnum.next());
       assertThat(termEnum.totalTermFreq(), equalTo(memTermEnum.totalTermFreq()));
 
-      DocsAndPositionsEnum docsPosEnum = termEnum.docsAndPositions(null, null, 0);
-      DocsAndPositionsEnum memDocsPosEnum = memTermEnum.docsAndPositions(null, null, 0);
+      PostingsEnum docsPosEnum = termEnum.postings(null, null, PostingsEnum.FLAG_POSITIONS);
+      PostingsEnum memDocsPosEnum = memTermEnum.postings(null, null, PostingsEnum.FLAG_POSITIONS);
       String currentTerm = termEnum.term().utf8ToString();
 
       assertThat("Token mismatch for field: " + field_name, currentTerm, equalTo(memTermEnum.term().utf8ToString()));
@@ -534,7 +543,7 @@ public class TestMemoryIndexAgainstRAMDir extends BaseTokenStreamTestCase {
         assertThat("Position test failed" + failDesc, memPos, equalTo(pos));
         assertThat("Start offset test failed" + failDesc, memDocsPosEnum.startOffset(), equalTo(docsPosEnum.startOffset()));
         assertThat("End offset test failed" + failDesc, memDocsPosEnum.endOffset(), equalTo(docsPosEnum.endOffset()));
-        assertThat("Missing payload test failed" + failDesc, docsPosEnum.getPayload(), equalTo(null));
+        assertThat("Missing payload test failed" + failDesc, docsPosEnum.getPayload(), equalTo(docsPosEnum.getPayload()));
       }
     }
     assertNull("Still some tokens not processed", memTermEnum.next());

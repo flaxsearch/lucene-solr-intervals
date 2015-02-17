@@ -69,6 +69,7 @@ public class TikaEntityProcessor extends EntityProcessorBase {
 
   @Override
   protected void firstInit(Context context) {
+    super.firstInit(context);
     try {
       String tikaConfigFile = context.getResolvedEntityAttribute("tikaConfig");
       if (tikaConfigFile == null) {
@@ -139,6 +140,10 @@ public class TikaEntityProcessor extends EntityProcessorBase {
         }
         tikaParser.parse(is, contentHandler, metadata , context);
     } catch (Exception e) {
+      if(SKIP.equals(onError)) {
+        throw new DataImportHandlerException(DataImportHandlerException.SKIP_ROW,
+            "Document skipped :" + e.getMessage());
+      }
       wrapAndThrow(SEVERE, e, "Unable to read content");
     }
     IOUtils.closeQuietly(is);

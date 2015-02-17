@@ -75,7 +75,7 @@ public class TestDocBoost extends LuceneTestCase {
            base = context.docBase;
          }
          @Override
-         public boolean acceptsDocsOutOfOrder() {
+         public boolean needsScores() {
            return true;
          }
        });

@@ -25,7 +25,7 @@ import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.PostingsWriterBase;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
@@ -61,7 +61,7 @@ import org.apache.lucene.util.fst.Util;
  * </ul>
  * <p>
  *
- * <a name="Termdictionary" id="Termdictionary"></a>
+ * <a name="Termdictionary"></a>
  * <h3>Term Dictionary</h3>
  * <p>
  *  The .tst contains a list of FSTs, one for each field.
@@ -80,7 +80,6 @@ import org.apache.lucene.util.fst.Util;
  *    Generic byte array: Used to store non-monotonic metadata.
  *   </li>
  *  </ul>
- * </p>
  *
  * File format:
  * <ul>
@@ -90,7 +89,7 @@ import org.apache.lucene.util.fst.Util;
  *  <li>TermFST --&gt; {@link FST FST&lt;TermData&gt;}</li>
  *  <li>TermData --&gt; Flag, BytesSize?, LongDelta<sup>LongsSize</sup>?, Byte<sup>BytesSize</sup>?, 
  *                      &lt; DocFreq[Same?], (TotalTermFreq-DocFreq) &gt; ? </li>
- *  <li>Header --&gt; {@link CodecUtil#writeSegmentHeader SegmentHeader}</li>
+ *  <li>Header --&gt; {@link CodecUtil#writeIndexHeader IndexHeader}</li>
  *  <li>DirOffset --&gt; {@link DataOutput#writeLong Uint64}</li>
  *  <li>DocFreq, LongsSize, BytesSize, NumFields,
  *        FieldNumber, DocCount --&gt; {@link DataOutput#writeVInt VInt}</li>
@@ -142,10 +141,10 @@ public class FSTTermsWriter extends FieldsConsumer {
 
     boolean success = false;
     try {
-      CodecUtil.writeSegmentHeader(out, TERMS_CODEC_NAME, TERMS_VERSION_CURRENT,
+      CodecUtil.writeIndexHeader(out, TERMS_CODEC_NAME, TERMS_VERSION_CURRENT,
                                         state.segmentInfo.getId(), state.segmentSuffix);   
 
-      this.postingsWriter.init(out); 
+      this.postingsWriter.init(out, state); 
       success = true;
     } finally {
       if (!success) {
@@ -204,7 +203,7 @@ public class FSTTermsWriter extends FieldsConsumer {
         for (FieldMetaData field : fields) {
           out.writeVInt(field.fieldInfo.number);
           out.writeVLong(field.numTerms);
-          if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+          if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
             out.writeVLong(field.sumTotalTermFreq);
           }
           out.writeVLong(field.sumDocFreq);

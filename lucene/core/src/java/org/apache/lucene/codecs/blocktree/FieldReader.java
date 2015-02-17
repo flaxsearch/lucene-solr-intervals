@@ -18,10 +18,11 @@ package org.apache.lucene.codecs.blocktree;
  */
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Collections;
 
 import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.ByteArrayDataInput;
@@ -34,8 +35,10 @@ import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.fst.ByteSequenceOutputs;
 import org.apache.lucene.util.fst.FST;
 
-/** BlockTree's implementation of {@link Terms}. */
-// public for CheckIndex:
+/**
+ * BlockTree's implementation of {@link Terms}.
+ * @lucene.internal
+ */
 public final class FieldReader extends Terms implements Accountable {
 
   private static final long BASE_RAM_BYTES_USED =
@@ -77,7 +80,7 @@ public final class FieldReader extends Terms implements Accountable {
     //   System.out.println("BTTR: seg=" + segment + " field=" + fieldInfo.name + " rootBlockCode=" + rootCode + " divisor=" + indexDivisor);
     // }
 
-    rootBlockFP = (new ByteArrayDataInput(rootCode.bytes, rootCode.offset, rootCode.length)).readVLong() >>> BlockTreeTermsWriter.OUTPUT_FLAGS_NUM_BITS;
+    rootBlockFP = (new ByteArrayDataInput(rootCode.bytes, rootCode.offset, rootCode.length)).readVLong() >>> BlockTreeTermsReader.OUTPUT_FLAGS_NUM_BITS;
 
     if (indexIn != null) {
       final IndexInput clone = indexIn.clone();
@@ -120,8 +123,8 @@ public final class FieldReader extends Terms implements Accountable {
   }
 
   /** For debugging -- used by CheckIndex too*/
-  // TODO: maybe push this into Terms?
-  public Stats computeStats() throws IOException {
+  @Override
+  public Stats getStats() throws IOException {
     return new SegmentTermsEnum(this).computeBlockStats();
   }
 
@@ -184,7 +187,7 @@ public final class FieldReader extends Terms implements Accountable {
   }
 
   @Override
-  public Iterable<? extends Accountable> getChildResources() {
+  public Collection<Accountable> getChildResources() {
     if (index == null) {
       return Collections.emptyList();
     } else {

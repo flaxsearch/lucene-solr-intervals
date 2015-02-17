@@ -18,21 +18,21 @@ package org.apache.lucene.search.payloads;
  */
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.DocsAndPositionsEnum;
+import org.apache.lucene.search.ComplexExplanation;
+import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.search.Explanation;
-import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.search.similarities.Similarity.SimScorer;
 import org.apache.lucene.search.spans.SpanQuery;
-import org.apache.lucene.search.spans.TermSpans;
+import org.apache.lucene.search.spans.SpanScorer;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.search.spans.SpanWeight;
-import org.apache.lucene.search.spans.SpanScorer;
+import org.apache.lucene.search.spans.TermSpans;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 
@@ -43,11 +43,11 @@ import java.io.IOException;
  * {@link org.apache.lucene.search.spans.SpanTermQuery} except that it factors
  * in the value of the payload located at each of the positions where the
  * {@link org.apache.lucene.index.Term} occurs.
- * <p/>
+ * <p>
  * NOTE: In order to take advantage of this with the default scoring implementation
  * ({@link DefaultSimilarity}), you must override {@link DefaultSimilarity#scorePayload(int, int, int, BytesRef)},
  * which returns 1 by default.
- * <p/>
+ * <p>
  * Payload scores are aggregated using a pluggable {@link PayloadFunction}.
  * @see org.apache.lucene.search.similarities.Similarity.SimScorer#computePayloadFactor(int, int, int, BytesRef)
  **/
@@ -67,7 +67,7 @@ public class PayloadTermQuery extends SpanTermQuery {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
     return new PayloadTermWeight(this, searcher);
   }
 
@@ -79,7 +79,7 @@ public class PayloadTermQuery extends SpanTermQuery {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, PostingFeatures flags, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
       return new PayloadTermSpanScorer((TermSpans) query.getSpans(context, acceptDocs, termContexts),
           this, similarity.simScorer(stats, context));
     }
@@ -120,7 +120,7 @@ public class PayloadTermQuery extends SpanTermQuery {
 
       protected void processPayload(Similarity similarity) throws IOException {
         if (termSpans.isPayloadAvailable()) {
-          final DocsAndPositionsEnum postings = termSpans.getPostings();
+          final PostingsEnum postings = termSpans.getPostings();
           payload = postings.getPayload();
           if (payload != null) {
             payloadScore = function.currentScore(doc, term.field(),
@@ -151,7 +151,7 @@ public class PayloadTermQuery extends SpanTermQuery {
 
       /**
        * Returns the SpanScorer score only.
-       * <p/>
+       * <p>
        * Should not be overridden without good cause!
        * 
        * @return the score for just the Span part w/o the payload
@@ -176,7 +176,7 @@ public class PayloadTermQuery extends SpanTermQuery {
     
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      PayloadTermSpanScorer scorer = (PayloadTermSpanScorer) scorer(context, PostingFeatures.POSITIONS_AND_PAYLOADS, context.reader().getLiveDocs());
+      PayloadTermSpanScorer scorer = (PayloadTermSpanScorer) scorer(context, context.reader().getLiveDocs());
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {

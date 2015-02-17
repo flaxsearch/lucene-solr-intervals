@@ -21,7 +21,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
 
-import org.apache.lucene.index.DocsAndPositionsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
@@ -36,7 +36,6 @@ import org.apache.lucene.util.BytesRefBuilder;
 
 /**
  * Codec API for writing term vectors:
- * <p>
  * <ol>
  *   <li>For every document, {@link #startDocument(int)} is called,
  *       informing the Codec how many fields will be written.
@@ -93,10 +92,6 @@ public abstract class TermVectorsWriter implements Closeable {
 
   /** Adds a term position and offsets */
   public abstract void addPosition(int position, int startOffset, int endOffset, BytesRef payload) throws IOException;
-  
-  /** Aborts writing entirely, implementation should remove
-   *  any partially-written files, etc. */
-  public abstract void abort();
 
   /** Called before {@link #close()}, passing in the number
    *  of documents that were written. Note that this is 
@@ -120,7 +115,7 @@ public abstract class TermVectorsWriter implements Closeable {
    * @lucene.internal
    */
   // TODO: we should probably nuke this and make a more efficient 4.x format
-  // PreFlex-RW could then be slow and buffer (its only used in tests...)
+  // PreFlex-RW could then be slow and buffer (it's only used in tests...)
   public void addProx(int numProx, DataInput positions, DataInput offsets) throws IOException {
     int position = 0;
     int lastOffset = 0;
@@ -200,7 +195,6 @@ public abstract class TermVectorsWriter implements Closeable {
         }
         addAllDocVectors(vectors, mergeState);
         docCount++;
-        mergeState.checkAbort.work(300);
       }
     }
     finish(mergeState.mergeFieldInfos, docCount);
@@ -230,7 +224,7 @@ public abstract class TermVectorsWriter implements Closeable {
     String lastFieldName = null;
     
     TermsEnum termsEnum = null;
-    DocsAndPositionsEnum docsAndPositionsEnum = null;
+    PostingsEnum docsAndPositionsEnum = null;
     
     int fieldCount = 0;
     for(String fieldName : vectors) {
@@ -273,7 +267,7 @@ public abstract class TermVectorsWriter implements Closeable {
         startTerm(termsEnum.term(), freq);
 
         if (hasPositions || hasOffsets) {
-          docsAndPositionsEnum = termsEnum.docsAndPositions(null, docsAndPositionsEnum);
+          docsAndPositionsEnum = termsEnum.postings(null, docsAndPositionsEnum, PostingsEnum.FLAG_OFFSETS | PostingsEnum.FLAG_PAYLOADS);
           assert docsAndPositionsEnum != null;
           
           final int docID = docsAndPositionsEnum.nextDoc();
@@ -287,7 +281,7 @@ public abstract class TermVectorsWriter implements Closeable {
             
             final BytesRef payload = docsAndPositionsEnum.getPayload();
 
-            assert !hasPositions || pos >= 0;
+            assert !hasPositions || pos >= 0 ;
             addPosition(pos, startOffset, endOffset, payload);
           }
         }

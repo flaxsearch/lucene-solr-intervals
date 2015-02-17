@@ -43,7 +43,7 @@ final class FreqProxTermsWriter extends TermsHash {
       Collections.sort(deleteTerms);
       String lastField = null;
       TermsEnum termsEnum = null;
-      DocsEnum docsEnum = null;
+      PostingsEnum postingsEnum = null;
       for(Term deleteTerm : deleteTerms) {
         if (deleteTerm.field().equals(lastField) == false) {
           lastField = deleteTerm.field();
@@ -56,11 +56,11 @@ final class FreqProxTermsWriter extends TermsHash {
         }
 
         if (termsEnum != null && termsEnum.seekExact(deleteTerm.bytes())) {
-          docsEnum = termsEnum.docs(null, docsEnum, 0);
+          postingsEnum = termsEnum.postings(null, postingsEnum, 0);
           int delDocLimit = segDeletes.get(deleteTerm);
-          assert delDocLimit < DocsEnum.NO_MORE_DOCS;
+          assert delDocLimit < PostingsEnum.NO_MORE_DOCS;
           while (true) {
-            int doc = docsEnum.nextDoc();
+            int doc = postingsEnum.nextDoc();
             if (doc < delDocLimit) {
               if (state.liveDocs == null) {
                 state.liveDocs = state.segmentInfo.getCodec().liveDocsFormat().newLiveDocs(state.segmentInfo.getDocCount());
@@ -89,7 +89,7 @@ final class FreqProxTermsWriter extends TermsHash {
       final FreqProxTermsWriterPerField perField = (FreqProxTermsWriterPerField) f;
       if (perField.bytesHash.size() > 0) {
         perField.sortPostings();
-        assert perField.fieldInfo.isIndexed();
+        assert perField.fieldInfo.getIndexOptions() != IndexOptions.NONE;
         allFields.add(perField);
       }
     }

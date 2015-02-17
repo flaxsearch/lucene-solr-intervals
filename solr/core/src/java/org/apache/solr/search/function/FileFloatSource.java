@@ -132,9 +132,9 @@ public class FileFloatSource extends ValueSource {
    * @param reader the IndexReader whose cache needs refreshing
    */
   public void refreshCache(IndexReader reader) {
-    log.info("Refreshing FlaxFileFloatSource cache for field {}", this.field.getName());
+    log.info("Refreshing FileFloatSource cache for field {}", this.field.getName());
     floatCache.refresh(reader, new Entry(this));
-    log.info("FlaxFileFloatSource cache for field {} reloaded", this.field.getName());
+    log.info("FileFloatSource cache for field {} reloaded", this.field.getName());
   }
 
   private final float[] getCachedFloats(IndexReader reader) {
@@ -271,7 +271,7 @@ public class FileFloatSource extends ValueSource {
 
     try {
       TermsEnum termsEnum = MultiFields.getTerms(reader, idName).iterator(null);
-      DocsEnum docsEnum = null;
+      PostingsEnum postingsEnum = null;
 
       // removing deleted docs shouldn't matter
       // final Bits liveDocs = MultiFields.getLiveDocs(reader);
@@ -305,9 +305,9 @@ public class FileFloatSource extends ValueSource {
           continue;
         }
 
-        docsEnum = termsEnum.docs(null, docsEnum, DocsEnum.FLAG_NONE);
+        postingsEnum = termsEnum.postings(null, postingsEnum, PostingsEnum.FLAG_NONE);
         int doc;
-        while ((doc = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+        while ((doc = postingsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
           vals[doc] = fval;
         }
       }

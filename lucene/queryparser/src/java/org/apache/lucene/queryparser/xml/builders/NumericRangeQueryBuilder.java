@@ -30,7 +30,7 @@ import org.w3c.dom.Element;
  * attributes and the defaults if optional attributes are omitted. For more
  * detail on what each of the attributes actually do, consult the documentation
  * for {@link NumericRangeQuery}:
- * <table>
+ * <table summary="supported attributes">
  * <tr>
  * <th>Attribute name</th>
  * <th>Values</th>
@@ -80,7 +80,7 @@ import org.w3c.dom.Element;
  * <td>4</td>
  * </tr>
  * </table>
- * <p/>
+ * <p>
  * A {@link ParserException} will be thrown if an error occurs parsing the
  * supplied <tt>lowerTerm</tt> or <tt>upperTerm</tt> into the numeric type
  * specified by <tt>type</tt>.

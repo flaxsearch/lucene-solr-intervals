@@ -53,7 +53,7 @@ import org.apache.lucene.index.DocumentsWriterPerThreadPool.ThreadState;
  * <p>
  * If {@link IndexWriterConfig#setRAMBufferSizeMB(double)} is enabled, the
  * largest ram consuming {@link DocumentsWriterPerThread} will be marked as
- * pending iff the global active RAM consumption is >= the configured max RAM
+ * pending iff the global active RAM consumption is {@code >=} the configured max RAM
  * buffer.
  */
 class FlushByRamOrCountsPolicy extends FlushPolicy {
@@ -72,7 +72,7 @@ class FlushByRamOrCountsPolicy extends FlushPolicy {
         control.getDeleteBytesUsed() > (1024*1024*indexWriterConfig.getRAMBufferSizeMB()))) {
       control.setApplyAllDeletes();
      if (infoStream.isEnabled("FP")) {
-       infoStream.message("FP", "force apply deletes bytesUsed=" + control.getDeleteBytesUsed() + " vs ramBuffer=" + (1024*1024*indexWriterConfig.getRAMBufferSizeMB()));
+       infoStream.message("FP", "force apply deletes bytesUsed=" + control.getDeleteBytesUsed() + " vs ramBufferMB=" + indexWriterConfig.getRAMBufferSizeMB());
      }
    }
   }

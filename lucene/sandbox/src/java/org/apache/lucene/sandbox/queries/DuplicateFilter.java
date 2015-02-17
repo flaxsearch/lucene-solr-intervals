@@ -18,7 +18,7 @@ package org.apache.lucene.sandbox.queries;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
@@ -27,6 +27,7 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Filter;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
@@ -58,7 +59,7 @@ public class DuplicateFilter extends Filter {
   /**
    * "Full" processing mode starts by setting all bits to false and only setting bits
    * for documents that contain the given field and are identified as none-duplicates.
-   * <p/>
+   * <p>
    * "Fast" processing sets all bits to true then unsets all duplicate docs found for the
    * given field. This approach avoids the need to read DocsEnum for terms that are seen
    * to have a document frequency of exactly "1" (i.e. no duplicates). While a potentially
@@ -93,88 +94,84 @@ public class DuplicateFilter extends Filter {
     }
   }
 
-  private SparseFixedBitSet correctBits(LeafReader reader, Bits acceptDocs) throws IOException {
+  private DocIdSet correctBits(LeafReader reader, Bits acceptDocs) throws IOException {
     SparseFixedBitSet bits = new SparseFixedBitSet(reader.maxDoc()); //assume all are INvalid
     Terms terms = reader.fields().terms(fieldName);
 
-    if (terms == null) {
-      return bits;
+    if (terms != null) {
+      TermsEnum termsEnum = terms.iterator(null);
+      PostingsEnum docs = null;
+      while (true) {
+        BytesRef currTerm = termsEnum.next();
+        if (currTerm == null) {
+          break;
+        } else {
+          docs = termsEnum.postings(acceptDocs, docs, PostingsEnum.FLAG_NONE);
+          int doc = docs.nextDoc();
+          if (doc != DocIdSetIterator.NO_MORE_DOCS) {
+            if (keepMode == KeepMode.KM_USE_FIRST_OCCURRENCE) {
+              bits.set(doc);
+            } else {
+              int lastDoc = doc;
+              while (true) {
+                lastDoc = doc;
+                doc = docs.nextDoc();
+                if (doc == DocIdSetIterator.NO_MORE_DOCS) {
+                  break;
+                }
+              }
+              bits.set(lastDoc);
+            }
+          }
+        }
+      }
     }
+    return new BitDocIdSet(bits, bits.approximateCardinality());
+  }
 
-    TermsEnum termsEnum = terms.iterator(null);
-    DocsEnum docs = null;
-    while (true) {
-      BytesRef currTerm = termsEnum.next();
-      if (currTerm == null) {
-        break;
-      } else {
-        docs = termsEnum.docs(acceptDocs, docs, DocsEnum.FLAG_NONE);
-        int doc = docs.nextDoc();
-        if (doc != DocIdSetIterator.NO_MORE_DOCS) {
-          if (keepMode == KeepMode.KM_USE_FIRST_OCCURRENCE) {
-            bits.set(doc);
-          } else {
-            int lastDoc = doc;
+  private DocIdSet fastBits(LeafReader reader, Bits acceptDocs) throws IOException {
+    FixedBitSet bits = new FixedBitSet(reader.maxDoc());
+    bits.set(0, reader.maxDoc()); //assume all are valid
+    Terms terms = reader.fields().terms(fieldName);
+
+    if (terms != null) {
+      TermsEnum termsEnum = terms.iterator(null);
+      PostingsEnum docs = null;
+      while (true) {
+        BytesRef currTerm = termsEnum.next();
+        if (currTerm == null) {
+          break;
+        } else {
+          if (termsEnum.docFreq() > 1) {
+            // unset potential duplicates
+            docs = termsEnum.postings(acceptDocs, docs, PostingsEnum.FLAG_NONE);
+            int doc = docs.nextDoc();
+            if (doc != DocIdSetIterator.NO_MORE_DOCS) {
+              if (keepMode == KeepMode.KM_USE_FIRST_OCCURRENCE) {
+                doc = docs.nextDoc();
+              }
+            }
+  
+            int lastDoc = -1;
             while (true) {
               lastDoc = doc;
+              bits.clear(lastDoc);
               doc = docs.nextDoc();
               if (doc == DocIdSetIterator.NO_MORE_DOCS) {
                 break;
               }
             }
-            bits.set(lastDoc);
-          }
-        }
-      }
-    }
-    return bits;
-  }
-
-  private FixedBitSet fastBits(LeafReader reader, Bits acceptDocs) throws IOException {
-    FixedBitSet bits = new FixedBitSet(reader.maxDoc());
-    bits.set(0, reader.maxDoc()); //assume all are valid
-    Terms terms = reader.fields().terms(fieldName);
-
-    if (terms == null) {
-      return bits;
-    }
-
-    TermsEnum termsEnum = terms.iterator(null);
-    DocsEnum docs = null;
-    while (true) {
-      BytesRef currTerm = termsEnum.next();
-      if (currTerm == null) {
-        break;
-      } else {
-        if (termsEnum.docFreq() > 1) {
-          // unset potential duplicates
-          docs = termsEnum.docs(acceptDocs, docs, DocsEnum.FLAG_NONE);
-          int doc = docs.nextDoc();
-          if (doc != DocIdSetIterator.NO_MORE_DOCS) {
-            if (keepMode == KeepMode.KM_USE_FIRST_OCCURRENCE) {
-              doc = docs.nextDoc();
+  
+            if (keepMode == KeepMode.KM_USE_LAST_OCCURRENCE) {
+              // restore the last bit
+              bits.set(lastDoc);
             }
-          }
-
-          int lastDoc = -1;
-          while (true) {
-            lastDoc = doc;
-            bits.clear(lastDoc);
-            doc = docs.nextDoc();
-            if (doc == DocIdSetIterator.NO_MORE_DOCS) {
-              break;
-            }
-          }
-
-          if (keepMode == KeepMode.KM_USE_LAST_OCCURRENCE) {
-            // restore the last bit
-            bits.set(lastDoc);
           }
         }
       }
     }
 
-    return bits;
+    return new BitDocIdSet(bits);
   }
 
   public String getFieldName() {
@@ -206,6 +203,15 @@ public class DuplicateFilter extends Filter {
     return keepMode == other.keepMode &&
         processingMode == other.processingMode &&
         fieldName != null && fieldName.equals(other.fieldName);
+  }
+
+  @Override
+  public String toString(String field) {
+    return "DuplicateFilter(" +
+              "fieldName=" + fieldName +"," +
+              "keepMode=" + (keepMode == KeepMode.KM_USE_FIRST_OCCURRENCE ? "first" : "last") + "," +
+              "processingMode=" + (processingMode == ProcessingMode.PM_FAST_INVALIDATION ? "fast" : "full") +
+           ")";
   }
 
   @Override

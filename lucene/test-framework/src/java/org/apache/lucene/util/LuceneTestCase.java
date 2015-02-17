@@ -34,6 +34,7 @@ import java.lang.reflect.Method;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -55,72 +56,61 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 
+import com.carrotsearch.randomizedtesting.JUnit4MethodProvider;
+import com.carrotsearch.randomizedtesting.LifecycleScope;
+import com.carrotsearch.randomizedtesting.MixWithSuiteName;
+import com.carrotsearch.randomizedtesting.RandomizedContext;
+import com.carrotsearch.randomizedtesting.RandomizedRunner;
+import com.carrotsearch.randomizedtesting.RandomizedTest;
+import com.carrotsearch.randomizedtesting.annotations.Listeners;
+import com.carrotsearch.randomizedtesting.annotations.SeedDecorators;
+import com.carrotsearch.randomizedtesting.annotations.TestGroup;
+import com.carrotsearch.randomizedtesting.annotations.TestMethodProviders;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakAction;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakAction.Action;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakFilters;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakGroup;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakGroup.Group;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakLingering;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope.Scope;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakZombies;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakZombies.Consequence;
+import com.carrotsearch.randomizedtesting.annotations.TimeoutSuite;
+import com.carrotsearch.randomizedtesting.generators.RandomPicks;
+import com.carrotsearch.randomizedtesting.rules.NoClassHooksShadowingRule;
+import com.carrotsearch.randomizedtesting.rules.NoInstanceHooksOverridesRule;
+import com.carrotsearch.randomizedtesting.rules.StaticFieldsInvariantRule;
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesInvariantRule;
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.AlcoholicMergePolicy;
-import org.apache.lucene.index.AssertingDirectoryReader;
-import org.apache.lucene.index.AssertingLeafReader;
-import org.apache.lucene.index.BinaryDocValues;
-import org.apache.lucene.index.CompositeReader;
-import org.apache.lucene.index.ConcurrentMergeScheduler;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.FieldFilterLeafReader;
-import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldInfos;
-import org.apache.lucene.index.Fields;
+import org.apache.lucene.index.*;
 import org.apache.lucene.index.IndexReader.ReaderClosedListener;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.index.LeafReader;
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.LiveIndexWriterConfig;
-import org.apache.lucene.index.LogByteSizeMergePolicy;
-import org.apache.lucene.index.LogDocMergePolicy;
-import org.apache.lucene.index.LogMergePolicy;
-import org.apache.lucene.index.MergePolicy;
-import org.apache.lucene.index.MergeScheduler;
-import org.apache.lucene.index.MockRandomMergePolicy;
-import org.apache.lucene.index.MultiDocValues;
-import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.index.NumericDocValues;
-import org.apache.lucene.index.ParallelCompositeReader;
-import org.apache.lucene.index.ParallelLeafReader;
-import org.apache.lucene.index.SegmentReader;
-import org.apache.lucene.index.SerialMergeScheduler;
-import org.apache.lucene.index.SimpleMergedSegmentWarmer;
-import org.apache.lucene.index.SlowCompositeReaderWrapper;
-import org.apache.lucene.index.SortedDocValues;
-import org.apache.lucene.index.SortedNumericDocValues;
-import org.apache.lucene.index.SortedSetDocValues;
-import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum.SeekStatus;
-import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.search.AssertingIndexSearcher;
+import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.Filter;
+import org.apache.lucene.search.FilterCachingPolicy;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.QueryUtils.FCInvisibleMultiReader;
 import org.apache.lucene.store.BaseDirectoryWrapper;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.FSLockFactory;
 import org.apache.lucene.store.FlushInfo;
-import org.apache.lucene.store.IOContext.Context;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.LockFactory;
 import org.apache.lucene.store.MergeInfo;
-import org.apache.lucene.store.MockDirectoryWrapper.Throttling;
 import org.apache.lucene.store.MockDirectoryWrapper;
+import org.apache.lucene.store.MockDirectoryWrapper.Throttling;
 import org.apache.lucene.store.NRTCachingDirectory;
-import org.apache.lucene.store.RateLimitedDirectoryWrapper;
 import org.apache.lucene.util.automaton.AutomatonTestUtil;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.automaton.RegExp;
@@ -135,32 +125,6 @@ import org.junit.Test;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
 import org.junit.runner.RunWith;
-import com.carrotsearch.randomizedtesting.JUnit4MethodProvider;
-import com.carrotsearch.randomizedtesting.LifecycleScope;
-import com.carrotsearch.randomizedtesting.MixWithSuiteName;
-import com.carrotsearch.randomizedtesting.RandomizedContext;
-import com.carrotsearch.randomizedtesting.RandomizedRunner;
-import com.carrotsearch.randomizedtesting.RandomizedTest;
-import com.carrotsearch.randomizedtesting.annotations.Listeners;
-import com.carrotsearch.randomizedtesting.annotations.SeedDecorators;
-import com.carrotsearch.randomizedtesting.annotations.TestGroup;
-import com.carrotsearch.randomizedtesting.annotations.TestMethodProviders;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakAction.Action;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakAction;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakFilters;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakGroup.Group;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakGroup;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakLingering;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope.Scope;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakZombies.Consequence;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakZombies;
-import com.carrotsearch.randomizedtesting.annotations.TimeoutSuite;
-import com.carrotsearch.randomizedtesting.generators.RandomPicks;
-import com.carrotsearch.randomizedtesting.rules.NoClassHooksShadowingRule;
-import com.carrotsearch.randomizedtesting.rules.NoInstanceHooksOverridesRule;
-import com.carrotsearch.randomizedtesting.rules.StaticFieldsInvariantRule;
-import com.carrotsearch.randomizedtesting.rules.SystemPropertiesInvariantRule;
 
 import static com.carrotsearch.randomizedtesting.RandomizedTest.systemPropertyAsBoolean;
 import static com.carrotsearch.randomizedtesting.RandomizedTest.systemPropertyAsInt;
@@ -386,6 +350,8 @@ public abstract class LuceneTestCase extends Assert {
    */
   public static final int RANDOM_MULTIPLIER = systemPropertyAsInt("tests.multiplier", 1);
 
+  public static final boolean TEST_ASSERTS_ENABLED = systemPropertyAsBoolean("tests.asserts", true);
+
   /** TODO: javadoc? */
   public static final String DEFAULT_LINE_DOCS_FILE = "europarl.lines.txt.gz";
 
@@ -458,6 +424,19 @@ public abstract class LuceneTestCase extends Assert {
   static {
     CORE_DIRECTORIES = new ArrayList<>(FS_DIRECTORIES);
     CORE_DIRECTORIES.add("RAMDirectory");
+  }
+
+  /** A {@link org.apache.lucene.search.FilterCachingPolicy} that randomly caches. */
+  public static final FilterCachingPolicy MAYBE_CACHE_POLICY = new FilterCachingPolicy() {
+
+    @Override
+    public void onUse(Filter filter) {}
+
+    @Override
+    public boolean shouldCache(Filter filter, LeafReaderContext context, DocIdSet set) throws IOException {
+      return random().nextBoolean();
+    }
+
   };
   
   // -----------------------------------------------------------------
@@ -666,10 +645,8 @@ public abstract class LuceneTestCase extends Assert {
     m.setAccessible(true);
     try {
       m.invoke(IndexWriter.class, limit);
-    } catch (IllegalAccessException iae) {
+    } catch (IllegalAccessException | InvocationTargetException iae) {
       throw new RuntimeException(iae);
-    } catch (InvocationTargetException ite) {
-      throw new RuntimeException(ite);
     }
   }
 
@@ -857,6 +834,11 @@ public abstract class LuceneTestCase extends Assert {
   }
 
   /** create a new index writer config with random defaults */
+  public static IndexWriterConfig newIndexWriterConfig() {
+    return newIndexWriterConfig(new MockAnalyzer(random()));
+  }
+
+  /** create a new index writer config with random defaults */
   public static IndexWriterConfig newIndexWriterConfig(Analyzer a) {
     return newIndexWriterConfig(random(), a);
   }
@@ -878,12 +860,37 @@ public abstract class LuceneTestCase extends Assert {
     if (r.nextBoolean()) {
       c.setMergeScheduler(new SerialMergeScheduler());
     } else if (rarely(r)) {
+      ConcurrentMergeScheduler cms;
+      if (r.nextBoolean()) {
+        cms = new ConcurrentMergeScheduler();
+      } else {
+        cms = new ConcurrentMergeScheduler() {
+            @Override
+            protected synchronized boolean maybeStall(IndexWriter writer) {
+              return true;
+            }
+          };
+      }
       int maxThreadCount = TestUtil.nextInt(r, 1, 4);
       int maxMergeCount = TestUtil.nextInt(r, maxThreadCount, maxThreadCount + 4);
-      ConcurrentMergeScheduler cms = new ConcurrentMergeScheduler();
       cms.setMaxMergesAndThreads(maxMergeCount, maxThreadCount);
+      if (random().nextBoolean()) {
+        cms.disableAutoIOThrottle();
+      }
+      cms.setForceMergeMBPerSec(10 + 10*random().nextDouble());
+      c.setMergeScheduler(cms);
+    } else {
+      // Always use consistent settings, else CMS's dynamic (SSD or not)
+      // defaults can change, hurting reproducibility:
+      ConcurrentMergeScheduler cms = new ConcurrentMergeScheduler();
+
+      // Only 1 thread can run at once (should maybe help reproducibility),
+      // with up to 3 pending merges before segment-producing threads are
+      // stalled:
+      cms.setMaxMergesAndThreads(3, 1);
       c.setMergeScheduler(cms);
     }
+
     if (r.nextBoolean()) {
       if (rarely(r)) {
         // crazy value
@@ -1203,6 +1210,14 @@ public abstract class LuceneTestCase extends Assert {
     return wrapDirectory(r, newDirectoryImpl(r, TEST_DIRECTORY), rarely(r));
   }
 
+  /**
+   * Returns a new Directory instance, using the specified random.
+   * See {@link #newDirectory()} for more information.
+   */
+  public static BaseDirectoryWrapper newDirectory(Random r, LockFactory lf) {
+    return wrapDirectory(r, newDirectoryImpl(r, TEST_DIRECTORY, lf), rarely(r));
+  }
+
   public static MockDirectoryWrapper newMockDirectory() {
     return newMockDirectory(random());
   }
@@ -1211,8 +1226,16 @@ public abstract class LuceneTestCase extends Assert {
     return (MockDirectoryWrapper) wrapDirectory(r, newDirectoryImpl(r, TEST_DIRECTORY), false);
   }
 
+  public static MockDirectoryWrapper newMockDirectory(Random r, LockFactory lf) {
+    return (MockDirectoryWrapper) wrapDirectory(r, newDirectoryImpl(r, TEST_DIRECTORY, lf), false);
+  }
+
   public static MockDirectoryWrapper newMockFSDirectory(Path f) {
-    return (MockDirectoryWrapper) newFSDirectory(f, null, false);
+    return (MockDirectoryWrapper) newFSDirectory(f, FSLockFactory.getDefault(), false);
+  }
+
+  public static MockDirectoryWrapper newMockFSDirectory(Path f, LockFactory lf) {
+    return (MockDirectoryWrapper) newFSDirectory(f, lf, false);
   }
 
   /**
@@ -1226,7 +1249,7 @@ public abstract class LuceneTestCase extends Assert {
 
   /** Returns a new FSDirectory instance over the given file, which must be a folder. */
   public static BaseDirectoryWrapper newFSDirectory(Path f) {
-    return newFSDirectory(f, null);
+    return newFSDirectory(f, FSLockFactory.getDefault());
   }
 
   /** Returns a new FSDirectory instance over the given file, which must be a folder. */
@@ -1250,11 +1273,8 @@ public abstract class LuceneTestCase extends Assert {
         clazz = CommandLineUtil.loadFSDirectoryClass(fsdirClass);
       }
 
-      Directory fsdir = newFSDirectoryImpl(clazz, f);
+      Directory fsdir = newFSDirectoryImpl(clazz, f, lf);
       BaseDirectoryWrapper wrapped = wrapDirectory(random(), fsdir, bare);
-      if (lf != null) {
-        wrapped.setLockFactory(lf);
-      }
       return wrapped;
     } catch (Exception e) {
       Rethrow.rethrow(e);
@@ -1270,7 +1290,7 @@ public abstract class LuceneTestCase extends Assert {
   public static BaseDirectoryWrapper newDirectory(Random r, Directory d) throws IOException {
     Directory impl = newDirectoryImpl(r, TEST_DIRECTORY);
     for (String file : d.listAll()) {
-     d.copy(impl, file, file, newIOContext(r));
+     impl.copyFrom(d, file, file, newIOContext(r));
     }
     return wrapDirectory(r, impl, rarely(r));
   }
@@ -1278,27 +1298,6 @@ public abstract class LuceneTestCase extends Assert {
   private static BaseDirectoryWrapper wrapDirectory(Random random, Directory directory, boolean bare) {
     if (rarely(random) && !bare) {
       directory = new NRTCachingDirectory(directory, random.nextDouble(), random.nextDouble());
-    }
-    
-    if (rarely(random) && !bare) { 
-      final double maxMBPerSec = 10 + 5*(random.nextDouble()-0.5);
-      if (LuceneTestCase.VERBOSE) {
-        System.out.println("LuceneTestCase: will rate limit output IndexOutput to " + maxMBPerSec + " MB/sec");
-      }
-      final RateLimitedDirectoryWrapper rateLimitedDirectoryWrapper = new RateLimitedDirectoryWrapper(directory);
-      switch (random.nextInt(10)) {
-        case 3: // sometimes rate limit on flush
-          rateLimitedDirectoryWrapper.setMaxWriteMBPerSec(maxMBPerSec, Context.FLUSH);
-          break;
-        case 2: // sometimes rate limit flush & merge
-          rateLimitedDirectoryWrapper.setMaxWriteMBPerSec(maxMBPerSec, Context.FLUSH);
-          rateLimitedDirectoryWrapper.setMaxWriteMBPerSec(maxMBPerSec, Context.MERGE);
-          break;
-        default:
-          rateLimitedDirectoryWrapper.setMaxWriteMBPerSec(maxMBPerSec, Context.MERGE);
-      }
-      directory =  rateLimitedDirectoryWrapper;
-      
     }
 
     if (bare) {
@@ -1337,7 +1336,7 @@ public abstract class LuceneTestCase extends Assert {
   /** Returns a FieldType derived from newType but whose
    *  term vector options match the old type */
   private static FieldType mergeTermVectorOptions(FieldType newType, FieldType oldType) {
-    if (newType.indexOptions() != null && oldType.storeTermVectors() == true && newType.storeTermVectors() == false) {
+    if (newType.indexOptions() != IndexOptions.NONE && oldType.storeTermVectors() == true && newType.storeTermVectors() == false) {
       newType = new FieldType(newType);
       newType.setStoreTermVectors(oldType.storeTermVectors());
       newType.setStoreTermVectorPositions(oldType.storeTermVectorPositions());
@@ -1362,7 +1361,7 @@ public abstract class LuceneTestCase extends Assert {
 
     FieldType prevType = fieldToType.get(name);
 
-    if (usually(random) || type.indexOptions() == null || prevType != null) {
+    if (usually(random) || type.indexOptions() == IndexOptions.NONE || prevType != null) {
       // most of the time, don't modify the params
       if (prevType == null) {
         fieldToType.put(name, new FieldType(type));
@@ -1449,17 +1448,21 @@ public abstract class LuceneTestCase extends Assert {
     }
   }
 
-  private static Directory newFSDirectoryImpl(Class<? extends FSDirectory> clazz, Path path) throws IOException {
+  private static Directory newFSDirectoryImpl(Class<? extends FSDirectory> clazz, Path path, LockFactory lf) throws IOException {
     FSDirectory d = null;
     try {
-      d = CommandLineUtil.newFSDirectory(clazz, path);
-    } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
+      d = CommandLineUtil.newFSDirectory(clazz, path, lf);
+    } catch (ReflectiveOperationException e) {
       Rethrow.rethrow(e);
     }
     return d;
   }
 
   static Directory newDirectoryImpl(Random random, String clazzName) {
+    return newDirectoryImpl(random, clazzName, FSLockFactory.getDefault());
+  }
+  
+  static Directory newDirectoryImpl(Random random, String clazzName, LockFactory lf) {
     if (clazzName.equals("random")) {
       if (rarely(random)) {
         clazzName = RandomPicks.randomFrom(random, CORE_DIRECTORIES);
@@ -1473,21 +1476,27 @@ public abstract class LuceneTestCase extends Assert {
       // If it is a FSDirectory type, try its ctor(Path)
       if (FSDirectory.class.isAssignableFrom(clazz)) {
         final Path dir = createTempDir("index-" + clazzName);
-        return newFSDirectoryImpl(clazz.asSubclass(FSDirectory.class), dir);
+        return newFSDirectoryImpl(clazz.asSubclass(FSDirectory.class), dir, lf);
       }
 
-      // See if it has a Path ctor even though it's not an
+      // See if it has a Path/LockFactory ctor even though it's not an
       // FSDir subclass:
-      Constructor<? extends Directory> pathCtor = null;
       try {
-        pathCtor = clazz.getConstructor(Path.class);
+        Constructor<? extends Directory> pathCtor = clazz.getConstructor(Path.class, LockFactory.class);
+        final Path dir = createTempDir("index");
+        return pathCtor.newInstance(dir, lf);
       } catch (NoSuchMethodException nsme) {
         // Ignore
       }
-
-      if (pathCtor != null) {
-        final Path dir = createTempDir("index");
-        return pathCtor.newInstance(dir);
+      
+      // the remaining dirs are no longer filesystem based, so we must check that the passedLockFactory is not file based:
+      if (!(lf instanceof FSLockFactory)) {
+        // try ctor with only LockFactory (e.g. RAMDirectory)
+        try {
+          return clazz.getConstructor(LockFactory.class).newInstance(lf);
+        } catch (NoSuchMethodException nsme) {
+          // Ignore
+        }
       }
 
       // try empty ctor
@@ -1497,71 +1506,85 @@ public abstract class LuceneTestCase extends Assert {
       throw null; // dummy to prevent compiler failure
     }
   }
+
+  public static IndexReader wrapReader(IndexReader r) throws IOException {
+    Random random = random();
+      
+    // TODO: remove this, and fix those tests to wrap before putting slow around:
+    final boolean wasOriginallyAtomic = r instanceof LeafReader;
+    for (int i = 0, c = random.nextInt(6)+1; i < c; i++) {
+      switch(random.nextInt(6)) {
+      case 0:
+        r = SlowCompositeReaderWrapper.wrap(r);
+        break;
+      case 1:
+        // will create no FC insanity in atomic case, as ParallelLeafReader has own cache key:
+        r = (r instanceof LeafReader) ?
+          new ParallelLeafReader((LeafReader) r) :
+        new ParallelCompositeReader((CompositeReader) r);
+        break;
+      case 2:
+        // Häckidy-Hick-Hack: a standard MultiReader will cause FC insanity, so we use
+        // QueryUtils' reader with a fake cache key, so insanity checker cannot walk
+        // along our reader:
+        r = new FCInvisibleMultiReader(r);
+        break;
+      case 3:
+        final LeafReader ar = SlowCompositeReaderWrapper.wrap(r);
+        final List<String> allFields = new ArrayList<>();
+        for (FieldInfo fi : ar.getFieldInfos()) {
+          allFields.add(fi.name);
+        }
+        Collections.shuffle(allFields, random);
+        final int end = allFields.isEmpty() ? 0 : random.nextInt(allFields.size());
+        final Set<String> fields = new HashSet<>(allFields.subList(0, end));
+        // will create no FC insanity as ParallelLeafReader has own cache key:
+        r = new ParallelLeafReader(
+                                   new FieldFilterLeafReader(ar, fields, false),
+                                   new FieldFilterLeafReader(ar, fields, true)
+                                   );
+        break;
+      case 4:
+        // Häckidy-Hick-Hack: a standard Reader will cause FC insanity, so we use
+        // QueryUtils' reader with a fake cache key, so insanity checker cannot walk
+        // along our reader:
+        if (r instanceof LeafReader) {
+          r = new AssertingLeafReader((LeafReader)r);
+        } else if (r instanceof DirectoryReader) {
+          r = new AssertingDirectoryReader((DirectoryReader)r);
+        }
+        break;
+      case 5:
+        if (r instanceof LeafReader) {
+          r = new MismatchedLeafReader((LeafReader)r, random);
+        } else if (r instanceof DirectoryReader) {
+          r = new MismatchedDirectoryReader((DirectoryReader)r, random);
+        }
+        break;
+      default:
+        fail("should not get here");
+      }
+    }
+    if (wasOriginallyAtomic) {
+      r = SlowCompositeReaderWrapper.wrap(r);
+    } else if ((r instanceof CompositeReader) && !(r instanceof FCInvisibleMultiReader)) {
+      // prevent cache insanity caused by e.g. ParallelCompositeReader, to fix we wrap one more time:
+      r = new FCInvisibleMultiReader(r);
+    }
+    if (VERBOSE) {
+      System.out.println("wrapReader wrapped: " +r);
+    }
+
+    return r;
+  }
   
   /**
    * Sometimes wrap the IndexReader as slow, parallel or filter reader (or
    * combinations of that)
    */
   public static IndexReader maybeWrapReader(IndexReader r) throws IOException {
-    Random random = random();
     if (rarely()) {
-      // TODO: remove this, and fix those tests to wrap before putting slow around:
-      final boolean wasOriginallyAtomic = r instanceof LeafReader;
-      for (int i = 0, c = random.nextInt(6)+1; i < c; i++) {
-        switch(random.nextInt(5)) {
-          case 0:
-            r = SlowCompositeReaderWrapper.wrap(r);
-            break;
-          case 1:
-            // will create no FC insanity in atomic case, as ParallelLeafReader has own cache key:
-            r = (r instanceof LeafReader) ?
-              new ParallelLeafReader((LeafReader) r) :
-              new ParallelCompositeReader((CompositeReader) r);
-            break;
-          case 2:
-            // Häckidy-Hick-Hack: a standard MultiReader will cause FC insanity, so we use
-            // QueryUtils' reader with a fake cache key, so insanity checker cannot walk
-            // along our reader:
-            r = new FCInvisibleMultiReader(r);
-            break;
-          case 3:
-            final LeafReader ar = SlowCompositeReaderWrapper.wrap(r);
-            final List<String> allFields = new ArrayList<>();
-            for (FieldInfo fi : ar.getFieldInfos()) {
-              allFields.add(fi.name);
-            }
-            Collections.shuffle(allFields, random);
-            final int end = allFields.isEmpty() ? 0 : random.nextInt(allFields.size());
-            final Set<String> fields = new HashSet<>(allFields.subList(0, end));
-            // will create no FC insanity as ParallelLeafReader has own cache key:
-            r = new ParallelLeafReader(
-              new FieldFilterLeafReader(ar, fields, false),
-              new FieldFilterLeafReader(ar, fields, true)
-            );
-            break;
-          case 4:
-            // Häckidy-Hick-Hack: a standard Reader will cause FC insanity, so we use
-            // QueryUtils' reader with a fake cache key, so insanity checker cannot walk
-            // along our reader:
-            if (r instanceof LeafReader) {
-              r = new AssertingLeafReader((LeafReader)r);
-            } else if (r instanceof DirectoryReader) {
-              r = new AssertingDirectoryReader((DirectoryReader)r);
-            }
-            break;
-          default:
-            fail("should not get here");
-        }
-      }
-      if (wasOriginallyAtomic) {
-        r = SlowCompositeReaderWrapper.wrap(r);
-      } else if ((r instanceof CompositeReader) && !(r instanceof FCInvisibleMultiReader)) {
-        // prevent cache insanity caused by e.g. ParallelCompositeReader, to fix we wrap one more time:
-        r = new FCInvisibleMultiReader(r);
-      }
-      if (VERBOSE) {
-        System.out.println("maybeWrapReader wrapped: " +r);
-      }
+      r = wrapReader(r);
     }
     return r;
   }
@@ -1862,61 +1885,61 @@ public abstract class LuceneTestCase extends Assert {
   public void assertTermsEnumEquals(String info, IndexReader leftReader, TermsEnum leftTermsEnum, TermsEnum rightTermsEnum, boolean deep) throws IOException {
     BytesRef term;
     Bits randomBits = new RandomBits(leftReader.maxDoc(), random().nextDouble(), random());
-    DocsAndPositionsEnum leftPositions = null;
-    DocsAndPositionsEnum rightPositions = null;
-    DocsEnum leftDocs = null;
-    DocsEnum rightDocs = null;
+    PostingsEnum leftPositions = null;
+    PostingsEnum rightPositions = null;
+    PostingsEnum leftDocs = null;
+    PostingsEnum rightDocs = null;
     
     while ((term = leftTermsEnum.next()) != null) {
       assertEquals(info, term, rightTermsEnum.next());
       assertTermStatsEquals(info, leftTermsEnum, rightTermsEnum);
       if (deep) {
-        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.docsAndPositions(null, leftPositions),
-                                   rightPositions = rightTermsEnum.docsAndPositions(null, rightPositions));
-        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.docsAndPositions(randomBits, leftPositions),
-                                   rightPositions = rightTermsEnum.docsAndPositions(randomBits, rightPositions));
+        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.postings(null, leftPositions, PostingsEnum.FLAG_ALL),
+                                   rightPositions = rightTermsEnum.postings(null, rightPositions, PostingsEnum.FLAG_ALL));
+        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.postings(randomBits, leftPositions, PostingsEnum.FLAG_ALL),
+                                   rightPositions = rightTermsEnum.postings(randomBits, rightPositions, PostingsEnum.FLAG_ALL));
 
         assertPositionsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-                                leftPositions = leftTermsEnum.docsAndPositions(null, leftPositions),
-                                rightPositions = rightTermsEnum.docsAndPositions(null, rightPositions));
+                                leftPositions = leftTermsEnum.postings(null, leftPositions, PostingsEnum.FLAG_ALL),
+                                rightPositions = rightTermsEnum.postings(null, rightPositions, PostingsEnum.FLAG_ALL));
         assertPositionsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-                                leftPositions = leftTermsEnum.docsAndPositions(randomBits, leftPositions),
-                                rightPositions = rightTermsEnum.docsAndPositions(randomBits, rightPositions));
+                                leftPositions = leftTermsEnum.postings(randomBits, leftPositions, PostingsEnum.FLAG_ALL),
+            rightPositions = rightTermsEnum.postings(randomBits, rightPositions, PostingsEnum.FLAG_ALL));
 
         // with freqs:
-        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.docs(null, leftDocs),
-            rightDocs = rightTermsEnum.docs(null, rightDocs),
+        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(null, leftDocs),
+            rightDocs = rightTermsEnum.postings(null, rightDocs),
             true);
-        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.docs(randomBits, leftDocs),
-            rightDocs = rightTermsEnum.docs(randomBits, rightDocs),
+        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(randomBits, leftDocs),
+            rightDocs = rightTermsEnum.postings(randomBits, rightDocs),
             true);
 
         // w/o freqs:
-        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.docs(null, leftDocs, DocsEnum.FLAG_NONE),
-            rightDocs = rightTermsEnum.docs(null, rightDocs, DocsEnum.FLAG_NONE),
+        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(null, leftDocs, PostingsEnum.FLAG_NONE),
+            rightDocs = rightTermsEnum.postings(null, rightDocs, PostingsEnum.FLAG_NONE),
             false);
-        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.docs(randomBits, leftDocs, DocsEnum.FLAG_NONE),
-            rightDocs = rightTermsEnum.docs(randomBits, rightDocs, DocsEnum.FLAG_NONE),
+        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(randomBits, leftDocs, PostingsEnum.FLAG_NONE),
+            rightDocs = rightTermsEnum.postings(randomBits, rightDocs, PostingsEnum.FLAG_NONE),
             false);
         
         // with freqs:
         assertDocsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-            leftDocs = leftTermsEnum.docs(null, leftDocs),
-            rightDocs = rightTermsEnum.docs(null, rightDocs),
+            leftDocs = leftTermsEnum.postings(null, leftDocs),
+            rightDocs = rightTermsEnum.postings(null, rightDocs),
             true);
         assertDocsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-            leftDocs = leftTermsEnum.docs(randomBits, leftDocs),
-            rightDocs = rightTermsEnum.docs(randomBits, rightDocs),
+            leftDocs = leftTermsEnum.postings(randomBits, leftDocs),
+            rightDocs = rightTermsEnum.postings(randomBits, rightDocs),
             true);
 
         // w/o freqs:
         assertDocsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-            leftDocs = leftTermsEnum.docs(null, leftDocs, DocsEnum.FLAG_NONE),
-            rightDocs = rightTermsEnum.docs(null, rightDocs, DocsEnum.FLAG_NONE),
+            leftDocs = leftTermsEnum.postings(null, leftDocs, PostingsEnum.FLAG_NONE),
+            rightDocs = rightTermsEnum.postings(null, rightDocs, PostingsEnum.FLAG_NONE),
             false);
         assertDocsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-            leftDocs = leftTermsEnum.docs(randomBits, leftDocs, DocsEnum.FLAG_NONE),
-            rightDocs = rightTermsEnum.docs(randomBits, rightDocs, DocsEnum.FLAG_NONE),
+            leftDocs = leftTermsEnum.postings(randomBits, leftDocs, PostingsEnum.FLAG_NONE),
+            rightDocs = rightTermsEnum.postings(randomBits, rightDocs, PostingsEnum.FLAG_NONE),
             false);
       }
     }
@@ -1927,7 +1950,7 @@ public abstract class LuceneTestCase extends Assert {
   /**
    * checks docs + freqs + positions + payloads, sequentially
    */
-  public void assertDocsAndPositionsEnumEquals(String info, DocsAndPositionsEnum leftDocs, DocsAndPositionsEnum rightDocs) throws IOException {
+  public void assertDocsAndPositionsEnumEquals(String info, PostingsEnum leftDocs, PostingsEnum rightDocs) throws IOException {
     if (leftDocs == null || rightDocs == null) {
       assertNull(leftDocs);
       assertNull(rightDocs);
@@ -1953,7 +1976,7 @@ public abstract class LuceneTestCase extends Assert {
   /**
    * checks docs + freqs, sequentially
    */
-  public void assertDocsEnumEquals(String info, DocsEnum leftDocs, DocsEnum rightDocs, boolean hasFreqs) throws IOException {
+  public void assertDocsEnumEquals(String info, PostingsEnum leftDocs, PostingsEnum rightDocs, boolean hasFreqs) throws IOException {
     if (leftDocs == null) {
       assertNull(rightDocs);
       return;
@@ -1973,7 +1996,7 @@ public abstract class LuceneTestCase extends Assert {
   /**
    * checks advancing docs
    */
-  public void assertDocsSkippingEquals(String info, IndexReader leftReader, int docFreq, DocsEnum leftDocs, DocsEnum rightDocs, boolean hasFreqs) throws IOException {
+  public void assertDocsSkippingEquals(String info, IndexReader leftReader, int docFreq, PostingsEnum leftDocs, PostingsEnum rightDocs, boolean hasFreqs) throws IOException {
     if (leftDocs == null) {
       assertNull(rightDocs);
       return;
@@ -2006,7 +2029,7 @@ public abstract class LuceneTestCase extends Assert {
   /**
    * checks advancing docs + positions
    */
-  public void assertPositionsSkippingEquals(String info, IndexReader leftReader, int docFreq, DocsAndPositionsEnum leftDocs, DocsAndPositionsEnum rightDocs) throws IOException {
+  public void assertPositionsSkippingEquals(String info, IndexReader leftReader, int docFreq, PostingsEnum leftDocs, PostingsEnum rightDocs) throws IOException {
     if (leftDocs == null || rightDocs == null) {
       assertNull(leftDocs);
       assertNull(rightDocs);
@@ -2215,7 +2238,7 @@ public abstract class LuceneTestCase extends Assert {
   private static Set<String> getDVFields(IndexReader reader) {
     Set<String> fields = new HashSet<>();
     for(FieldInfo fi : MultiFields.getMergedFieldInfos(reader)) {
-      if (fi.hasDocValues()) {
+      if (fi.getDocValuesType() != DocValuesType.NONE) {
         fields.add(fi.name);
       }
     }
@@ -2459,5 +2482,27 @@ public abstract class LuceneTestCase extends Assert {
    */
   public static Path createTempFile() throws IOException {
     return createTempFile("tempFile", ".tmp");
+  }
+
+  /** True if assertions (-ea) are enabled (at least for this class). */
+  public static final boolean assertsAreEnabled;
+
+  static {
+    boolean enabled = false;
+    assert enabled = true; // Intentional side-effect!!!
+    assertsAreEnabled = enabled;
+  }
+  
+  /** 
+   * Compares two strings with a collator, also looking to see if the the strings
+   * are impacted by jdk bugs. may not avoid all jdk bugs in tests.
+   * see https://bugs.openjdk.java.net/browse/JDK-8071862
+   */
+  public static int collate(Collator collator, String s1, String s2) {
+    int v1 = collator.compare(s1, s2);
+    int v2 = collator.getCollationKey(s1).compareTo(collator.getCollationKey(s2));
+    // if collation keys don't really respect collation order, things are screwed.
+    assumeTrue("hit JDK collator bug", Integer.signum(v1) == Integer.signum(v2));
+    return v1;
   }
 }

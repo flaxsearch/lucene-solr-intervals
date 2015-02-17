@@ -19,6 +19,7 @@ package org.apache.lucene.codecs.memory;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -122,7 +123,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
     ramBytesUsed = new AtomicLong(RamUsageEstimator.shallowSizeOfInstance(getClass()));
     boolean success = false;
     try {
-      version = CodecUtil.checkSegmentHeader(in, metaCodec, VERSION_START, VERSION_CURRENT, 
+      version = CodecUtil.checkIndexHeader(in, metaCodec, VERSION_START, VERSION_CURRENT, 
                                                  state.segmentInfo.getId(), state.segmentSuffix);
       numEntries = readFields(in, state.fieldInfos);
 
@@ -140,7 +141,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
     this.data = state.directory.openInput(dataName, state.context);
     success = false;
     try {
-      final int version2 = CodecUtil.checkSegmentHeader(data, dataCodec, VERSION_START, VERSION_CURRENT,
+      final int version2 = CodecUtil.checkIndexHeader(data, dataCodec, VERSION_START, VERSION_CURRENT,
                                                               state.segmentInfo.getId(), state.segmentSuffix);
       if (version != version2) {
         throw new CorruptIndexException("Format versions mismatch: meta=" + version + ", data=" + version2, data);
@@ -259,7 +260,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
   }
   
   @Override
-  public synchronized Iterable<? extends Accountable> getChildResources() {
+  public synchronized Collection<Accountable> getChildResources() {
     List<Accountable> resources = new ArrayList<>();
     resources.addAll(Accountables.namedAccountables("numeric field", numericInstances));
     resources.addAll(Accountables.namedAccountables("binary field", binaryInstances));
@@ -661,7 +662,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
     }
     
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       List<Accountable> resources = new ArrayList<>();
       if (address != null) {
         resources.add(Accountables.namedAccountable("addresses", RamUsageEstimator.sizeOf(address)));
@@ -686,7 +687,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
     }
     
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       return Collections.emptyList();
     }
     
@@ -705,7 +706,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
     }
 
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       return docToOrd.getChildResources();
     }
     
@@ -729,7 +730,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
     }
     
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       List<Accountable> resources = new ArrayList<>();
       if (docToAddress != null) {
         resources.add(Accountables.namedAccountable("addresses", docToAddress));
@@ -758,7 +759,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
     }
 
     @Override
-    public Iterable<? extends Accountable> getChildResources() {
+    public Collection<Accountable> getChildResources() {
       List<Accountable> resources = new ArrayList<>();
       if (docToOrdAddress != null) {
         resources.add(Accountables.namedAccountable("addresses", docToOrdAddress));

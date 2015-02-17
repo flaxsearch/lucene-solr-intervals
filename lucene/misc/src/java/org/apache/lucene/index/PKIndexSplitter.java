@@ -26,6 +26,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.TermRangeFilter;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.BitSetIterator;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IOUtils;
@@ -97,12 +98,12 @@ public class PKIndexSplitter {
     }
   }
   
-  private void createIndex(IndexWriterConfig config, Directory target, IndexReader reader, Filter preserveFilter, boolean negateFilter) throws IOException {
+  private void createIndex(IndexWriterConfig config, Directory target, DirectoryReader reader, Filter preserveFilter, boolean negateFilter) throws IOException {
     boolean success = false;
     final IndexWriter w = new IndexWriter(target, config);
     try {
       final List<LeafReaderContext> leaves = reader.leaves();
-      final IndexReader[] subReaders = new IndexReader[leaves.size()];
+      final CodecReader[] subReaders = new CodecReader[leaves.size()];
       int i = 0;
       for (final LeafReaderContext ctx : leaves) {
         subReaders[i++] = new DocumentFilteredLeafIndexReader(ctx, preserveFilter, negateFilter);
@@ -118,12 +119,13 @@ public class PKIndexSplitter {
     }
   }
     
-  private static class DocumentFilteredLeafIndexReader extends FilterLeafReader {
+  private static class DocumentFilteredLeafIndexReader extends FilterCodecReader {
     final Bits liveDocs;
     final int numDocs;
     
     public DocumentFilteredLeafIndexReader(LeafReaderContext context, Filter preserveFilter, boolean negateFilter) throws IOException {
-      super(context.reader());
+      // our cast is ok, since we open the Directory.
+      super((CodecReader) context.reader());
       final int maxDoc = in.maxDoc();
       final FixedBitSet bits = new FixedBitSet(maxDoc);
       // ignore livedocs here, as we filter them later:
@@ -141,7 +143,7 @@ public class PKIndexSplitter {
       if (in.hasDeletions()) {
         final Bits oldLiveDocs = in.getLiveDocs();
         assert oldLiveDocs != null;
-        final DocIdSetIterator it = bits.iterator();
+        final DocIdSetIterator it = new BitSetIterator(bits, 0L); // the cost is not useful here
         for (int i = it.nextDoc(); i < maxDoc; i = it.nextDoc()) {
           if (!oldLiveDocs.get(i)) {
             // we can safely modify the current bit, as the iterator already stepped over it:
