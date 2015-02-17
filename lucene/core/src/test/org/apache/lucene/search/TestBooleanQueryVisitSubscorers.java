@@ -240,6 +240,11 @@ public class TestBooleanQueryVisitSubscorers extends LuceneTestCase {
     }
 
     @Override
+    public boolean needsIntervals() {
+      return false;
+    }
+
+    @Override
     public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
       return new LeafCollector() {
 

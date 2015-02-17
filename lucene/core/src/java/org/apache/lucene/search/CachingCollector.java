@@ -329,6 +329,11 @@ public abstract class CachingCollector extends FilterCollector {
         return true;
       }
 
+      @Override
+      public boolean needsIntervals() {
+        return false;
+      }
+
     };
     return create(other, cacheScores, maxRAMMB);
   }

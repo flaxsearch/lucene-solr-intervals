@@ -34,6 +34,11 @@ public abstract class SimpleCollector implements Collector, LeafCollector {
     return this;
   }
 
+  @Override
+  public boolean needsIntervals() {
+    return false;
+  }
+
   /** This method is called before collecting <code>context</code>. */
   protected void doSetNextReader(LeafReaderContext context) throws IOException {}
 

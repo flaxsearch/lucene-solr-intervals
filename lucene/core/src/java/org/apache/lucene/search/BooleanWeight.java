@@ -17,16 +17,17 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.util.Bits;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.util.Bits;
 
 /**
  * Expert: the Weight for BooleanQuery, used to
@@ -42,11 +43,13 @@ public class BooleanWeight extends Weight {
   protected int maxCoord;  // num optional + num required
   private final boolean disableCoord;
   private final boolean needsScores;
+  private final boolean needsPositions;
 
   public BooleanWeight(BooleanQuery query, IndexSearcher searcher, boolean needsScores, int postingsFlags, boolean disableCoord) throws IOException {
     super(query);
     this.query = query;
     this.needsScores = needsScores;
+    this.needsPositions = (postingsFlags & PostingsEnum.FLAG_POSITIONS) > 0;
     this.similarity = searcher.getSimilarity();
     this.disableCoord = disableCoord;
     weights = new ArrayList<>(query.clauses().size());
@@ -186,6 +189,8 @@ public class BooleanWeight extends Weight {
    *  cannot be used. */
   // pkg-private for forcing use of BooleanScorer in tests
   BooleanScorer booleanScorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+    if (needsPositions)
+      return null;
     List<BulkScorer> optional = new ArrayList<BulkScorer>();
     Iterator<BooleanClause> cIter = query.clauses().iterator();
     for (Weight w  : weights) {

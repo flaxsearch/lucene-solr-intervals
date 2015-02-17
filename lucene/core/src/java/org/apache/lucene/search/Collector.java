@@ -17,9 +17,9 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.index.LeafReaderContext;
+
+import java.io.IOException;
 
 /**
  * <p>Expert: Collectors are primarily meant to be used to
@@ -79,4 +79,10 @@ public interface Collector {
    * @return {@code true} if scores are needed.
    */
   boolean needsScores();
+
+  /**
+   * Indicates if matching intervals are needed by this collector
+   * @return {@code true} if intervals are needed
+   */
+  boolean needsIntervals();
 }

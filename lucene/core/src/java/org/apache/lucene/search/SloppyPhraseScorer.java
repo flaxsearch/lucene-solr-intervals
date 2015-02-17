@@ -699,12 +699,15 @@ final class SloppyPhraseScorer extends Scorer {
 
     private final PostingsEnum[] enums;
     private final IntervalIterator delegate;
+
     @Override
     public int scorerAdvanced(int docId) throws IOException {
       assert docId == docID();
       for (PostingsEnum oneEnum : enums) {
-        int advance = oneEnum.advance(docId);
-        assert advance == docId;
+        if (oneEnum.docID() < docId) {
+          int advance = oneEnum.advance(docId);
+          assert advance == docId;
+        }
       }
       delegate.scorerAdvanced(docId);
       return docId;

@@ -339,7 +339,8 @@ public class IndexSearcher {
    */
   public void search(Query query, Collector results)
     throws IOException {
-    search(leafContexts, createNormalizedWeight(query, results.needsScores(), PostingsEnum.FLAG_FREQS), results);
+    int flags = results.needsIntervals() ? PostingsEnum.FLAG_POSITIONS : PostingsEnum.FLAG_FREQS;
+    search(leafContexts, createNormalizedWeight(query, results.needsScores(), flags), results);
   }
   
   /** Search implementation with arbitrary sorting.  Finds

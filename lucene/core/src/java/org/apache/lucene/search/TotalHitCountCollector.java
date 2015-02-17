@@ -38,4 +38,9 @@ public class TotalHitCountCollector extends SimpleCollector {
   public boolean needsScores() {
     return false;
   }
+
+  @Override
+  public boolean needsIntervals() {
+    return false;
+  }
 }

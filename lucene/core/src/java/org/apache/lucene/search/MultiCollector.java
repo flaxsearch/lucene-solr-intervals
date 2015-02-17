@@ -103,6 +103,11 @@ public class MultiCollector implements Collector {
   }
 
   @Override
+  public boolean needsIntervals() {
+    return false;   // you can't collect intervals multiple times
+  }
+
+  @Override
   public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
     final LeafCollector[] leafCollectors = new LeafCollector[collectors.length];
     for (int i = 0; i < collectors.length; ++i) {

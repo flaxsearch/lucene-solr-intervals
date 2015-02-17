@@ -17,17 +17,16 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import junit.framework.Assert;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.util.LuceneTestCase;
+
 import java.io.IOException;
 import java.util.Locale;
+import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.Random;
-
-import junit.framework.Assert;
-
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.util.LuceneTestCase;
 
 /**
  * Utility class for asserting expected hits in tests.
@@ -142,6 +141,11 @@ public class CheckHits {
     
     @Override
     public boolean needsScores() {
+      return false;
+    }
+
+    @Override
+    public boolean needsIntervals() {
       return false;
     }
   }

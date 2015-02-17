@@ -158,4 +158,8 @@ public abstract class TopDocsCollector<T extends ScoreDoc> implements Collector 
     return newTopDocs(results, start);
   }
 
+  @Override
+  public boolean needsIntervals() {
+    return false;
+  }
 }
