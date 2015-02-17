@@ -68,6 +68,11 @@ public class HighlightingIntervalCollector extends SimpleCollector implements In
     return false;
   }
 
+  @Override
+  public boolean needsIntervals() {
+    return true;
+  }
+
   public void setScorer(Scorer scorer) throws IOException {
     this.scorer = scorer;
     positions = scorer.intervals(true);

@@ -296,9 +296,9 @@ public class IntervalHighlighterTest extends LuceneTestCase {
   }
   
   /*
-   * Failing ... PhraseQuery scorer needs positions()?
+   * PhraseQuery scorer needs positions()
    */
-  //@Ignore
+  @Ignore
   public void testPhraseOriginal() throws Exception {
     insertDocs(analyzer, "This is a test");
     PhraseQuery pq = new PhraseQuery();

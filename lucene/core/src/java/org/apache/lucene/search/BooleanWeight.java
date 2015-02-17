@@ -49,7 +49,7 @@ public class BooleanWeight extends Weight {
     super(query);
     this.query = query;
     this.needsScores = needsScores;
-    this.needsPositions = (postingsFlags & PostingsEnum.FLAG_POSITIONS) > 0;
+    this.needsPositions = (postingsFlags & PostingsEnum.FLAG_POSITIONS) >= PostingsEnum.FLAG_POSITIONS;
     this.similarity = searcher.getSimilarity();
     this.disableCoord = disableCoord;
     weights = new ArrayList<>(query.clauses().size());

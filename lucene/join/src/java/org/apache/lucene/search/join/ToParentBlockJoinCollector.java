@@ -17,13 +17,6 @@ package org.apache.lucene.search.join;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.Queue;
-
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.Collector;
@@ -42,8 +35,14 @@ import org.apache.lucene.search.TopFieldCollector;
 import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.search.grouping.GroupDocs;
 import org.apache.lucene.search.grouping.TopGroups;
-import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.ArrayUtil;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Queue;
 
 
 /** Collects parent document hits for a Query containing one more more
@@ -503,5 +502,10 @@ public class ToParentBlockJoinCollector implements Collector {
   @Override
   public boolean needsScores() {
     return trackScores || trackMaxScore || sort.needsScores();
+  }
+
+  @Override
+  public boolean needsIntervals() {
+    return false;
   }
 }

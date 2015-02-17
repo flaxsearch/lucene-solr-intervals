@@ -17,6 +17,15 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReader.CoreClosedListener;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Accountables;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.RoaringDocIdSet;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,15 +36,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import org.apache.lucene.index.LeafReader;
-import org.apache.lucene.index.LeafReader.CoreClosedListener;
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.util.Accountable;
-import org.apache.lucene.util.Accountables;
-import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.RamUsageEstimator;
-import org.apache.lucene.util.RoaringDocIdSet;
 
 /**
  * A {@link FilterCache} that evicts filters using a LRU (least-recently-used)
@@ -86,7 +86,7 @@ import org.apache.lucene.util.RoaringDocIdSet;
 public class LRUFilterCache implements FilterCache, Accountable {
 
   // memory usage of a simple query-wrapper filter around a term query
-  static final long FILTER_DEFAULT_RAM_BYTES_USED = 216;
+  static final long FILTER_DEFAULT_RAM_BYTES_USED = 568;
 
   static final long HASHTABLE_RAM_BYTES_PER_ENTRY =
       2 * RamUsageEstimator.NUM_BYTES_OBJECT_REF // key + value

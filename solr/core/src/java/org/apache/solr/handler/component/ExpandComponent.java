@@ -515,6 +515,11 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       return true; // TODO: is this always true?
     }
 
+    @Override
+    public boolean needsIntervals() {
+      return false;
+    }
+
     public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
       final int docBase = context.docBase;
 
@@ -590,6 +595,11 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
     @Override
     public boolean needsScores() {
       return true; // TODO: is this always true?
+    }
+
+    @Override
+    public boolean needsIntervals() {
+      return false;
     }
 
     public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
