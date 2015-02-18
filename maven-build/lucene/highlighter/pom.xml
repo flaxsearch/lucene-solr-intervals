@@ -63,6 +63,10 @@
 
     <dependency>
       <groupId>uk.co.flax.lucene-solr-intervals</groupId>
+      <artifactId>lucene-join</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>uk.co.flax.lucene-solr-intervals</groupId>
       <artifactId>lucene-codecs</artifactId>
       <scope>test</scope>
     </dependency>

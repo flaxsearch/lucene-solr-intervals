@@ -17,17 +17,6 @@
 
 package org.apache.solr.search;
 
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.LeafReaderContext;
@@ -35,9 +24,9 @@ import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.search.FieldComparator;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Query;
 import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.LeafFieldComparator;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Sort;
@@ -45,13 +34,8 @@ import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopDocsCollector;
 import org.apache.lucene.search.Weight;
-<<<<<<< HEAD
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.intervals.IntervalIterator;
-=======
 import org.apache.lucene.util.BytesRef;
->>>>>>> apache/branch_5x
 import org.apache.lucene.util.InPlaceMergeSorter;
 import org.apache.lucene.util.PriorityQueue;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -72,6 +56,17 @@ import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.junit.Ignore;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 
 @Ignore
@@ -120,8 +115,8 @@ public class TestRankQueryPlugin extends QParserPlugin {
       return false;
     }
 
-    public Weight createWeight(IndexSearcher indexSearcher, boolean needsScores) throws IOException{
-      return q.createWeight(indexSearcher, needsScores);
+    public Weight createWeight(IndexSearcher indexSearcher, boolean needsScores, int flags) throws IOException{
+      return q.createWeight(indexSearcher, needsScores, flags);
     }
 
     public void setBoost(float boost) {
@@ -468,22 +463,15 @@ public class TestRankQueryPlugin extends QParserPlugin {
         this.score = score;
       }
 
-<<<<<<< HEAD
-     @Override
-     public IntervalIterator intervals(boolean collectIntervals) throws IOException {
-       throw new UnsupportedOperationException();
-     }
+      @Override
+      public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+        throw new UnsupportedOperationException();
+      }
 
-     @Override
-        public float score() throws IOException {
-          return score;
-        }
-=======
       @Override
       public int docID() {
         return docid;
       }
->>>>>>> apache/branch_5x
 
       @Override
       public float score() throws IOException {

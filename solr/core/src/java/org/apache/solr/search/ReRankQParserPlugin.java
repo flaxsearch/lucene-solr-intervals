@@ -169,7 +169,7 @@ public class ReRankQParserPlugin extends QParserPlugin {
 
     }
 
-    public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException{
+    public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException{
       return new ReRankWeight(mainQuery, reRankQuery, reRankWeight, searcher, needsScores);
     }
   }
