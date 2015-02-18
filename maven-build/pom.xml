@@ -7791,7 +7791,7 @@
       <dependency>
         <groupId>org.noggit</groupId>
         <artifactId>noggit</artifactId>
-        <version>0.5</version>
+        <version>0.6</version>
       </dependency>
       <dependency>
         <groupId>org.objenesis</groupId>
