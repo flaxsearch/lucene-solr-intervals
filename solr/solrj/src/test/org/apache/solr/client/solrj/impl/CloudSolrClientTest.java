@@ -17,12 +17,6 @@ package org.apache.solr.client.solrj.impl;
  * limitations under the License.
  */
 
-import static org.apache.solr.cloud.OverseerCollectionProcessor.CREATE_NODE_SET;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
-import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
-import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
-
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -71,6 +65,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
+
+import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
+import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
+import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
 
 
 /**
@@ -122,6 +121,7 @@ public class CloudSolrClientTest extends AbstractFullDistribZkTestBase {
 
   @Test
   public void test() throws Exception {
+    testPerCollectionClients();
     allTests();
     stateVersionParamTest();
     customHttpClientTest();
@@ -129,8 +129,8 @@ public class CloudSolrClientTest extends AbstractFullDistribZkTestBase {
     preferLocalShardsTest();
   }
 
-  private void testOverwriteOption() throws Exception, SolrServerException,
-      IOException {
+  private void testOverwriteOption() throws Exception {
+
     String collectionName = "overwriteCollection";
     createCollection(collectionName, controlClientCloud, 1, 1);
     waitForRecoveriesToFinish(collectionName, false);
@@ -600,6 +600,79 @@ public class CloudSolrClientTest extends AbstractFullDistribZkTestBase {
 
       assertTrue(solrClient.getLbClient().getHttpClient() == client);
 
+    }
+  }
+
+  private void testPerCollectionClients() throws Exception {
+
+    String collection1 = "perCollection1";
+    String collection2 = "perCollection2";
+    createCollection(collection1, controlClientCloud, 1, 1);
+    createCollection(collection2, controlClientCloud, 1, 1);
+    waitForRecoveriesToFinish(collection1, false);
+    waitForRecoveriesToFinish(collection2, false);
+
+    SolrClient collection1Client = null;
+    SolrClient collection2Client = null;
+
+    try (CloudSolrClient parentClient = createCloudClient("")) {
+
+      collection1Client = parentClient.getCollectionClient(collection1);
+      collection2Client = parentClient.getCollectionClient(collection2);
+
+      // Add docs to collection1
+      SolrInputDocument doc1 = new SolrInputDocument();
+      doc1.addField(id, "0");
+      doc1.addField("a_t", "hello1");
+      SolrInputDocument doc2 = new SolrInputDocument();
+      doc2.addField(id, "2");
+      doc2.addField("a_t", "hello2");
+      SolrInputDocument doc3 = new SolrInputDocument();
+      doc3.addField(id, "3");
+      doc3.addField("a_t", "hello2");
+
+      UpdateRequest request = new UpdateRequest();
+      request.add(doc1);
+      request.add(doc2);
+      request.add(doc3);
+      request.setAction(AbstractUpdateRequest.ACTION.COMMIT, false, false);
+
+      collection1Client.request(request);
+
+      // Add docs to collection 2
+      SolrInputDocument doc4 = new SolrInputDocument();
+      doc4.addField(id, "0");
+      doc4.addField("a_t", "hello1");
+      SolrInputDocument doc5 = new SolrInputDocument();
+      doc5.addField(id, "2");
+      doc5.addField("a_t", "hello2");
+
+      UpdateRequest request2 = new UpdateRequest();
+      request2.add(doc4);
+      request2.add(doc5);
+      request2.setAction(AbstractUpdateRequest.ACTION.COMMIT, false, false);
+
+      collection2Client.request(request2);
+
+      ModifiableSolrParams queryParams = new ModifiableSolrParams();
+      queryParams.set("q", "*:*");
+      assertEquals(3, collection1Client.query(queryParams).getResults().size());
+
+      QueryResponse results = collection2Client.query(queryParams);
+      assertEquals(2, results.getResults().size());
+
+      // check that closing a child client doesn't close anything else
+      collection2Client.close();
+
+      assertEquals(3, collection1Client.query(queryParams).getResults().size());
+    }
+
+    try {
+      collection1Client.ping();
+      fail("Expected an error to be thrown when using a closed client");
+    }
+    catch (Exception e) {
+      // fine
     }
   }
 }

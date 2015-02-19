@@ -87,28 +87,38 @@ import java.util.concurrent.Future;
  */
 @SuppressWarnings("serial")
 public class CloudSolrClient extends SolrClient {
+
   protected static final Logger log = LoggerFactory.getLogger(CloudSolrClient.class);
 
   private volatile ZkStateReader zkStateReader;
-  private String zkHost; // the zk server connect string
+
+  private final String zkHost; // the zk server connect string
   private int zkConnectTimeout = 10000;
   private int zkClientTimeout = 10000;
+
   private volatile String defaultCollection;
+
+  private final HttpClient httpClient;
   private final LBHttpSolrClient lbClient;
+
+  private final ExecutorService threadPool;
+
   private final boolean shutdownLBHttpSolrServer;
-  private HttpClient myClient;
+  private final boolean shutdownZkStateReader;
+  private final boolean shutdownThreadPool;
   private final boolean clientIsInternal;
+
   //no of times collection state to be reloaded if stale state error is received
   private static final int MAX_STALE_RETRIES = 5;
   Random rand = new Random();
   
   private final boolean updatesToLeaders;
   private boolean parallelUpdates = true;
-  private ExecutorService threadPool = Executors
-      .newCachedThreadPool(new SolrjNamedThreadFactory(
-          "CloudSolrServer ThreadPool"));
+
   private String idField = "id";
+
   public static final String STATE_VERSION = "_stateVer_";
+
   private final Set<String> NON_ROUTABLE_PARAMS;
   {
     NON_ROUTABLE_PARAMS = new HashSet<>();
@@ -126,6 +136,7 @@ public class CloudSolrClient extends SolrClient {
     // NON_ROUTABLE_PARAMS.add(UpdateParams.ROLLBACK);
 
   }
+
   private volatile long timeToLive = 60* 1000L;
   private volatile List<Object> locks = objectList(3);
 
@@ -158,6 +169,10 @@ public class CloudSolrClient extends SolrClient {
     }
   }
 
+  private static ExecutorService createThreadPool() {
+    return Executors.newCachedThreadPool(new SolrjNamedThreadFactory("CloudSolrClient"));
+  }
+
   /**
    * Create a new client object that connects to Zookeeper and is always aware
    * of the SolrCloud state. If there is a fully redundant Zookeeper quorum and
@@ -179,15 +194,18 @@ public class CloudSolrClient extends SolrClient {
    *          "zoo1.example.com:2181,zoo2.example.com:2181,zoo3.example.com:2181"
    */
   public CloudSolrClient(String zkHost) {
-      this.zkHost = zkHost;
-      this.clientIsInternal = true;
-      this.myClient = HttpClientUtil.createClient(null);
-      this.lbClient = new LBHttpSolrClient(myClient);
-      this.lbClient.setRequestWriter(new BinaryRequestWriter());
-      this.lbClient.setParser(new BinaryResponseParser());
-      this.updatesToLeaders = true;
-      shutdownLBHttpSolrServer = true;
-      lbClient.addQueryParams(STATE_VERSION);
+    this.zkHost = zkHost;
+    this.clientIsInternal = true;
+    this.httpClient = HttpClientUtil.createClient(null);
+    this.lbClient = new LBHttpSolrClient(httpClient);
+    this.lbClient.setRequestWriter(new BinaryRequestWriter());
+    this.lbClient.setParser(new BinaryResponseParser());
+    this.updatesToLeaders = true;
+    this.shutdownLBHttpSolrServer = true;
+    this.shutdownZkStateReader = true;
+    lbClient.addQueryParams(STATE_VERSION);
+    this.threadPool = createThreadPool();
+    this.shutdownThreadPool = true;
   }
 
   /**
@@ -216,13 +234,16 @@ public class CloudSolrClient extends SolrClient {
   public CloudSolrClient(String zkHost, HttpClient httpClient)  {
     this.zkHost = zkHost;
     this.clientIsInternal = httpClient == null;
-    this.myClient = httpClient == null ? HttpClientUtil.createClient(null) : httpClient;
-    this.lbClient = new LBHttpSolrClient(myClient);
+    this.httpClient = httpClient == null ? HttpClientUtil.createClient(null) : httpClient;
+    this.lbClient = new LBHttpSolrClient(this.httpClient);
     this.lbClient.setRequestWriter(new BinaryRequestWriter());
     this.lbClient.setParser(new BinaryResponseParser());
     this.updatesToLeaders = true;
-    shutdownLBHttpSolrServer = true;
+    this.shutdownLBHttpSolrServer = true;
+    this.shutdownZkStateReader = true;
     lbClient.addQueryParams(STATE_VERSION);
+    this.threadPool = createThreadPool();
+    this.shutdownThreadPool = true;
   }
   
   /**
@@ -293,12 +314,15 @@ public class CloudSolrClient extends SolrClient {
 
     this.zkHost = zkBuilder.toString();
     this.clientIsInternal = httpClient == null;
-    this.myClient = httpClient == null ? HttpClientUtil.createClient(null) : httpClient;
-    this.lbClient = new LBHttpSolrClient(myClient);
+    this.httpClient = httpClient == null ? HttpClientUtil.createClient(null) : httpClient;
+    this.lbClient = new LBHttpSolrClient(this.httpClient);
     this.lbClient.setRequestWriter(new BinaryRequestWriter());
     this.lbClient.setParser(new BinaryResponseParser());
     this.updatesToLeaders = true;
-    shutdownLBHttpSolrServer = true;
+    this.shutdownLBHttpSolrServer = true;
+    this.shutdownZkStateReader = true;
+    this.threadPool = createThreadPool();
+    this.shutdownThreadPool = true;
   }
   
   /**
@@ -325,13 +349,16 @@ public class CloudSolrClient extends SolrClient {
   public CloudSolrClient(String zkHost, boolean updatesToLeaders, HttpClient httpClient) {
     this.zkHost = zkHost;
     this.clientIsInternal = httpClient == null;
-    this.myClient = httpClient == null ? HttpClientUtil.createClient(null) : httpClient;
-    this.lbClient = new LBHttpSolrClient(myClient);
+    this.httpClient = httpClient == null ? HttpClientUtil.createClient(null) : httpClient;
+    this.lbClient = new LBHttpSolrClient(this.httpClient);
     this.lbClient.setRequestWriter(new BinaryRequestWriter());
     this.lbClient.setParser(new BinaryResponseParser());
     this.updatesToLeaders = updatesToLeaders;
-    shutdownLBHttpSolrServer = true;
+    this.shutdownLBHttpSolrServer = true;
+    this.shutdownZkStateReader = true;
     lbClient.addQueryParams(STATE_VERSION);
+    this.threadPool = createThreadPool();
+    this.shutdownThreadPool = true;
   }
 
   /**Sets the cache ttl for DocCollection Objects cached  . This is only applicable for collections which are persisted outside of clusterstate.json
@@ -365,10 +392,33 @@ public class CloudSolrClient extends SolrClient {
   public CloudSolrClient(String zkHost, LBHttpSolrClient lbClient, boolean updatesToLeaders) {
     this.zkHost = zkHost;
     this.lbClient = lbClient;
+    this.httpClient = null;
     this.updatesToLeaders = updatesToLeaders;
-    shutdownLBHttpSolrServer = false;
+    this.shutdownLBHttpSolrServer = false;
+    this.shutdownZkStateReader = true;
     this.clientIsInternal = false;
     lbClient.addQueryParams(STATE_VERSION);
+    this.threadPool = createThreadPool();
+    this.shutdownThreadPool = true;
+  }
+
+  private CloudSolrClient(CloudSolrClient parent, String defaultCollection) {
+
+    assert parent.zkStateReader != null : "Must be connected to create a child client";
+
+    this.zkStateReader = parent.zkStateReader;
+    this.lbClient = parent.lbClient;
+    this.httpClient = parent.httpClient;
+    this.updatesToLeaders = parent.updatesToLeaders;
+    this.threadPool = parent.threadPool;
+    this.zkHost = parent.zkHost;
+
+    this.shutdownLBHttpSolrServer = false;
+    this.clientIsInternal = false;
+    this.shutdownZkStateReader = false;
+    this.shutdownThreadPool = false;
+
+    this.defaultCollection = defaultCollection;
   }
   
   public ResponseParser getParser() {
@@ -428,6 +478,20 @@ public class CloudSolrClient extends SolrClient {
   /** Gets the default collection for request */
   public String getDefaultCollection() {
     return defaultCollection;
+  }
+
+  /**
+   * Create a SolrClient for querying a single collection or alias.
+   *
+   * The returned client shares resources with this parent client, and will not function
+   * after its parent has been closed.
+   *
+   * @param collection the collection to query
+   * @return a SolrClient
+   */
+  public SolrClient getCollectionClient(String collection) {
+    connect();  // force a connection to get a ZkStateReader
+    return new CloudSolrClient(this, collection);
   }
 
   /** Set the connect timeout to the zookeeper ensemble in ms */
@@ -1059,7 +1123,7 @@ public class CloudSolrClient extends SolrClient {
   @Override
   @Deprecated
   public void shutdown() {
-    if (zkStateReader != null) {
+    if (zkStateReader != null && this.shutdownZkStateReader) {
       synchronized(this) {
         if (zkStateReader!= null)
           zkStateReader.close();
@@ -1068,14 +1132,14 @@ public class CloudSolrClient extends SolrClient {
     }
     
     if (shutdownLBHttpSolrServer) {
-      lbClient.shutdown();
+      lbClient.close();
     }
     
-    if (clientIsInternal && myClient!=null) {
-      HttpClientUtil.close(myClient);
+    if (clientIsInternal && httpClient !=null) {
+      HttpClientUtil.close(httpClient);
     }
 
-    if(this.threadPool != null && !this.threadPool.isShutdown()) {
+    if(this.shutdownThreadPool && this.threadPool != null && !this.threadPool.isShutdown()) {
       this.threadPool.shutdown();
     }
   }
