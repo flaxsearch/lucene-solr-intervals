@@ -18,12 +18,12 @@ package org.apache.lucene.search;
  */
 
 import org.apache.lucene.search.ScorerPriorityQueue.ScorerWrapper;
-import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+
 
 /**
  * Base class for Scorers that score disjunctions.
@@ -106,7 +106,7 @@ abstract class DisjunctionScorer extends Scorer {
   }
 
   @Override
-  public TwoPhaseDocIdSetIterator asTwoPhaseIterator() {
+  public TwoPhaseIterator asTwoPhaseIterator() {
     boolean hasApproximation = false;
     for (ScorerWrapper w : subScorers) {
       if (w.twoPhaseView != null) {
@@ -120,7 +120,7 @@ abstract class DisjunctionScorer extends Scorer {
       return null;
     }
 
-    return new TwoPhaseDocIdSetIterator() {
+    return new TwoPhaseIterator() {
 
       @Override
       public DocIdSetIterator approximation() {
@@ -230,26 +230,6 @@ abstract class DisjunctionScorer extends Scorer {
       children.add(new ChildScorer(scorer.scorer, "SHOULD"));
     }
     return children;
-  }
-
-  @Override
-  public int nextPosition() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public int startOffset() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public int endOffset() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public BytesRef getPayload() throws IOException {
-    return null;
   }
 
   Scorer[] getSubScorers() {

@@ -185,7 +185,7 @@ public class ReRankQParserPlugin extends QParserPlugin {
       this.reRankQuery = reRankQuery;
       this.searcher = searcher;
       this.reRankWeight = reRankWeight;
-      this.mainWeight = mainQuery.createWeight(searcher, needsScores, PostingsEnum.FLAG_FREQS);
+      this.mainWeight = mainQuery.createWeight(searcher, needsScores, PostingsEnum.FREQS);
     }
 
     public float getValueForNormalization() throws IOException {

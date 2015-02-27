@@ -40,8 +40,7 @@
  * on implementing your own Query class, see <a href="#customQueriesExpert">Custom Queries -- Expert Level</a> below.
  * <p>
  * To perform a search, applications usually call {@link
- * org.apache.lucene.search.IndexSearcher#search(Query,int)} or {@link
- * org.apache.lucene.search.IndexSearcher#search(Query,Filter,int)}.
+ * org.apache.lucene.search.IndexSearcher#search(Query,int)}.
  * <p>
  * Once a Query has been created and submitted to the {@link org.apache.lucene.search.IndexSearcher IndexSearcher}, the scoring
  * process begins. After some infrastructure setup, control finally passes to the {@link org.apache.lucene.search.Weight Weight}
@@ -449,7 +448,7 @@
  *                 {@link org.apache.lucene.search.Scorer#freq freq()} &mdash; Returns the number of matches
  *                 for the current document. This value can be determined in any appropriate way for an application. For instance, the
  *                 {@link org.apache.lucene.search.TermScorer TermScorer} simply defers to the term frequency from the inverted index:
- *                 {@link org.apache.lucene.index.DocsEnum#freq DocsEnum.freq()}.
+ *                 {@link org.apache.lucene.index.PostingsEnum#freq PostingsEnum.freq()}.
  *             </li>
  *             <li>
  *                 {@link org.apache.lucene.search.Scorer#advance advance()} &mdash; Skip ahead in

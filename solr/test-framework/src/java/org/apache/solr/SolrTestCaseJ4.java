@@ -28,9 +28,11 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.LuceneTestCase.SuppressFileSystems;
 import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
 import org.apache.lucene.util.QuickPatchThreadsFilter;
 import org.apache.lucene.util.TestUtil;
+import org.apache.solr.client.solrj.embedded.JettyConfig;
 import org.apache.solr.client.solrj.impl.HttpClientConfigurer;
 import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.client.solrj.util.ClientUtils;
@@ -45,12 +47,14 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ObjectReleaseTracker;
 import org.apache.solr.common.util.XML;
-import org.apache.solr.core.ConfigSolr;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
+import org.apache.solr.core.CoresLocator;
+import org.apache.solr.core.NodeConfig;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrResourceLoader;
+import org.apache.solr.core.SolrXmlConfig;
 import org.apache.solr.handler.UpdateRequestHandler;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
@@ -125,6 +129,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
     QuickPatchThreadsFilter.class
 })
 @SuppressSysoutChecks(bugUrl = "Solr dumps tons of logs to console.")
+@SuppressFileSystems("ExtrasFS") // might be ok, the failures with e.g. nightly runs might be "normal"
 public abstract class SolrTestCaseJ4 extends LuceneTestCase {
 
   public static final String DEFAULT_TEST_CORENAME = "collection1";
@@ -162,6 +167,18 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   public @interface SuppressSSL {
     /** Point to JIRA entry. */
     public String bugUrl() default "None";
+  }
+  
+  /**
+   * Annotation for test classes that want to disable ObjectReleaseTracker
+   */
+  @Documented
+  @Inherited
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.TYPE)
+  public @interface SuppressObjectReleaseTracker {
+    /** Point to JIRA entry. */
+    public String bugUrl();
   }
   
   // these are meant to be accessed sequentially, but are volatile just to ensure any test
@@ -210,7 +227,13 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
       deleteCore();
       resetExceptionIgnores();
       endTrackingSearchers();
-      assertTrue("Some resources were not closed, shutdown, or released.", ObjectReleaseTracker.clearObjectTrackerAndCheckEmpty());
+      if (!RandomizedContext.current().getTargetClass().isAnnotationPresent(SuppressObjectReleaseTracker.class)) {
+        assertTrue("Some resources were not closed, shutdown, or released.", ObjectReleaseTracker.clearObjectTrackerAndCheckEmpty());
+      } else {
+        if (!ObjectReleaseTracker.clearObjectTrackerAndCheckEmpty()) {
+          log.warn("Some resources were not closed, shutdown, or released. Remove the SuppressObjectReleaseTracker annotation to get more information on the fail.");
+        }
+      }
       resetFactory();
       coreName = DEFAULT_TEST_CORENAME;
     } finally {
@@ -281,6 +304,10 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     
     return new SSLTestConfig(trySsl, trySslClientAuth);
   }
+
+  protected static JettyConfig buildJettyConfig(String context) {
+    return JettyConfig.builder().setContext(context).withSSLConfig(sslConfig).build();
+  }
   
   protected static String buildUrl(final int port, final String context) {
     return (isSSLMode() ? "https" : "http") + "://127.0.0.1:" + port + context;
@@ -307,14 +334,14 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
    */
   public static void setupNoCoreTest(File solrHome, String xmlStr) throws Exception {
 
-    File tmpFile = new File(solrHome, ConfigSolr.SOLR_XML_FILE);
+    File tmpFile = new File(solrHome, SolrXmlConfig.SOLR_XML_FILE);
     if (xmlStr == null) {
       xmlStr = "<solr></solr>";
     }
     FileUtils.write(tmpFile, xmlStr, IOUtils.UTF_8);
 
     SolrResourceLoader loader = new SolrResourceLoader(solrHome.getAbsolutePath());
-    h = new TestHarness(ConfigSolr.fromFile(loader, new File(solrHome, "solr.xml")));
+    h = new TestHarness(SolrXmlConfig.fromFile(loader, new File(solrHome, "solr.xml")));
     lrf = h.getRequestFactory("standard", 0, 20, CommonParams.VERSION, "2.2");
   }
   
@@ -596,15 +623,17 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
     return h.getCoreContainer();
   }
 
-  public static CoreContainer createCoreContainer(ConfigSolr config) {
+  public static CoreContainer createCoreContainer(NodeConfig config, CoresLocator locator) {
     testSolrHome = config.getSolrResourceLoader().getInstanceDir();
-    h = new TestHarness(config);
+    h = new TestHarness(config, locator);
     lrf = h.getRequestFactory("standard", 0, 20, CommonParams.VERSION, "2.2");
     return h.getCoreContainer();
   }
 
   public static CoreContainer createCoreContainer(String coreName, String dataDir, String solrConfig, String schema) {
-    CoreContainer cc = createCoreContainer(new TestHarness.TestConfigSolr(coreName, dataDir, solrConfig, schema));
+    NodeConfig nodeConfig = TestHarness.buildTestNodeConfig(new SolrResourceLoader(SolrResourceLoader.locateSolrHome()));
+    CoresLocator locator = new TestHarness.TestCoresLocator(coreName, dataDir, solrConfig, schema);
+    CoreContainer cc = createCoreContainer(nodeConfig, locator);
     h.coreName = coreName;
     return cc;
   }

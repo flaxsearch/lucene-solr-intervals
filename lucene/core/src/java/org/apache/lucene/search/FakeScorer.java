@@ -18,7 +18,6 @@ package org.apache.lucene.search;
  */
 
 import org.apache.lucene.search.intervals.IntervalIterator;
-import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -47,26 +46,6 @@ final class FakeScorer extends Scorer {
   @Override
   public int freq() {
     return freq;
-  }
-
-  @Override
-  public int nextPosition() throws IOException {
-    throw new UnsupportedOperationException("FakeScorer doesn't support nextPosition()");
-  }
-
-  @Override
-  public int startOffset() throws IOException {
-    throw new UnsupportedOperationException("FakeScorer doesn't support startOffset()");
-  }
-
-  @Override
-  public int endOffset() throws IOException {
-    throw new UnsupportedOperationException("FakeScorer doesn't support endOffset()");
-  }
-
-  @Override
-  public BytesRef getPayload() throws IOException {
-    throw new UnsupportedOperationException("FakeScorer doesn't support getPayload()");
   }
 
   @Override

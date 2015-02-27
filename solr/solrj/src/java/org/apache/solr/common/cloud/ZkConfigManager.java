@@ -58,7 +58,10 @@ public class ZkConfigManager {
     Files.walkFileTree(rootPath, new SimpleFileVisitor<Path>(){
       @Override
       public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-        String zkNode = zkPath + "/" + rootPath.relativize(file).toString();
+        String filename = file.getFileName().toString();
+        if (filename.startsWith("."))
+          return FileVisitResult.CONTINUE;
+        String zkNode = createZkNodeName(zkPath, rootPath, file);
         try {
           zkClient.makePath(zkNode, file.toFile(), false, true);
         } catch (KeeperException | InterruptedException e) {
@@ -67,7 +70,21 @@ public class ZkConfigManager {
         }
         return FileVisitResult.CONTINUE;
       }
+
+      @Override
+      public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+        return (dir.getFileName().toString().startsWith(".")) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+      }
     });
+  }
+
+  private static String createZkNodeName(String zkRoot, Path root, Path file) {
+    String relativePath = root.relativize(file).toString();
+    // Windows shenanigans
+    String separator = root.getFileSystem().getSeparator();
+    if ("\\".equals(separator))
+      relativePath = relativePath.replaceAll("\\\\", "/");
+    return zkRoot + "/" + relativePath;
   }
 
   private void downloadFromZK(String zkPath, Path dir) throws IOException {

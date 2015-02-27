@@ -21,6 +21,7 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.intervals.IntervalIterator;
+import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
 
@@ -36,7 +37,7 @@ import java.util.Set;
  * query is used in a search - use a CachingWrapperFilter to avoid
  * regenerating the bits every time.
  * @since   1.4
- * @see     CachingWrapperFilter
+ * @see     CachingWrapperQuery
  */
 public class FilteredQuery extends Query {
 
@@ -64,10 +65,15 @@ public class FilteredQuery extends Query {
    * @see FilterStrategy
    */
   public FilteredQuery(Query query, Filter filter, FilterStrategy strategy) {
-    if (query == null || filter == null)
-      throw new IllegalArgumentException("Query and filter cannot be null.");
-    if (strategy == null)
-      throw new IllegalArgumentException("FilterStrategy can not be null");
+    if (query == null) {
+      throw new IllegalArgumentException("Query must not be be null.");
+    }
+    if (filter == null) {
+      throw new IllegalArgumentException("Filter must not be be null.");
+    }
+    if (strategy == null) {
+      throw new IllegalArgumentException("FilterStrategy must not be null");
+    }
     this.strategy = strategy;
     this.query = query;
     this.filter = filter;
@@ -312,6 +318,16 @@ public class FilteredQuery extends Query {
    * it returns a new {@code FilteredQuery} wrapping the rewritten query. */
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
+    if (filter instanceof QueryWrapperFilter) {
+      // In that case the filter does not implement random-access anyway so
+      // we want to take advantage of approximations
+      BooleanQuery rewritten = new BooleanQuery();
+      rewritten.add(query, Occur.MUST);
+      rewritten.add(((QueryWrapperFilter) filter).getQuery(), Occur.FILTER);
+      rewritten.setBoost(getBoost());
+      return rewritten;
+    }
+
     final Query queryRewritten = query.rewrite(reader);
     
     if (queryRewritten != query) {

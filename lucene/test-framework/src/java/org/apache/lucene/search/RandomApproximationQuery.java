@@ -3,6 +3,7 @@ package org.apache.lucene.search;
 import com.carrotsearch.randomizedtesting.generators.RandomInts;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
 
 import java.io.IOException;
@@ -75,47 +76,104 @@ public class RandomApproximationQuery extends Query {
   @Override
   public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
     final Weight weight = query.createWeight(searcher, needsScores, flags);
-    return new Weight(RandomApproximationQuery.this) {
-
-      @Override
-      public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-        return weight.explain(context, doc);
-      }
-
-      @Override
-      public float getValueForNormalization() throws IOException {
-        return weight.getValueForNormalization();
-      }
-
-      @Override
-      public void normalize(float norm, float topLevelBoost) {
-        weight.normalize(norm, topLevelBoost);
-      }
-
-      @Override
-      public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
-        final Scorer scorer = weight.scorer(context, acceptDocs);
-        if (scorer == null) {
-          return null;
-        }
-        final RandomTwoPhaseView twoPhaseView = new RandomTwoPhaseView(random, scorer);
-        return new FilterScorer(scorer) {
-
-          @Override
-          public TwoPhaseDocIdSetIterator asTwoPhaseIterator() {
-            return twoPhaseView;
-          }
-          
-        };
-      }
-
-    };
+    return new RandomApproximationWeight(weight, new Random(random.nextLong()));
   }
 
-  private static class RandomTwoPhaseView extends TwoPhaseDocIdSetIterator {
+  private static class RandomApproximationWeight extends Weight {
+
+    private final Weight weight;
+    private final Random random;
+
+    RandomApproximationWeight(Weight weight, Random random) {
+      super(weight.getQuery());
+      this.weight = weight;
+      this.random = random;
+    }
+
+    @Override
+    public Explanation explain(LeafReaderContext context, int doc) throws IOException {
+      return weight.explain(context, doc);
+    }
+
+    @Override
+    public float getValueForNormalization() throws IOException {
+      return weight.getValueForNormalization();
+    }
+
+    @Override
+    public void normalize(float norm, float topLevelBoost) {
+      weight.normalize(norm, topLevelBoost);
+    }
+
+    @Override
+    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+      final Scorer scorer = weight.scorer(context, acceptDocs);
+      if (scorer == null) {
+        return null;
+      }
+      return new RandomApproximationScorer(scorer, new Random(random.nextLong()));
+    }
+
+  }
+
+  private static class RandomApproximationScorer extends Scorer {
+
+    private final Scorer scorer;
+    private final RandomTwoPhaseView twoPhaseView;
+
+    RandomApproximationScorer(Scorer scorer, Random random) {
+      super(scorer.getWeight());
+      this.scorer = scorer;
+      this.twoPhaseView = new RandomTwoPhaseView(random, scorer);
+    }
+
+    @Override
+    public TwoPhaseIterator asTwoPhaseIterator() {
+      return twoPhaseView;
+    }
+
+    @Override
+    public IntervalIterator intervals(boolean collectIntervals) throws IOException {
+      return null;
+    }
+
+    @Override
+    public float score() throws IOException {
+      return scorer.score();
+    }
+
+    @Override
+    public int freq() throws IOException {
+      return scorer.freq();
+    }
+
+    @Override
+    public int docID() {
+      return scorer.docID();
+    }
+
+    @Override
+    public int nextDoc() throws IOException {
+      return scorer.nextDoc();
+    }
+
+    @Override
+    public int advance(int target) throws IOException {
+      return scorer.advance(target);
+    }
+
+    @Override
+    public long cost() {
+      return scorer.cost();
+    }
+
+  }
+
+  private static class RandomTwoPhaseView extends TwoPhaseIterator {
 
     private final DocIdSetIterator disi;
     private final RandomApproximation approximation;
+    private int lastDoc = -1;
 
     RandomTwoPhaseView(Random random, DocIdSetIterator disi) {
       this.disi = disi;
@@ -129,9 +187,16 @@ public class RandomApproximationQuery extends Query {
 
     @Override
     public boolean matches() throws IOException {
-      return approximation.doc == disi.docID();
+      if (approximation.docID() == -1 || approximation.docID() == DocIdSetIterator.NO_MORE_DOCS) {
+        throw new AssertionError("matches() should not be called on doc ID " + approximation.doc);
+      }
+      if (lastDoc == approximation.docID()) {
+        throw new AssertionError("matches() has been called twice on doc ID " + approximation.doc);
+      }
+      lastDoc = approximation.docID();
+      return approximation.docID() == disi.docID();
     }
-    
+
   }
 
   private static class RandomApproximation extends DocIdSetIterator {
@@ -140,7 +205,7 @@ public class RandomApproximationQuery extends Query {
     private final DocIdSetIterator disi;
 
     int doc = -1;
-    
+
     public RandomApproximation(Random random, DocIdSetIterator disi) {
       this.random = random;
       this.disi = disi;
@@ -150,7 +215,7 @@ public class RandomApproximationQuery extends Query {
     public int docID() {
       return doc;
     }
-    
+
     @Override
     public int nextDoc() throws IOException {
       return advance(doc + 1);

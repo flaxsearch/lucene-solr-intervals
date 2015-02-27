@@ -17,13 +17,6 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.IndexReaderContext;
-import org.apache.lucene.index.LeafReader;
-import org.apache.lucene.index.LeafReaderContext;
-import java.io.IOException;
-import java.util.Set;
-
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
@@ -67,7 +60,7 @@ public class TermQuery extends Query {
           searcher.termStatistics(term, termStates));
 
       if (needsScores)
-        flags |= PostingsEnum.FLAG_FREQS;
+        flags |= PostingsEnum.FREQS;
       this.postingsFlags = flags;
     }
     

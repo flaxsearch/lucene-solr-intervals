@@ -42,7 +42,7 @@ import java.util.Collections;
  * TopScoreDocCollector}) will not properly collect hits
  * with these scores.
  */
-public abstract class Scorer extends PostingsEnum {
+public abstract class Scorer extends DocIdSetIterator {
   /** the Scorer's parent Weight. in some cases this may be null */
   // TODO can we clean this up?
   protected final Weight weight;
@@ -106,6 +106,9 @@ public abstract class Scorer extends PostingsEnum {
    */
   public abstract float score() throws IOException;
 
+  /** Returns the freq of this Scorer on the current document */
+  public abstract int freq() throws IOException;
+
   /** returns parent Weight
    * @lucene.experimental
    */
@@ -146,12 +149,12 @@ public abstract class Scorer extends PostingsEnum {
   }
 
   /**
-   * Optional method: Return a {@link TwoPhaseDocIdSetIterator} view of this
+   * Optional method: Return a {@link TwoPhaseIterator} view of this
    * {@link Scorer}. A return value of {@code null} indicates that
    * two-phase iteration is not supported.
    *
-   * Note that the returned {@link TwoPhaseDocIdSetIterator}'s
-   * {@link TwoPhaseDocIdSetIterator#approximation() approximation} must
+   * Note that the returned {@link TwoPhaseIterator}'s
+   * {@link TwoPhaseIterator#approximation() approximation} must
    * advance synchronously with this iterator: advancing the approximation must
    * advance this iterator and vice-versa.
    *
@@ -160,7 +163,7 @@ public abstract class Scorer extends PostingsEnum {
    *
    * The default implementation returns {@code null}.
    */
-  public TwoPhaseDocIdSetIterator asTwoPhaseIterator() {
+  public TwoPhaseIterator asTwoPhaseIterator() {
     return null;
   }
 }

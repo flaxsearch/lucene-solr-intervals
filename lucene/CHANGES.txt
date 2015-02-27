@@ -16,14 +16,29 @@ New Features
 * LUCENE-6227: Added BooleanClause.Occur.FILTER to filter documents without
   participating in scoring (on the contrary to MUST). (Adrien Grand)
 
+* LUCENE-6294: Added oal.search.CollectorManager to allow for parallelization
+  of the document collection process on IndexSearcher. (Adrien Grand)
+
+* LUCENE-6303: Added filter caching baked into IndexSearcher and enabled by
+  default. (Adrien Grand)
+
 Bug Fixes
 
+* LUCENE-6249: StandardQueryParser doesn't support pure negative clauses. 
+  (Dawid Weiss)
+  
 * LUCENE-6190: Spatial pointsOnly flag on PrefixTreeStrategy shouldn't switch all predicates to
   Intersects. (David Smiley)
 
 * LUCENE-6242: Ram usage estimation was incorrect for SparseFixedBitSet when
   object alignment was different from 8. (Uwe Schindler, Adrien Grand)
 
+* LUCENE-6293: Fixed TimSorter bug. (Adrien Grand)
+
+* LUCENE-6001: DrillSideways hits NullPointerException for certain
+  BooleanQuery searches.  (Dragan Jotannovic, jane chang via Mike
+  McCandless)
+  
 Optimizations
 
 * LUCENE-6183, LUCENE-5647: Avoid recompressing stored fields
@@ -49,18 +64,33 @@ Optimizations
 * LUCENE-6233 Speed up CheckIndex when the index has term vectors
   (Robert Muir, Mike McCandless)
 
-* LUCENE-6198: Added the TwoPhaseDocIdSetIterator API, exposed on scorers which
+* LUCENE-6198: Added the TwoPhaseIterator API, exposed on scorers which
   is for now only used on phrase queries and conjunctions in order to check
   positions lazily if the phrase query is in a conjunction with other queries.
   (Robert Muir, Adrien Grand)
 
-* LUCENE-6244: Pure disjunctions now propagate two-phase iterators of the
-  wrapped scorers (see LUCENE-6198). (Adrien Grand, Robert Muir)
+* LUCENE-6244, LUCENE-6251: All boolean queries but those that have a
+  minShouldMatch > 1 now either propagate or take advantage of the two-phase
+  iteration capabilities added in LUCENE-6198. (Adrien Grand, Robert Muir)
 
 * LUCENE-6241: FSDirectory.listAll() doesnt filter out subdirectories anymore,
   for faster performance. Subdirectories don't matter to Lucene. If you need to
   filter out non-index files with some custom usage, you may want to look at 
   the IndexFileNames class. (Robert Muir)
+
+* LUCENE-6262: ConstantScoreQuery does not wrap the inner weight anymore when
+  scores are not required. (Adrien Grand)
+
+* LUCENE-6263: MultiCollector automatically caches scores when several
+  collectors need them. (Adrien Grand)
+
+* LUCENE-6275: SloppyPhraseScorer now uses the same logic as ConjunctionScorer
+  in order to advance doc IDs, which takes advantage of the cost() API.
+  (Adrien Grand)
+
+* LUCENE-6290: QueryWrapperFilter propagates approximations and FilteredQuery
+  rewrites to a BooleanQuery when the filter is a QueryWrapperFilter in order
+  to leverage approximations. (Adrien Grand)
 
 API Changes
 
@@ -73,14 +103,20 @@ API Changes
 * LUCENE-6218, LUCENE-6220: Add Collector.needsScores() and needsScores
   parameter to Query.createWeight(). (Robert Muir, Adrien Grand)
 
-* LUCENE-4524: Merge DocsEnum and DocsAndPositionsEnum into a single
-  PostingsEnum iterator.  TermsEnum.docs() and TermsEnum.docsAndPositions()
-  are replaced by TermsEnum.postings(). (Alan Woodward, Simon Willnauer,
-  Robert Muir)
+* LUCENE-4524, LUCENE-6246, LUCENE-6256: Merge DocsEnum and DocsAndPositionsEnum
+  into a single PostingsEnum iterator.  TermsEnum.docs() and TermsEnum.docsAndPositions()
+  are replaced by TermsEnum.postings(). 
+  (Alan Woodward, Simon Willnauer, Robert Muir, Ryan Ernst)
 
 * LUCENE-6222: Removed TermFilter, use a QueryWrapperFilter(TermQuery)
   instead. This will be as efficient now that queries can opt out from
   scoring. (Adrien Grand)
+
+* LUCENE-6269: Removed BooleanFilter, use a QueryWrapperFilter(BooleanQuery)
+  instead. (Adrien Grand)
+
+* LUCENE-6270: Replaced TermsFilter with TermsQuery, use a
+  QueryWrapperFilter(TermsQuery) instead. (Adrien Grand)
 
 * LUCENE-6223: Move BooleanQuery.BooleanWeight to BooleanWeight.
   (Robert Muir)
@@ -91,13 +127,52 @@ API Changes
 * LUCENE-6245: Force Filter subclasses to implement toString API from Query.
   (Ryan Ernst)
 
+* LUCENE-6268: Replace FieldValueFilter and DocValuesRangeFilter with equivalent
+  queries that support approximations. (Adrien Grand)
+
+* LUCENE-6289: Replace DocValuesRangeFilter with DocValuesRangeQuery which
+  supports approximations. (Adrien Grand)
+
+* LUCENE-6266: Remove unnecessary Directory params from SegmentInfo.toString, 
+  SegmentInfos.files/toString, and SegmentCommitInfo.toString. (Robert Muir)
+
+* LUCENE-6272: Scorer extends DocSetIdIterator rather than DocsEnum (Alan
+  Woodward)
+
+* LUCENE-6281: Removed support for slow collations from lucene/sandbox. Better
+  performance would be achieved through CollationKeyAnalyzer or
+  ICUCollationKeyAnalyzer. (Adrien Grand)
+
+* LUCENE-6286: Removed IndexSearcher methods that take a Filter object.
+  A BooleanQuery with a filter clause must be used instead. (Adrien Grand)
+
+* LUCENE-6300: PrefixFilter, TermRangeFilter and NumericRangeFilter have been
+  removed. Use PrefixQuery, TermRangeQuery and NumericRangeQuery instead.
+  (Adrien Grand)
+
+* LUCENE-6303: Replaced FilterCache with QueryCache and CachingWrapperFilter
+  with CachingWrapperQuery. (Adrien Grand)
+
 Other
+
+* LUCENE-6248: Remove unused odd constants from StandardSyntaxParser.jj
+  (Dawid Weiss)
 
 * LUCENE-6193: Collapse identical catch branches in try-catch statements.
   (shalin)
 
 * LUCENE-6239: Removed RAMUsageEstimator's sun.misc.Unsafe calls.
   (Robert Muir, Dawid Weiss, Uwe Schindler)
+
+* LUCENE-6292: Seed StringHelper better. (Robert Muir)
+
+Changes in Runtime Behavior
+
+* LUCENE-6255: PhraseQuery now ignores leading holes and requires that
+  positions are positive and added in order. (Adrien Grand)
+
+* LUCENE-6298: SimpleQueryParser returns an empty query rather than
+  null, if e.g. the terms were all stopwords. (Lee Hinman via Robert Muir)
 
 ======================= Lucene 5.0.0 =======================
 
@@ -635,6 +710,9 @@ Bug fixes
 * LUCENE-6207: Fixed consumption of several terms enums on the same
   sorted (set) doc values instance at the same time.
   (Tom Shally, Robert Muir, Adrien Grand)
+
+* LUCENE-6299: IndexWriter was failing to enforce the 2.1 billion doc
+  limit.  (Robert Muir, Mike McCandless)
 
 API Changes
 
@@ -3179,7 +3257,7 @@ Changes in backwards compatibility policy
     not necessary to specify for example that all of your binary values have
     the same length. Instead it's easy for the Codec API to optimize encoding
     based on any properties of the content.
-   (Simon Willnauer, Adrien Grand, Mike McCandless, Robert Muir)
+  (Simon Willnauer, Adrien Grand, Mike McCandless, Robert Muir)
 
 * LUCENE-4757: Cleanup and refactoring of FacetsAccumulator, FacetRequest,
   FacetsAggregator and FacetResultsHandler API. If your application did 
@@ -3460,7 +3538,7 @@ Changes in backwards compatibility policy
     methods such as close() and reference counting management pulled from
     DirectoryTaxonomyReader, and made final. The rest of the methods, remained
     abstract.
-    (Shai Erera, Gilad Barkai)
+  (Shai Erera, Gilad Barkai)
 
 * LUCENE-4576: Remove CachingWrapperFilter(Filter, boolean). This recacheDeletes
   option gave less than 1% speedup at the expense of cache churn (filters were
@@ -6154,8 +6232,8 @@ Optimizations
 
 Test Cases
 
-* LUCENE-3327: Fix AIOOBE when TestFSTs is run with
-  -Dtests.verbose=true (James Dyer via Mike McCandless)
+* LUCENE-3327: Fix AIOOBE when TestFSTs is run with -Dtests.verbose=true
+ (James Dyer via Mike McCandless)
 
 Build
 
@@ -7662,7 +7740,7 @@ API Changes
   - MapOfSets
   - o.a.l.util.cache package
   - lot's of internal APIs of IndexWriter
- (Uwe Schindler, Michael Busch, Kay Kay, Robert Muir, Adriano Crestani)
+  (Uwe Schindler, Michael Busch, Kay Kay, Robert Muir, Adriano Crestani)
   
 * LUCENE-1944, LUCENE-1856, LUCENE-1957, LUCENE-1960, LUCENE-1961,
   LUCENE-1968, LUCENE-1970, LUCENE-1946, LUCENE-1971, LUCENE-1975,

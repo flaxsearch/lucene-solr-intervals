@@ -34,6 +34,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -60,6 +61,18 @@ public class TestLRUFilterCache extends LuceneTestCase {
 
   };
 
+  private static FilterCachingPolicy MAYBE_CACHE_POLICY = new FilterCachingPolicy() {
+
+    @Override
+    public void onUse(Filter filter) {}
+
+    @Override
+    public boolean shouldCache(Filter filter, LeafReaderContext context, DocIdSet set) throws IOException {
+      return random().nextBoolean();
+    }
+
+  };
+
   public void testFilterRamBytesUsed() {
     final Filter simpleFilter = new QueryWrapperFilter(new TermQuery(new Term("some_field", "some_term")));
     final long actualRamBytesUsed = RamUsageTester.sizeOf(simpleFilter);
@@ -73,7 +86,15 @@ public class TestLRUFilterCache extends LuceneTestCase {
     final LRUFilterCache filterCache = new LRUFilterCache(1 + random().nextInt(20), 1 + random().nextInt(10000));
     Directory dir = newDirectory();
     final RandomIndexWriter w = new RandomIndexWriter(random(), dir);
-    final SearcherManager mgr = new SearcherManager(w.w, random().nextBoolean(), new SearcherFactory());
+    final SearcherManager mgr = new SearcherManager(w.w, random().nextBoolean(), new SearcherFactory() {
+      @Override
+      public IndexSearcher newSearcher(IndexReader reader) throws IOException {
+        IndexSearcher searcher = new IndexSearcher(reader);
+        // disable built-in caching
+        searcher.setQueryCache(null);
+        return searcher;
+      }
+    });
     final AtomicBoolean indexing = new AtomicBoolean(true);
     final AtomicReference<Throwable> error = new AtomicReference<>();
     final int numDocs = atLeast(10000);
@@ -164,6 +185,7 @@ public class TestLRUFilterCache extends LuceneTestCase {
     w.addDocument(doc);
     final DirectoryReader reader = w.getReader();
     final IndexSearcher searcher = newSearcher(reader);
+    searcher.setQueryCache(null);
     final LRUFilterCache filterCache = new LRUFilterCache(2, 100000);
 
     final Filter blue = new QueryWrapperFilter(new TermQuery(new Term("color", "blue")));
@@ -329,6 +351,7 @@ public class TestLRUFilterCache extends LuceneTestCase {
       }
       try (final DirectoryReader reader = w.getReader()) {
         final IndexSearcher searcher = new IndexSearcher(reader);
+        searcher.setQueryCache(null);
         for (int i = 0; i < 3; ++i) {
           final Filter filter = new QueryWrapperFilter(new TermQuery(new Term("color", RandomPicks.randomFrom(random(), colors))));
           searcher.search(new ConstantScoreQuery(filterCache.doCache(filter, MAYBE_CACHE_POLICY)), 1);
@@ -390,6 +413,7 @@ public class TestLRUFilterCache extends LuceneTestCase {
     }
     final DirectoryReader reader = w.getReader();
     final IndexSearcher searcher = new IndexSearcher(reader);
+    searcher.setQueryCache(null);
 
     final int numFilters = atLeast(1000);
     for (int i = 0; i < numFilters; ++i) {
@@ -427,6 +451,7 @@ public class TestLRUFilterCache extends LuceneTestCase {
     }
     final DirectoryReader reader = w.getReader();
     final IndexSearcher searcher = new IndexSearcher(reader);
+    searcher.setQueryCache(null);
 
     final Map<Filter, Integer> actualCounts = new HashMap<>();
     final Map<Filter, Integer> expectedCounts = new HashMap<>();
@@ -486,6 +511,7 @@ public class TestLRUFilterCache extends LuceneTestCase {
     final DirectoryReader reader = w.getReader();
     final int segmentCount = reader.leaves().size();
     final IndexSearcher searcher = new IndexSearcher(reader);
+    searcher.setQueryCache(null);
     final Filter filter = new QueryWrapperFilter(new TermQuery(new Term("color", "red")));
     final Filter filter2 = new QueryWrapperFilter(new TermQuery(new Term("color", "blue")));
 
@@ -574,10 +600,12 @@ public class TestLRUFilterCache extends LuceneTestCase {
     final DirectoryReader reader1 = w1.getReader();
     final int segmentCount1 = reader1.leaves().size();
     final IndexSearcher searcher1 = new IndexSearcher(reader1);
+    searcher1.setQueryCache(null);
 
     final DirectoryReader reader2 = w2.getReader();
     final int segmentCount2 = reader2.leaves().size();
     final IndexSearcher searcher2 = new IndexSearcher(reader2);
+    searcher2.setQueryCache(null);
 
     final Map<Object, Integer> indexId = new HashMap<>();
     for (LeafReaderContext ctx : reader1.leaves()) {

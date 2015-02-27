@@ -34,6 +34,7 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.Filter;
+import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BitDocIdSet;
@@ -47,7 +48,9 @@ import org.apache.lucene.util.RamUsageEstimator;
  * a sequence. An example might be a collection of primary keys from a database query result or perhaps
  * a choice of "category" labels picked by the end user. As a filter, this is much faster than the
  * equivalent query (a BooleanQuery with many "should" TermQueries)
+ * @deprecated Use a {@link QueryWrapperFilter} over a {@link TermsQuery} instead
  */
+@Deprecated
 public final class TermsFilter extends Filter implements Accountable {
 
   private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(TermsFilter.class);
@@ -213,7 +216,7 @@ public final class TermsFilter extends Filter implements Accountable {
           spare.offset = offsets[i];
           spare.length = offsets[i+1] - offsets[i];
           if (termsEnum.seekExact(spare)) {
-            docs = termsEnum.postings(acceptDocs, docs, PostingsEnum.FLAG_NONE); // no freq since we don't need them
+            docs = termsEnum.postings(acceptDocs, docs, PostingsEnum.NONE); // no freq since we don't need them
             builder.or(docs);
           }
         }

@@ -30,7 +30,6 @@ import org.apache.lucene.codecs.compressing.CompressionMode;
 import org.apache.lucene.codecs.compressing.Decompressor;
 import org.apache.lucene.codecs.lucene41.Lucene41StoredFieldsIndexReader;
 import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
@@ -886,7 +885,7 @@ final class Lucene42TermVectorsReader extends TermVectorsReader implements Close
     @Override
     public final PostingsEnum postings(Bits liveDocs, PostingsEnum reuse, int flags) throws IOException {
 
-      if (PostingsEnum.requiresPositions(flags)) {
+      if (PostingsEnum.featureRequested(flags, PostingsEnum.POSITIONS)) {
         if (positions == null && startOffsets == null) {
           return null;
         }

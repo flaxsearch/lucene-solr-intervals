@@ -52,7 +52,7 @@ public class TestBooleanOr extends LuceneTestCase {
 
   private int search(Query q) throws IOException {
     QueryUtils.check(random(), q,searcher);
-    return searcher.search(q, null, 1000).totalHits;
+    return searcher.search(q, 1000).totalHits;
   }
 
   public void testElements() throws IOException {
@@ -185,7 +185,7 @@ public class TestBooleanOr extends LuceneTestCase {
     bq.add(new TermQuery(new Term("field", "a")), BooleanClause.Occur.SHOULD);
     bq.add(new TermQuery(new Term("field", "a")), BooleanClause.Occur.SHOULD);
 
-    Weight w = s.createNormalizedWeight(bq, true, PostingsEnum.FLAG_FREQS);
+    Weight w = s.createNormalizedWeight(bq, true, PostingsEnum.FREQS);
 
     assertEquals(1, s.getIndexReader().leaves().size());
     BulkScorer scorer = w.bulkScorer(s.getIndexReader().leaves().get(0), null);

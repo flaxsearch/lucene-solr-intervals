@@ -158,24 +158,19 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
     int count=3000;
     long lower=(distance*3/2)+startOffset, upper=lower + count*distance + (distance/3);
     NumericRangeQuery<Long> q = NumericRangeQuery.newLongRange(field, precisionStep, lower, upper, true, true);
-    NumericRangeFilter<Long> f = NumericRangeFilter.newLongRange(field, precisionStep, lower, upper, true, true);
-    for (byte i=0; i<3; i++) {
+    for (byte i=0; i<2; i++) {
       TopDocs topDocs;
       String type;
       switch (i) {
         case 0:
           type = " (constant score filter rewrite)";
-          q.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_FILTER_REWRITE);
-          topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
+          q.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_REWRITE);
+          topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
           break;
         case 1:
           type = " (constant score boolean rewrite)";
-          q.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
-          topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
-          break;
-        case 2:
-          type = " (filter)";
-          topDocs = searcher.search(new MatchAllDocsQuery(), f, noDocs, Sort.INDEXORDER);
+          q.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_REWRITE);
+          topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
           break;
         default:
           return;
@@ -211,20 +206,6 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
   }
   
   @Test
-  public void testInverseRange() throws Exception {
-    LeafReaderContext context = SlowCompositeReaderWrapper.wrap(searcher.getIndexReader()).getContext();
-    NumericRangeFilter<Long> f = NumericRangeFilter.newLongRange("field8", 8, 1000L, -1000L, true, true);
-    assertNull("A inverse range should return the null instance", 
-        f.getDocIdSet(context, context.reader().getLiveDocs()));
-    f = NumericRangeFilter.newLongRange("field8", 8, Long.MAX_VALUE, null, false, false);
-    assertNull("A exclusive range starting with Long.MAX_VALUE should return the null instance",
-               f.getDocIdSet(context, context.reader().getLiveDocs()));
-    f = NumericRangeFilter.newLongRange("field8", 8, null, Long.MIN_VALUE, false, false);
-    assertNull("A exclusive range ending with Long.MIN_VALUE should return the null instance",
-               f.getDocIdSet(context, context.reader().getLiveDocs()));
-  }
-  
-  @Test
   public void testOneMatchQuery() throws Exception {
     NumericRangeQuery<Long> q = NumericRangeQuery.newLongRange("ascfield8", 8, 1000L, 1000L, true, true);
     TopDocs topDocs = searcher.search(q, noDocs);
@@ -238,7 +219,7 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
     int count=3000;
     long upper=(count-1)*distance + (distance/3) + startOffset;
     NumericRangeQuery<Long> q=NumericRangeQuery.newLongRange(field, precisionStep, null, upper, true, true);
-    TopDocs topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
+    TopDocs topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
     ScoreDoc[] sd = topDocs.scoreDocs;
     assertNotNull(sd);
     assertEquals("Score doc count", count, sd.length );
@@ -248,7 +229,7 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
     assertEquals("Last doc", (count-1)*distance+startOffset, doc.getField(field).numericValue().longValue() );
 
     q=NumericRangeQuery.newLongRange(field, precisionStep, null, upper, false, true);
-    topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
+    topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
     sd = topDocs.scoreDocs;
     assertNotNull(sd);
     assertEquals("Score doc count", count, sd.length );
@@ -283,7 +264,7 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
     int count=3000;
     long lower=(count-1)*distance + (distance/3) +startOffset;
     NumericRangeQuery<Long> q=NumericRangeQuery.newLongRange(field, precisionStep, lower, null, true, true);
-    TopDocs topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
+    TopDocs topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
     ScoreDoc[] sd = topDocs.scoreDocs;
     assertNotNull(sd);
     assertEquals("Score doc count", noDocs-count, sd.length );
@@ -293,7 +274,7 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
     assertEquals("Last doc", (noDocs-1)*distance+startOffset, doc.getField(field).numericValue().longValue() );
 
     q=NumericRangeQuery.newLongRange(field, precisionStep, lower, null, true, false);
-    topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
+    topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
     sd = topDocs.scoreDocs;
     assertNotNull(sd);
     assertEquals("Score doc count", noDocs-count, sd.length );
@@ -583,11 +564,6 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
       NumericUtils.sortableLongToDouble(lower), NumericUtils.sortableLongToDouble(upper), true, true);
     TopDocs tTopDocs = searcher.search(tq, 1);
     assertEquals("Returned count of range query must be equal to inclusive range length", upper-lower+1, tTopDocs.totalHits );
-    
-    Filter tf=NumericRangeFilter.newDoubleRange(field, precisionStep,
-      NumericUtils.sortableLongToDouble(lower), NumericUtils.sortableLongToDouble(upper), true, true);
-    tTopDocs = searcher.search(new MatchAllDocsQuery(), tf, 1);
-    assertEquals("Returned count of range filter must be equal to inclusive range length", upper-lower+1, tTopDocs.totalHits );
   }
 
   @Test

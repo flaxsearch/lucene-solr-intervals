@@ -126,7 +126,7 @@ public class TestMinShouldMatch2 extends LuceneTestCase {
     }
     bq.setMinimumNumberShouldMatch(minShouldMatch);
 
-    BooleanWeight weight = (BooleanWeight) searcher.createNormalizedWeight(bq, true, PostingsEnum.FLAG_FREQS);
+    BooleanWeight weight = (BooleanWeight) searcher.createNormalizedWeight(bq, true, PostingsEnum.FREQS);
     
     switch (mode) {
     case DOC_VALUES:
@@ -360,26 +360,6 @@ public class TestMinShouldMatch2 extends LuceneTestCase {
     @Override
     public int freq() throws IOException {
       return currentMatched;
-    }
-
-    @Override
-    public int nextPosition() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public int startOffset() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public int endOffset() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public BytesRef getPayload() throws IOException {
-      return null;
     }
 
     @Override

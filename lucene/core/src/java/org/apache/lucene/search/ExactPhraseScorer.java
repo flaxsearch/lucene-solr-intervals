@@ -17,7 +17,7 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import org.apache.lucene.search.PhraseQuery.TermDocsEnumFactory;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.search.intervals.BlockIntervalIterator;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.search.intervals.TermIntervalIterator;
@@ -25,45 +25,23 @@ import org.apache.lucene.search.similarities.Similarity;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
-import org.apache.lucene.index.PostingsEnum;
-import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.util.BytesRef;
-
 final class ExactPhraseScorer extends Scorer {
-  private final int endMinus1;
-  
-  private final static int CHUNK = 4096;
-  
-  private int gen;
-  private final int[] counts = new int[CHUNK];
-  private final int[] gens = new int[CHUNK];
-  
-  boolean noDocs;
 
-  private final long cost;
+  private static class PostingsAndPosition {
+    private final PostingsEnum postings;
+    private final int offset;
+    private int freq, upTo, pos;
 
-  private final static class ChunkState {
-
-    final PostingsEnum posEnum;
-    final int offset;
-    int posUpto;
-    int posLimit;
-    int pos;
-    int lastPos;
-
-    public ChunkState(PostingsEnum posEnum, int offset) {
-      this.posEnum = posEnum;
+    public PostingsAndPosition(PostingsEnum postings, int offset) {
+      this.postings = postings;
       this.offset = offset;
     }
   }
 
   private final ConjunctionDISI conjunction;
-
-  private final ChunkState[] chunkStates;
-  private final PostingsEnum lead;
+  private final PostingsAndPosition[] postings;
 
   private int freq;
 
@@ -80,25 +58,19 @@ final class ExactPhraseScorer extends Scorer {
     this.needsScores = needsScores;
     this.field = field;
 
-    chunkStates = new ChunkState[postings.length];
-
-    endMinus1 = postings.length-1;
-    
-    lead = postings[0].postings;
-    // min(cost)
-    cost = lead.cost();
-
     List<DocIdSetIterator> iterators = new ArrayList<>();
-    for(int i=0;i<postings.length;i++) {
-      chunkStates[i] = new ChunkState(postings[i].postings, -postings[i].position);
-      iterators.add(postings[i].postings);
+    List<PostingsAndPosition> postingsAndPositions = new ArrayList<>();
+    for(PhraseQuery.PostingsAndFreq posting : postings) {
+      iterators.add(posting.postings);
+      postingsAndPositions.add(new PostingsAndPosition(posting.postings, posting.position));
     }
     conjunction = ConjunctionDISI.intersect(iterators);
+    this.postings = postingsAndPositions.toArray(new PostingsAndPosition[postingsAndPositions.size()]);
   }
 
   @Override
-  public TwoPhaseDocIdSetIterator asTwoPhaseIterator() {
-    return new TwoPhaseDocIdSetIterator() {
+  public TwoPhaseIterator asTwoPhaseIterator() {
+    return new TwoPhaseIterator() {
 
       @Override
       public boolean matches() throws IOException {
@@ -141,26 +113,6 @@ final class ExactPhraseScorer extends Scorer {
   }
   
   @Override
-  public int nextPosition() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public int startOffset() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public int endOffset() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public BytesRef getPayload() throws IOException {
-    return null;
-  }
-
-  @Override
   public int docID() {
     return conjunction.docID();
   }
@@ -169,135 +121,76 @@ final class ExactPhraseScorer extends Scorer {
   public float score() {
     return docScorer.score(docID(), freq);
   }
-  
+
+  /** Advance the given pos enum to the first doc on or after {@code target}.
+   *  Return {@code false} if the enum was exhausted before reaching
+   *  {@code target} and {@code true} otherwise. */
+  private static boolean advancePosition(PostingsAndPosition posting, int target) throws IOException {
+    while (posting.pos < target) {
+      if (posting.upTo == posting.freq) {
+        return false;
+      } else {
+        posting.pos = posting.postings.nextPosition();
+        posting.upTo += 1;
+      }
+    }
+    return true;
+  }
+
   private int phraseFreq() throws IOException {
-    
-    freq = 0;
-    
-    // init chunks
-    for (int i = 0; i < chunkStates.length; i++) {
-      final ChunkState cs = chunkStates[i];
-      cs.posLimit = cs.posEnum.freq();
-      cs.pos = cs.offset + cs.posEnum.nextPosition();
-      cs.posUpto = 1;
-      cs.lastPos = -1;
+    // reset state
+    final PostingsAndPosition[] postings = this.postings;
+    for (PostingsAndPosition posting : postings) {
+      posting.freq = posting.postings.freq();
+      posting.pos = posting.postings.nextPosition();
+      posting.upTo = 1;
     }
-    
-    int chunkStart = 0;
-    int chunkEnd = CHUNK;
-    
-    // process chunk by chunk
-    boolean end = false;
-    
-    // TODO: we could fold in chunkStart into offset and
-    // save one subtract per pos incr
-    
-    while (!end) {
-      
-      gen++;
-      
-      if (gen == 0) {
-        // wraparound
-        Arrays.fill(gens, 0);
-        gen++;
-      }
-      
-      // first term
-      {
-        final ChunkState cs = chunkStates[0];
-        while (cs.pos < chunkEnd) {
-          if (cs.pos > cs.lastPos) {
-            cs.lastPos = cs.pos;
-            final int posIndex = cs.pos - chunkStart;
-            counts[posIndex] = 1;
-            assert gens[posIndex] != gen;
-            gens[posIndex] = gen;
+
+    int freq = 0;
+    final PostingsAndPosition lead = postings[0];
+
+    advanceHead:
+    while (true) {
+      final int phrasePos = lead.pos - lead.offset;
+      for (int j = 1; j < postings.length; ++j) {
+        final PostingsAndPosition posting = postings[j];
+        final int expectedPos = phrasePos + posting.offset;
+
+        // advance up to the same position as the lead
+        if (advancePosition(posting, expectedPos) == false) {
+          break advanceHead;
+        }
+
+        if (posting.pos != expectedPos) { // we advanced too far
+          if (advancePosition(lead, posting.pos - posting.offset + lead.offset)) {
+            continue advanceHead;
+          } else {
+            break advanceHead;
           }
-          
-          if (cs.posUpto == cs.posLimit) {
-            end = true;
-            break;
-          }
-          cs.posUpto++;
-          cs.pos = cs.offset + cs.posEnum.nextPosition();
         }
       }
-      
-      // middle terms
-      boolean any = true;
-      for (int t = 1; t < endMinus1; t++) {
-        final ChunkState cs = chunkStates[t];
-        any = false;
-        while (cs.pos < chunkEnd) {
-          if (cs.pos > cs.lastPos) {
-            cs.lastPos = cs.pos;
-            final int posIndex = cs.pos - chunkStart;
-            if (posIndex >= 0 && gens[posIndex] == gen && counts[posIndex] == t) {
-              // viable
-              counts[posIndex]++;
-              any = true;
-            }
-          }
-          
-          if (cs.posUpto == cs.posLimit) {
-            end = true;
-            break;
-          }
-          cs.posUpto++;
-          cs.pos = cs.offset + cs.posEnum.nextPosition();
-        }
-        
-        if (!any) {
-          break;
-        }
+
+      freq += 1;
+      if (needsScores == false) {
+        break;
       }
-      
-      if (!any) {
-        // petered out for this chunk
-        chunkStart += CHUNK;
-        chunkEnd += CHUNK;
-        continue;
+
+      if (lead.upTo == lead.freq) {
+        break;
       }
-      
-      // last term
-      
-      {
-        final ChunkState cs = chunkStates[endMinus1];
-        while (cs.pos < chunkEnd) {
-          if (cs.pos > cs.lastPos) {
-            cs.lastPos = cs.pos;
-            final int posIndex = cs.pos - chunkStart;
-            if (posIndex >= 0 && gens[posIndex] == gen
-                && counts[posIndex] == endMinus1) {
-              freq++;
-              if (!needsScores) {
-                return freq; // we determined there was a match.
-              }
-            }
-          }
-          
-          if (cs.posUpto == cs.posLimit) {
-            end = true;
-            break;
-          }
-          cs.posUpto++;
-          cs.pos = cs.offset + cs.posEnum.nextPosition();
-        }
-      }
-      
-      chunkStart += CHUNK;
-      chunkEnd += CHUNK;
+      lead.pos = lead.postings.nextPosition();
+      lead.upTo += 1;
     }
-    
-    return freq;
+
+    return this.freq = freq;
   }
 
   @Override
   public IntervalIterator intervals(boolean collectIntervals) throws IOException {
-    TermIntervalIterator[] posIters = new TermIntervalIterator[chunkStates.length];
-    PostingsEnum[] enums = new PostingsEnum[chunkStates.length];
-    for (int i = 0; i < chunkStates.length; i++) {
-      posIters[i] = new TermIntervalIterator(this, enums[i] = chunkStates[i].posEnum,
+    TermIntervalIterator[] posIters = new TermIntervalIterator[postings.length];
+    PostingsEnum[] enums = new PostingsEnum[postings.length];
+    for (int i = 0; i < postings.length; i++) {
+      posIters[i] = new TermIntervalIterator(this, enums[i] = postings[i].postings,
                                               false, collectIntervals, field);
     }
     return new SloppyPhraseScorer.AdvancingIntervalIterator(this, collectIntervals, enums, new BlockIntervalIterator(this, collectIntervals, posIters));
@@ -305,6 +198,6 @@ final class ExactPhraseScorer extends Scorer {
 
   @Override
   public long cost() {
-    return cost;
+    return conjunction.cost();
   }
 }

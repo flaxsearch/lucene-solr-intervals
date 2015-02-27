@@ -97,7 +97,7 @@ if (c.query instanceof TermQuery) {
         filter = (Filter)cache.get(filterQuery);
       }
       if (filter == null) {                       // miss
-        filter = new CachingWrapperFilter(new QueryWrapperFilter(filterQuery)); // construct new entry
+        filter = new QueryWrapperFilter(new CachingWrapperQuery(filterQuery)); // construct new entry
         synchronized (cache) {
           cache.put(filterQuery, filter);         // cache it
         }
@@ -110,7 +110,7 @@ if (c.query instanceof TermQuery) {
       queryOut[0] = query; filterOut[0] = filter;
       return null;
     } else {
-      return searcher.search(query, filter, numHits);
+      return searcher.search(new FilteredQuery(query, filter), numHits);
     }
 
   }

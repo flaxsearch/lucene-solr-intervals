@@ -23,6 +23,16 @@ Apache UIMA 2.3.1
 Apache ZooKeeper 3.4.6
 Jetty 9.2.6.v20141205
 
+Upgrading from Solr 5.0
+-----------------------
+
+* SolrClient query functions now declare themselves as throwing IOException in
+  addition to SolrServerException, to bring them in line with the update
+  functions.
+
+* SolrRequest.process() is now final.  Subclasses should instead be parametrized
+  by their corresponding SolrResponse type, and implement createResponse()
+
 Detailed Change List
 ----------------------
 
@@ -62,7 +72,15 @@ New Features
 * SOLR-6832: Queries be served locally rather than being forwarded to another replica.
   (Sachin Goyal, Timothy Potter)
 
-* SOLR-1945 : Add support for child docs in DocumentObjectBinder (Noble Paul, Mark Miller)
+* SOLR-1945: Add support for child docs in DocumentObjectBinder (Noble Paul, Mark Miller)
+
+* SOLR-7125, SOLR-7158: You can upload and download configurations via CloudSolrClient
+  (Alan Woodward, Ishan Chattopadhyaya)
+
+* SOLR-5507: Admin UI - Refactoring using AngularJS, first part (Upayavira via 
+  Erick Erickson)
+  
+* SOLR-7164: BBoxField defaults sub fields to not-stored (ryan)
 
 Bug Fixes
 ----------------------
@@ -87,10 +105,30 @@ Bug Fixes
 * SOLR-7084: FreeTextSuggester: Better error message when doing a lookup
   during dictionary build. Used to be nullpointer (janhoy)
 
+* SOLR-6956: OverseerCollectionProcessor and replicas on the overseer node can sometimes
+  operate on stale cluster state due to overseer holding the state update lock for a
+  long time. (Mark Miller, shalin)
+
+* SOLR-7104: Propagate property prefix parameters for ADDREPLICA Collections API call.
+  (Varun Thacker via Anshum Gupta)
+
+* SOLR-7113: Multiple calls to UpdateLog#init is not thread safe with respect to the
+  HDFS FileSystem client object usage. (Mark Miller, Vamsee Yarlagadda)
+
+* SOLR-7128: Two phase distributed search is fetching extra fields in GET_TOP_IDS phase.
+  (Pablo Queixalos, shalin)
+
+* SOLR-7139: Fix SolrContentHandler for TIKA to ignore multiple startDocument events.
+  (Chris A. Mattmann, Uwe Schindler)  
+
 Optimizations
 ----------------------
+
  * SOLR-7049: Move work done by the LIST Collections API call to the Collections
    Handler (Varun Thacker via Anshum Gupta).
+
+ * SOLR-7116: Distributed facet refinement requests would needlessly compute other types
+   of faceting that have already been computed. (David Smiley, Hossman)
 
 Other Changes
 ----------------------
@@ -119,9 +157,37 @@ Other Changes
   tests to allow for multiple tests without the same class.
   (Ramkumar Aiyengar, Erick Erickson, Mike McCandless)
 
+* SOLR-7032: Clean up test remnants of old-style solr.xml (Erick Erickson)
+
+* SOLR-7145: SolrRequest is now parametrized by its response type (Alan
+  Woodward)
+
+* SOLR-7142: Fix TestFaceting.testFacets. (Michal Kroliczek via shalin)
+
+* SOLR-7156: Fix test failures due to resource leaks on windows.
+  (Ishan Chattopadhyaya via shalin)
+
+* SOLR-7147: Introduce new TrackingShardHandlerFactory for monitoring what requests
+  are sent to shards during tests. (hossman, shalin)
+
+* SOLR-7160: Rename ConfigSolr to NodeConfig, and decouple it from xml
+  representation (Alan Woodward)
+
+* SOLR-7166: Encapsulate JettySolrRunner configuration (Alan Woodward)
+
+* SOLR-7130: Make stale state notification work without failing the requests
+  (Noble Paul, shalin)
+
+* SOLR-7151: SolrClient query methods throw IOException (Alan Woodward)
+
 ==================  5.0.0 ==================
 
 Consult the LUCENE_CHANGES.txt file for additional, low level, changes in this release.
+
+NOTE: Solr 5.0 only supports creating and removing SolrCloud collections through
+      the collections API, unlike previous versions. While not using the 
+      collections API may still work in 5.0, it is unsupported, not recommended,
+      and the behavior will change in a 5.x release.
 
 Versions of Major Components
 ---------------------
@@ -130,11 +196,6 @@ Carrot2 3.9.0
 Velocity 1.7 and Velocity Tools 2.0
 Apache UIMA 2.3.1
 Apache ZooKeeper 3.4.6
-
-NOTE: Solr 5.0 only supports creating and removing SolrCloud collections through
-      the collections API, unlike previous versions. While not using the 
-      collections API may still work in 5.0, it is unsupported, not recommended,
-      and the behavior will change in a 5.x release.
 
 Upgrading from Solr 4.x
 ----------------------
@@ -469,7 +530,7 @@ Bug Fixes
 * SOLR-6631: DistributedQueue spinning on calling zookeeper getChildren()
   (Jessica Cheng Mallet, Mark Miller, Timothy Potter)
 
-* SOLR-6579:SnapPuller Replication blocks clean shutdown of tomcat
+* SOLR-6579: SnapPuller Replication blocks clean shutdown of tomcat
   (Philip Black-Knight via Noble Paul)
 
 * SOLR-6721: ZkController.ensureReplicaInLeaderInitiatedRecovery puts replica
@@ -600,10 +661,10 @@ Bug Fixes
   of all "keys" found in the request parameters, resulting in some key=value param pairs 
   being duplicated.  This was noticeably affecting some areas of the code where iteration 
   was done over the set of all params: 
-    * literal.* in ExtractingRequestHandler
-    * facet.* in FacetComponent
-    * spellcheck.[dictionary name].* and spellcheck.collateParam.* in SpellCheckComponent
-    * olap.* in AnalyticsComponent
+    - literal.* in ExtractingRequestHandler
+    - facet.* in FacetComponent
+    - spellcheck.[dictionary name].* and spellcheck.collateParam.* in SpellCheckComponent
+    - olap.* in AnalyticsComponent
   (Alexandre Rafalovitch & hossman)
 
 * SOLR-6920: A replicated index can end up corrupted when small files end up with the same 
@@ -751,7 +812,7 @@ Other Changes
 * SOLR-6751: Exceptions thrown in the analysis chain in DirectUpdateHandler2
   should return a BAD_REQUEST status (Alan Woodward)
 
-* SOLR-SOLR-6792 : deprecate AdminHandlers, Clean up solrconfig.xml of
+* SOLR-6792: deprecate AdminHandlers, Clean up solrconfig.xml of
   unnecessary plugin definitions, implicit registration of /replication,
   /get and /admin/* handlers (Noble Paul)
 
@@ -3129,18 +3190,18 @@ Bug Fixes
 
 * SOLR-4910: persisting solr.xml is broken. More stringent testing of persistence fixed
   up a number of issues and several bugs with persistence. Among them are
-  > don't persisting implicit properties
-  > should persist zkHost in the <solr> tag (user's list)
-  > reloading a core that has transient="true" returned an error. reload should load
+  - don't persisting implicit properties
+  - should persist zkHost in the <solr> tag (user's list)
+  - reloading a core that has transient="true" returned an error. reload should load
     a transient core if it's not yet loaded.
-  > No longer persisting loadOnStartup or transient core properties if they were not
+  - No longer persisting loadOnStartup or transient core properties if they were not
     specified in the original solr.xml
-  > Testing flushed out the fact that you couldn't swap a core marked transient=true
+  - Testing flushed out the fact that you couldn't swap a core marked transient=true
     loadOnStartup=false because it hadn't been loaded yet.
-  > SOLR-4862, CREATE fails to persist schema, config, and dataDir
-  > SOLR-4363, not persisting coreLoadThreads in <solr> tag
-  > SOLR-3900, logWatcher properties not persisted
-  > SOLR-4850, cores defined as loadOnStartup=true, transient=false can't be searched
+  - SOLR-4862, CREATE fails to persist schema, config, and dataDir
+  - SOLR-4363, not persisting coreLoadThreads in <solr> tag
+  - SOLR-3900, logWatcher properties not persisted
+  - SOLR-4850, cores defined as loadOnStartup=true, transient=false can't be searched
   (Erick Erickson)
 
 * SOLR-4923: Commits to non leaders as part of a request that also contain updates
@@ -3463,11 +3524,11 @@ New Features
   support for the old style. (Erick Erickson, Mark Miller)
   Additional Work:
   - SOLR-4347: Ensure that newly-created cores via Admin handler are persisted in solr.xml
-  (Erick Erickson)
+    (Erick Erickson)
   - SOLR-1905: Cores created by the admin request handler should be persisted to solr.xml.
-  Also fixed a problem whereby properties like solr.solr.datadir would be persisted
-  to solr.xml. Also, cores that didn't happen to be loaded were not persisted. 
-  (Erick Erickson)
+    Also fixed a problem whereby properties like solr.solr.datadir would be persisted
+    to solr.xml. Also, cores that didn't happen to be loaded were not persisted. 
+    (Erick Erickson)
 
 * SOLR-4717/SOLR-1351: SimpleFacets now work with localParams allowing faceting on the 
   same field multiple ways (ryan, Uri Boness)

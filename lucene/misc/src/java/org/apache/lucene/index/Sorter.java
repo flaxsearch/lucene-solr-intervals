@@ -22,7 +22,6 @@ import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.intervals.IntervalIterator;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.TimSorter;
 import org.apache.lucene.util.packed.PackedInts;
 import org.apache.lucene.util.packed.PackedLongValues;
@@ -294,26 +293,6 @@ final class Sorter {
     @Override
     public int freq() throws IOException {
       return freq;
-    }
-
-    @Override
-    public int nextPosition() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public int startOffset() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public int endOffset() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public BytesRef getPayload() throws IOException {
-      throw new UnsupportedOperationException();
     }
 
     @Override

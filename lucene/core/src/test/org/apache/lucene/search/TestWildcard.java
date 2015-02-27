@@ -75,19 +75,19 @@ public class TestWildcard
       MultiTermQuery wq = new WildcardQuery(new Term("field", "nowildcard"));
       assertMatches(searcher, wq, 1);
 
-      wq.setRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_QUERY_REWRITE);
+      wq.setRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_REWRITE);
       wq.setBoost(0.1F);
       Query q = searcher.rewrite(wq);
       assertTrue(q instanceof TermQuery);
       assertEquals(q.getBoost(), wq.getBoost(), 0);
       
-      wq.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_FILTER_REWRITE);
+      wq.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_REWRITE);
       wq.setBoost(0.2F);
       q = searcher.rewrite(wq);
-      assertTrue(q instanceof ConstantScoreQuery);
+      assertTrue(q instanceof MultiTermQueryConstantScoreWrapper);
       assertEquals(q.getBoost(), wq.getBoost(), 0.1);
       
-      wq.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
+      wq.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_REWRITE);
       wq.setBoost(0.4F);
       q = searcher.rewrite(wq);
       assertTrue(q instanceof ConstantScoreQuery);
@@ -105,7 +105,7 @@ public class TestWildcard
     IndexSearcher searcher = newSearcher(reader);
 
     MultiTermQuery wq = new WildcardQuery(new Term("field", ""));
-    wq.setRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_QUERY_REWRITE);
+    wq.setRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_REWRITE);
     assertMatches(searcher, wq, 0);
     Query q = searcher.rewrite(wq);
     assertTrue(q instanceof BooleanQuery);
@@ -254,7 +254,7 @@ public class TestWildcard
 
   private void assertMatches(IndexSearcher searcher, Query q, int expectedMatches)
       throws IOException {
-    ScoreDoc[] result = searcher.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] result = searcher.search(q, 1000).scoreDocs;
     assertEquals(expectedMatches, result.length);
   }
 
@@ -354,14 +354,14 @@ public class TestWildcard
     // test queries that must find all
     for (Query q : matchAll) {
       if (VERBOSE) System.out.println("matchAll: q=" + q + " " + q.getClass().getName());
-      ScoreDoc[] hits = searcher.search(q, null, 1000).scoreDocs;
+      ScoreDoc[] hits = searcher.search(q, 1000).scoreDocs;
       assertEquals(docs.length, hits.length);
     }
     
     // test queries that must find none
     for (Query q : matchNone) {
       if (VERBOSE) System.out.println("matchNone: q=" + q + " " + q.getClass().getName());
-      ScoreDoc[] hits = searcher.search(q, null, 1000).scoreDocs;
+      ScoreDoc[] hits = searcher.search(q, 1000).scoreDocs;
       assertEquals(0, hits.length);
     }
 
@@ -370,7 +370,7 @@ public class TestWildcard
       for (int j = 0; j < matchOneDocPrefix[i].length; j++) {
         Query q = matchOneDocPrefix[i][j];
         if (VERBOSE) System.out.println("match 1 prefix: doc="+docs[i]+" q="+q+" "+q.getClass().getName());
-        ScoreDoc[] hits = searcher.search(q, null, 1000).scoreDocs;
+        ScoreDoc[] hits = searcher.search(q, 1000).scoreDocs;
         assertEquals(1,hits.length);
         assertEquals(i,hits[0].doc);
       }
@@ -381,7 +381,7 @@ public class TestWildcard
       for (int j = 0; j < matchOneDocWild[i].length; j++) {
         Query q = matchOneDocWild[i][j];
         if (VERBOSE) System.out.println("match 1 wild: doc="+docs[i]+" q="+q+" "+q.getClass().getName());
-        ScoreDoc[] hits = searcher.search(q, null, 1000).scoreDocs;
+        ScoreDoc[] hits = searcher.search(q, 1000).scoreDocs;
         assertEquals(1,hits.length);
         assertEquals(i,hits[0].doc);
       }

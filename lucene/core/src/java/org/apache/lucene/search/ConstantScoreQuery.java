@@ -22,7 +22,6 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
@@ -86,10 +85,10 @@ public class ConstantScoreQuery extends Query {
     private final Weight innerWeight;
     private float queryNorm;
     private float queryWeight;
-    
-    public ConstantWeight(IndexSearcher searcher, int flags) throws IOException {
+
+    public ConstantWeight(Weight innerWeight) throws IOException {
       super(ConstantScoreQuery.this);
-      this.innerWeight = query.createWeight(searcher, false, flags);
+      this.innerWeight = innerWeight;
     }
 
     @Override
@@ -193,6 +192,11 @@ public class ConstantScoreQuery extends Query {
     }
 
     @Override
+    public TwoPhaseIterator asTwoPhaseIterator() {
+      return in.asTwoPhaseIterator();
+    }
+
+    @Override
     public int freq() throws IOException {
       return 1;
     }
@@ -240,26 +244,6 @@ public class ConstantScoreQuery extends Query {
     }
 
     @Override
-    public int nextPosition() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public int startOffset() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public int endOffset() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public BytesRef getPayload() throws IOException {
-      return null;
-    }
-
-    @Override
     public int advance(int target) throws IOException {
       return docIdSetIterator.advance(target);
     }
@@ -290,7 +274,12 @@ public class ConstantScoreQuery extends Query {
 
   @Override
   public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
-    return new ConstantScoreQuery.ConstantWeight(searcher, flags);
+    final Weight innerWeight = searcher.createWeight(query, false, flags);
+    if (needsScores) {
+      return new ConstantScoreQuery.ConstantWeight(innerWeight);
+    } else {
+      return innerWeight;
+    }
   }
 
   @Override

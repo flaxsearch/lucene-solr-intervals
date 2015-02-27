@@ -61,7 +61,7 @@ public abstract class QueryRescorer extends Rescorer {
 
     List<LeafReaderContext> leaves = searcher.getIndexReader().leaves();
 
-    Weight weight = searcher.createNormalizedWeight(query, true, PostingsEnum.FLAG_FREQS);
+    Weight weight = searcher.createNormalizedWeight(query, true, PostingsEnum.FREQS);
 
     // Now merge sort docIDs from hits, with reader's leaves:
     int hitUpto = 0;

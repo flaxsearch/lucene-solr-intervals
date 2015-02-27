@@ -73,7 +73,7 @@ public class QueryValueSource extends ValueSource {
 
   @Override
   public void createWeight(Map context, IndexSearcher searcher) throws IOException {
-    Weight w = searcher.createNormalizedWeight(q, true, PostingsEnum.FLAG_NONE);
+    Weight w = searcher.createNormalizedWeight(q, true, PostingsEnum.NONE);
     context.put(this, w);
   }
 }

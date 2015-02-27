@@ -24,6 +24,7 @@ import org.apache.lucene.util.TestUtil;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrResponse;
 import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.embedded.JettyConfig;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.UpdateRequest;
@@ -46,6 +47,7 @@ import org.junit.runners.model.Statement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.servlet.Filter;
 import java.io.File;
 import java.io.IOException;
 import java.lang.annotation.ElementType;
@@ -389,10 +391,13 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   
   public JettySolrRunner createJetty(File solrHome, String dataDir, String shardList, String solrConfigOverride, String schemaOverride, boolean explicitCoreNodeName) throws Exception {
 
-    boolean stopAtShutdown = true;
-    JettySolrRunner jetty = new JettySolrRunner
-        (solrHome.getAbsolutePath(), context, 0, solrConfigOverride, schemaOverride, stopAtShutdown,
-          getExtraServlets(), sslConfig, getExtraRequestFilters());
+    JettySolrRunner jetty = new JettySolrRunner(solrHome.getAbsolutePath(), solrConfigOverride, schemaOverride, JettyConfig.builder()
+        .stopAtShutdown(true)
+        .setContext(context)
+        .withFilters(getExtraRequestFilters())
+        .withServlets(getExtraServlets())
+        .withSSLConfig(sslConfig)
+        .build());
     jetty.setShards(shardList);
     jetty.setDataDir(dataDir);
     if (explicitCoreNodeName) {
@@ -409,7 +414,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   }
 
   /** Override this method to insert extra filters into the JettySolrRunners that are created using createJetty() */
-  public SortedMap<Class,String> getExtraRequestFilters() {
+  public SortedMap<Class<? extends Filter>,String> getExtraRequestFilters() {
     return null;
   }
 
@@ -531,7 +536,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
     }
   }
 
-  protected QueryResponse queryServer(ModifiableSolrParams params) throws SolrServerException {
+  protected QueryResponse queryServer(ModifiableSolrParams params) throws SolrServerException, IOException {
     // query a random server
     int which = r.nextInt(clients.size());
     SolrClient client = clients.get(which);
@@ -602,7 +607,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
                 if (verifyStress) {
                   compareResponses(rsp, controlRsp);
                 }
-              } catch (SolrServerException e) {
+              } catch (SolrServerException | IOException e) {
                 throw new RuntimeException(e);
               }
             }
@@ -618,10 +623,10 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
     return rsp;
   }
   
-  public QueryResponse queryAndCompare(SolrParams params, SolrClient... clients) throws SolrServerException {
+  public QueryResponse queryAndCompare(SolrParams params, SolrClient... clients) throws SolrServerException, IOException {
     return queryAndCompare(params, Arrays.<SolrClient>asList(clients));
   }
-  public QueryResponse queryAndCompare(SolrParams params, Iterable<SolrClient> clients) throws SolrServerException {
+  public QueryResponse queryAndCompare(SolrParams params, Iterable<SolrClient> clients) throws SolrServerException, IOException {
     QueryResponse first = null;
     for (SolrClient client : clients) {
       QueryResponse rsp = client.query(new ModifiableSolrParams(params));

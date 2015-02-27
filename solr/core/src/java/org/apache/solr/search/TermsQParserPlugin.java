@@ -17,14 +17,16 @@ package org.apache.solr.search;
  * limitations under the License.
  */
 
+import java.util.Arrays;
+import java.util.regex.Pattern;
+
 import org.apache.lucene.index.Term;
-import org.apache.lucene.queries.TermsFilter;
+import org.apache.lucene.queries.TermsQuery;
 import org.apache.lucene.search.AutomatonQuery;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.DocValuesTermsFilter;
+import org.apache.lucene.search.DocValuesTermsQuery;
 import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.MultiTermQueryWrapperFilter;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.TermQuery;
@@ -36,9 +38,6 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.FieldType;
-
-import java.util.Arrays;
-import java.util.regex.Pattern;
 
 /**
  * Finds documents whose specified field has any of the specified values. It's like
@@ -68,7 +67,7 @@ public class TermsQParserPlugin extends QParserPlugin {
     termsFilter {
       @Override
       Filter makeFilter(String fname, BytesRef[] bytesRefs) {
-        return new TermsFilter(fname, bytesRefs);
+        return new QueryWrapperFilter(new TermsQuery(fname, bytesRefs));
       }
     },
     booleanQuery {
@@ -85,15 +84,13 @@ public class TermsQParserPlugin extends QParserPlugin {
       @Override
       Filter makeFilter(String fname, BytesRef[] byteRefs) {
         Automaton union = Automata.makeStringUnion(Arrays.asList(byteRefs));
-        return new MultiTermQueryWrapperFilter<AutomatonQuery>(new AutomatonQuery(new Term(fname), union)) {
-        };
+        return new QueryWrapperFilter(new AutomatonQuery(new Term(fname), union));
       }
     },
     docValuesTermsFilter {//on 4x this is FieldCacheTermsFilter but we use the 5x name any way
-      //note: limited to one val per doc
       @Override
       Filter makeFilter(String fname, BytesRef[] byteRefs) {
-        return new DocValuesTermsFilter(fname, byteRefs);
+        return new QueryWrapperFilter(new DocValuesTermsQuery(fname, byteRefs));
       }
     };
 

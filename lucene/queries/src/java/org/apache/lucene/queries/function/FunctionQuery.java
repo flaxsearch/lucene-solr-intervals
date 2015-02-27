@@ -28,7 +28,6 @@ import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
 import java.util.Map;
@@ -167,26 +166,6 @@ public class FunctionQuery extends Query {
     @Override
     public int freq() throws IOException {
       return 1;
-    }
-
-    @Override
-    public int nextPosition() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public int startOffset() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public int endOffset() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public BytesRef getPayload() throws IOException {
-      return null;
     }
 
     public Explanation explain(int doc) throws IOException {

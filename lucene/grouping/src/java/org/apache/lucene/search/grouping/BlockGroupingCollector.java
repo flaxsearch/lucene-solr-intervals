@@ -35,7 +35,6 @@ import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.PriorityQueue;
 
 import java.io.IOException;
@@ -117,26 +116,6 @@ public class BlockGroupingCollector extends SimpleCollector {
     @Override
     public int freq() {
       throw new UnsupportedOperationException(); // TODO: wtf does this class do?
-    }
-
-    @Override
-    public int nextPosition() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public int startOffset() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public int endOffset() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public BytesRef getPayload() throws IOException {
-      throw new UnsupportedOperationException();
     }
 
     @Override

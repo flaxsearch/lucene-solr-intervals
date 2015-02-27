@@ -54,6 +54,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.Filter;
+import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.MatchAllDocsQuery;
@@ -196,7 +197,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   
   // TODO: wrap elsewhere and return a "map" from the schema that overrides get() ?
   // this reader supports reopen
-  private static DirectoryReader wrapReader(SolrCore core, DirectoryReader reader) {
+  private static DirectoryReader wrapReader(SolrCore core, DirectoryReader reader) throws IOException {
     assert reader != null;
     return ExitableDirectoryReader.wrap
         (UninvertingReader.wrap(reader, core.getLatestSchema().getUninversionMap(reader)), 
@@ -209,7 +210,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    * and postFilter as well as any needed collector wrappers for dealing with options 
    * specified in the QueryCOmmand.
    */
-  private void buildAndRunCollectorChain(QueryResult qr, Query query, Filter luceneFilter,
+  private void buildAndRunCollectorChain(QueryResult qr, Query query,
       Collector collector, QueryCommand cmd, DelegatingCollector postFilter) throws IOException {
     
     final boolean terminateEarly = (cmd.getFlags() & TERMINATE_EARLY) == TERMINATE_EARLY;
@@ -228,7 +229,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     }
     
     try {
-      super.search(query, luceneFilter, collector);
+      super.search(query, collector);
       if(collector instanceof DelegatingCollector) {
         ((DelegatingCollector)collector).finish();
       }
@@ -826,7 +827,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     if (!termsEnum.seekExact(termBytes)) {
       return -1;
     }
-    PostingsEnum docs = termsEnum.postings(leafReader.getLiveDocs(), null, PostingsEnum.FLAG_NONE);
+    PostingsEnum docs = termsEnum.postings(leafReader.getLiveDocs(), null, PostingsEnum.NONE);
     if (docs == null) return -1;
     int id = docs.nextDoc();
     return id == DocIdSetIterator.NO_MORE_DOCS ? -1 : id;
@@ -848,7 +849,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       
       TermsEnum te = terms.iterator(null);
       if (te.seekExact(idBytes)) {
-        PostingsEnum docs = te.postings(reader.getLiveDocs(), null, PostingsEnum.FLAG_NONE);
+        PostingsEnum docs = te.postings(reader.getLiveDocs(), null, PostingsEnum.NONE);
         int id = docs.nextDoc();
         if (id == DocIdSetIterator.NO_MORE_DOCS) continue;
         assert docs.nextDoc() == DocIdSetIterator.NO_MORE_DOCS;
@@ -978,7 +979,11 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       collector = pf.postFilter;
     }
 
-    search(main, pf.filter, collector);
+    if (pf.filter != null) {
+      search(new FilteredQuery(main, pf.filter), collector);
+    } else {
+      search(main, collector);
+    }
 
     if(collector instanceof DelegatingCollector) {
       ((DelegatingCollector) collector).finish();
@@ -1142,7 +1147,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       List<Weight> weights = new ArrayList<>(notCached.size());
       for (Query q : notCached) {
         Query qq = QueryUtils.makeQueryable(q);
-        weights.add(createNormalizedWeight(qq, true, PostingsEnum.FLAG_FREQS));
+        weights.add(createNormalizedWeight(qq, true));
       }
       pf.filter = new FilterImpl(answer, weights);
     } else {
@@ -1193,7 +1198,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     int bitsSet = 0;
     FixedBitSet fbs = null;
 
-    PostingsEnum postingsEnum = deState.termsEnum.postings(deState.liveDocs, deState.postingsEnum, PostingsEnum.FLAG_NONE);
+    PostingsEnum postingsEnum = deState.termsEnum.postings(deState.liveDocs, deState.postingsEnum, PostingsEnum.NONE);
     if (deState.postingsEnum == null) {
       deState.postingsEnum = postingsEnum;
     }
@@ -1258,10 +1263,10 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
 
     try {
       if (filter == null) {
-        super.search(query, null, collector);
+        super.search(query, collector);
       } else {
         Filter luceneFilter = filter.getTopFilter();
-        super.search(query, luceneFilter, collector);
+        super.search(new FilteredQuery(query, luceneFilter), collector);
       }
     } catch ( ExitableDirectoryReader.ExitingReaderException e) {
         log.warn("Query: " + query + "; " + e.getMessage());
@@ -1625,7 +1630,9 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     Query query = QueryUtils.makeQueryable(cmd.getQuery());
 
     ProcessedFilter pf = getProcessedFilter(cmd.getFilter(), cmd.getFilterList());
-    final Filter luceneFilter = pf.filter;
+    if (pf.filter != null) {
+      query = new FilteredQuery(query, pf.filter);
+    }
 
     // handle zero case...
     if (lastDocRequested<=0) {
@@ -1667,7 +1674,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
         };
       }
       
-      buildAndRunCollectorChain(qr, query, luceneFilter, collector, cmd, pf.postFilter);
+      buildAndRunCollectorChain(qr, query, collector, cmd, pf.postFilter);
 
       nDocsReturned=0;
       ids = new int[nDocsReturned];
@@ -1679,7 +1686,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     } else {
       final TopDocsCollector topCollector = buildTopDocsCollector(len, cmd);
       Collector collector = topCollector;
-      buildAndRunCollectorChain(qr, query, luceneFilter, collector, cmd, pf.postFilter);
+      buildAndRunCollectorChain(qr, query, collector, cmd, pf.postFilter);
 
       totalHits = topCollector.getTotalHits();
       TopDocs topDocs = topCollector.topDocs(0, len);
@@ -1720,9 +1727,10 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     int smallSetSize = maxDoc>>6;
 
     ProcessedFilter pf = getProcessedFilter(cmd.getFilter(), cmd.getFilterList());
-    final Filter luceneFilter = pf.filter;
-
     Query query = QueryUtils.makeQueryable(cmd.getQuery());
+    if (pf.filter != null) {
+      query = new FilteredQuery(query, pf.filter);
+    }
 
     // handle zero case...
     if (lastDocRequested<=0) {
@@ -1758,7 +1766,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
         collector = MultiCollector.wrap(setCollector, topScoreCollector);
        }
        
-       buildAndRunCollectorChain(qr, query, luceneFilter, collector, cmd, pf.postFilter);
+       buildAndRunCollectorChain(qr, query, collector, cmd, pf.postFilter);
 
       set = setCollector.getDocSet();
 
@@ -1775,7 +1783,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       DocSetCollector setCollector = new DocSetCollector(maxDoc>>6, maxDoc);
       Collector collector = MultiCollector.wrap(topCollector, setCollector);
 
-      buildAndRunCollectorChain(qr, query, luceneFilter, collector, cmd, pf.postFilter);
+      buildAndRunCollectorChain(qr, query, collector, cmd, pf.postFilter);
 
       set = setCollector.getDocSet();      
 
@@ -2104,7 +2112,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       BooleanQuery bq = new BooleanQuery();
       bq.add(QueryUtils.makeQueryable(a), BooleanClause.Occur.MUST);
       bq.add(new ConstantScoreQuery(b.getTopFilter()), BooleanClause.Occur.MUST);
-      super.search(bq, null, collector);
+      super.search(bq, collector);
       return collector.getTotalHits();
     }
   }

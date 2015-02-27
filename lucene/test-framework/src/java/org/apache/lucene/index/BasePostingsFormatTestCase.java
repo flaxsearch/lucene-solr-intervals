@@ -231,7 +231,7 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
     public int nextPosition() {
       if (!doPositions) {
         posUpto = freq;
-        return 0;
+        return -1;
       }
       assert posUpto < freq;
       
@@ -643,18 +643,18 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
       if (liveDocs != null) {
         throw new IllegalArgumentException("liveDocs must be null");
       }
-      if (PostingsEnum.requiresPositions(flags)) {
+      if (PostingsEnum.featureRequested(flags, PostingsEnum.POSITIONS)) {
         if (maxAllowed.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
           return null;
         }
-        if ((flags & PostingsEnum.FLAG_OFFSETS) == PostingsEnum.FLAG_OFFSETS && maxAllowed.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) < 0) {
+        if (PostingsEnum.featureRequested(flags, PostingsEnum.OFFSETS) && maxAllowed.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) < 0) {
           return null;
         }
-        if ((flags & PostingsEnum.FLAG_PAYLOADS) == PostingsEnum.FLAG_PAYLOADS && allowPayloads == false) {
+        if (PostingsEnum.featureRequested(flags, PostingsEnum.PAYLOADS) && allowPayloads == false) {
           return null;
         }
       }
-      if ((flags & PostingsEnum.FLAG_FREQS) != 0 && maxAllowed.compareTo(IndexOptions.DOCS_AND_FREQS) < 0) {
+      if (PostingsEnum.featureRequested(flags, PostingsEnum.FREQS) && maxAllowed.compareTo(IndexOptions.DOCS_AND_FREQS) < 0) {
         return null;
       }
       return getSeedPostings(current.getKey().utf8ToString(), current.getValue().seed, false, maxAllowed, allowPayloads);
@@ -815,12 +815,12 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
           prevPostingsEnum = threadState.reusePostingsEnum;
         }
 
-        int flags = PostingsEnum.FLAG_POSITIONS;
+        int flags = PostingsEnum.POSITIONS;
         if (alwaysTestMax || random().nextBoolean()) {
-          flags |= PostingsEnum.FLAG_OFFSETS;
+          flags |= PostingsEnum.OFFSETS;
         }
         if (alwaysTestMax || random().nextBoolean()) {
-          flags |= PostingsEnum.FLAG_PAYLOADS;
+          flags |= PostingsEnum.PAYLOADS;
         }
 
         if (VERBOSE) {
@@ -836,7 +836,7 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
         if (options.contains(Option.REUSE_ENUMS) && random().nextInt(10) < 9) {
           prevPostingsEnum = threadState.reusePostingsEnum;
         }
-        threadState.reusePostingsEnum = termsEnum.postings(liveDocs, prevPostingsEnum, doCheckFreqs ? PostingsEnum.FLAG_FREQS : PostingsEnum.FLAG_NONE);
+        threadState.reusePostingsEnum = termsEnum.postings(liveDocs, prevPostingsEnum, doCheckFreqs ? PostingsEnum.FREQS : PostingsEnum.NONE);
         postingsEnum = threadState.reusePostingsEnum;
       }
     } else {
@@ -844,12 +844,12 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
         prevPostingsEnum = threadState.reusePostingsEnum;
       }
 
-      int flags = PostingsEnum.FLAG_POSITIONS;
+      int flags = PostingsEnum.POSITIONS;
       if (alwaysTestMax || doCheckOffsets || random().nextInt(3) == 1) {
-        flags |= PostingsEnum.FLAG_OFFSETS;
+        flags |= PostingsEnum.OFFSETS;
       }
       if (alwaysTestMax || doCheckPayloads|| random().nextInt(3) == 1) {
-        flags |= PostingsEnum.FLAG_PAYLOADS;
+        flags |= PostingsEnum.PAYLOADS;
       }
 
       if (VERBOSE) {
@@ -1414,9 +1414,9 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
     TermsEnum te = terms.iterator(null);
 
     te.seekExact(fieldAndTerm.term);
-    checkReuse(te, PostingsEnum.FLAG_FREQS, PostingsEnum.FLAG_ALL, false);
+    checkReuse(te, PostingsEnum.FREQS, PostingsEnum.ALL, false);
     if (isPostingsEnumReuseImplemented())
-      checkReuse(te, PostingsEnum.FLAG_ALL, PostingsEnum.FLAG_ALL, true);
+      checkReuse(te, PostingsEnum.ALL, PostingsEnum.ALL, true);
 
     fieldsProducer.close();
     dir.close();
@@ -1495,7 +1495,7 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
     LeafReader ar = getOnlySegmentReader(ir);
     TermsEnum termsEnum = ar.terms("field").iterator(null);
     assertTrue(termsEnum.seekExact(new BytesRef("value")));
-    PostingsEnum docsEnum = termsEnum.postings(null, null, DocsEnum.FLAG_NONE);
+    PostingsEnum docsEnum = termsEnum.postings(null, null, PostingsEnum.NONE);
     assertEquals(0, docsEnum.nextDoc());
     assertEquals(1, docsEnum.freq());
     assertEquals(1, docsEnum.nextDoc());
@@ -1622,9 +1622,9 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
                       BytesRef term = termsEnum.term();
                       boolean noPositions = random().nextBoolean();
                       if (noPositions) {
-                        docs = termsEnum.postings(null, docs, PostingsEnum.FLAG_FREQS);
+                        docs = termsEnum.postings(null, docs, PostingsEnum.FREQS);
                       } else {
-                        docs = termsEnum.postings(null, null, PostingsEnum.FLAG_POSITIONS);
+                        docs = termsEnum.postings(null, null, PostingsEnum.POSITIONS);
                       }
                       int docFreq = 0;
                       long totalTermFreq = 0;
@@ -1670,9 +1670,9 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
                       if (termsEnum.seekExact(new BytesRef(term))) {
                         boolean noPositions = random().nextBoolean();
                         if (noPositions) {
-                          docs = termsEnum.postings(null, docs, PostingsEnum.FLAG_FREQS);
+                          docs = termsEnum.postings(null, docs, PostingsEnum.FREQS);
                         } else {
-                          docs = termsEnum.postings(null, null, PostingsEnum.FLAG_POSITIONS);
+                          docs = termsEnum.postings(null, null, PostingsEnum.POSITIONS);
                         }
 
                         int docFreq = 0;

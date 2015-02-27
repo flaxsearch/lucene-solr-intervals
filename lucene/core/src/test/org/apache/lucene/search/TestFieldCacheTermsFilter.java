@@ -21,7 +21,6 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
-
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -33,7 +32,7 @@ import java.util.List;
 /**
  * A basic unit test for FieldCacheTermsFilter
  *
- * @see org.apache.lucene.search.DocValuesTermsFilter
+ * @see org.apache.lucene.search.DocValuesTermsQuery
  */
 public class TestFieldCacheTermsFilter extends LuceneTestCase {
   public void testMissingTerms() throws Exception {
@@ -53,22 +52,21 @@ public class TestFieldCacheTermsFilter extends LuceneTestCase {
     IndexSearcher searcher = newSearcher(reader);
     int numDocs = reader.numDocs();
     ScoreDoc[] results;
-    MatchAllDocsQuery q = new MatchAllDocsQuery();
 
     List<String> terms = new ArrayList<>();
     terms.add("5");
-    results = searcher.search(q, new DocValuesTermsFilter(fieldName,  terms.toArray(new String[0])), numDocs).scoreDocs;
+    results = searcher.search(new DocValuesTermsQuery(fieldName,  terms.toArray(new String[0])), numDocs).scoreDocs;
     assertEquals("Must match nothing", 0, results.length);
 
     terms = new ArrayList<>();
     terms.add("10");
-    results = searcher.search(q, new DocValuesTermsFilter(fieldName,  terms.toArray(new String[0])), numDocs).scoreDocs;
+    results = searcher.search(new DocValuesTermsQuery(fieldName,  terms.toArray(new String[0])), numDocs).scoreDocs;
     assertEquals("Must match 1", 1, results.length);
 
     terms = new ArrayList<>();
     terms.add("10");
     terms.add("20");
-    results = searcher.search(q, new DocValuesTermsFilter(fieldName,  terms.toArray(new String[0])), numDocs).scoreDocs;
+    results = searcher.search(new DocValuesTermsQuery(fieldName,  terms.toArray(new String[0])), numDocs).scoreDocs;
     assertEquals("Must match 2", 2, results.length);
 
     reader.close();

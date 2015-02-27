@@ -82,7 +82,9 @@ import java.util.Set;
  *
  * @see FilterCachingPolicy
  * @lucene.experimental
+ * @deprecated Use {@link LRUQueryCache} instead
  */
+@Deprecated
 public class LRUFilterCache implements FilterCache, Accountable {
 
   // memory usage of a simple query-wrapper filter around a term query

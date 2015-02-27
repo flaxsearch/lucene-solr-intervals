@@ -22,7 +22,9 @@ package org.apache.lucene.search;
  *
  * @see LRUFilterCache
  * @lucene.experimental
+ * @deprecated Use {@link QueryCache} instead
  */
+@Deprecated
 public interface FilterCache {
 
   /**

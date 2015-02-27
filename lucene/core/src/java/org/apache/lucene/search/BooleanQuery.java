@@ -17,22 +17,15 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
-
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -167,9 +160,26 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
   @Override
   public final Iterator<BooleanClause> iterator() { return clauses().iterator(); }
 
-  @Override
+  private static BooleanQuery downgradeMustClauseToFilter(BooleanQuery bq) {
+    BooleanQuery clone = bq.clone();
+    clone.clauses.clear();
+    for (BooleanClause clause : bq.clauses()) {
+      if (clause.getOccur() == Occur.MUST) {
+        clone.add(clause.getQuery(), Occur.FILTER);
+      } else {
+        clone.add(clause);
+      }
+    }
+    return clone;
+  }
+
   public Weight createWeight(IndexSearcher searcher, boolean needsScores, int postingsFlags) throws IOException {
-    return new BooleanWeight(this, searcher, needsScores, postingsFlags, disableCoord);
+    BooleanQuery query = this;
+    if (needsScores == false && !PostingsEnum.featureRequested(postingsFlags, PostingsEnum.POSITIONS)) {
+      // we rewrite MUST clauses to FILTER for caching
+      query = downgradeMustClauseToFilter(query);
+    }
+    return new BooleanWeight(query, searcher, needsScores, postingsFlags, disableCoord);
   }
 
   @Override

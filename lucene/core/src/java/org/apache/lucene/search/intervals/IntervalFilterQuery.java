@@ -33,7 +33,6 @@ import org.apache.lucene.search.TermStatistics;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
 import java.util.Set;
@@ -118,7 +117,7 @@ public class IntervalFilterQuery extends Query implements Cloneable {
 
   @Override
   public Weight createWeight(IndexSearcher searcher, boolean needsScores, int postingsFlags) throws IOException {
-    return new IntervalFilterWeight(inner.createWeight(searcher, needsScores, postingsFlags | PostingsEnum.FLAG_POSITIONS), searcher);
+    return new IntervalFilterWeight(inner.createWeight(searcher, needsScores, postingsFlags | PostingsEnum.POSITIONS), searcher);
   }
 
   class IntervalFilterWeight extends Weight {
@@ -365,27 +364,7 @@ public class IntervalFilterQuery extends Query implements Cloneable {
 
     @Override
     public int freq() throws IOException {
-      return 1; // nocommit how to calculate frequency?
-    }
-
-    @Override
-    public int nextPosition() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public int startOffset() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public int endOffset() throws IOException {
-      return -1;
-    }
-
-    @Override
-    public BytesRef getPayload() throws IOException {
-      return null;
+      return 1;
     }
 
     public float sloppyFreq() throws IOException {

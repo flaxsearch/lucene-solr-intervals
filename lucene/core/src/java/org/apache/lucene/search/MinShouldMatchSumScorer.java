@@ -20,7 +20,6 @@ package org.apache.lucene.search;
 import org.apache.lucene.search.ScorerPriorityQueue.ScorerWrapper;
 import org.apache.lucene.search.intervals.CombinedIntervalIterator;
 import org.apache.lucene.search.intervals.IntervalIterator;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.PriorityQueue;
 
 import java.io.IOException;
@@ -237,26 +236,6 @@ final class MinShouldMatchSumScorer extends Scorer {
   @Override
   public IntervalIterator intervals(boolean collectIntervals) throws IOException {
     return new CombinedIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, subScorers));
-  }
-
-  @Override
-  public int nextPosition() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public int startOffset() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public int endOffset() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public BytesRef getPayload() throws IOException {
-    return null;
   }
 
   /** Advance tail to the lead until there is a match. */

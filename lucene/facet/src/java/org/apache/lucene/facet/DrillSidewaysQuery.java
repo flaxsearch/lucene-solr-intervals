@@ -35,8 +35,10 @@ import java.io.IOException;
 import java.util.Arrays;
 
 /** Only purpose is to punch through and return a
- *  DrillSidewaysScorer */ 
+ *  DrillSidewaysScorer*/ 
 
+// TODO change the way DrillSidewaysScorer is used, this query does not work
+// with filter caching
 class DrillSidewaysQuery extends Query {
   final Query baseQuery;
   final Collector drillDownCollector;

@@ -30,7 +30,6 @@ import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.intervals.IntervalIterator;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
@@ -324,26 +323,6 @@ public class CustomScoreQuery extends Query {
     @Override
     public int freq() throws IOException {
       return subQueryScorer.freq();
-    }
-
-    @Override
-    public int nextPosition() throws IOException {
-      return subQueryScorer.nextPosition();
-    }
-
-    @Override
-    public int startOffset() throws IOException {
-      return subQueryScorer.startOffset();
-    }
-
-    @Override
-    public int endOffset() throws IOException {
-      return subQueryScorer.endOffset();
-    }
-
-    @Override
-    public BytesRef getPayload() throws IOException {
-      return subQueryScorer.getPayload();
     }
 
     @Override

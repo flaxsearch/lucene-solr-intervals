@@ -19,50 +19,50 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 
-/**
- * Convenience class returning empty values for positions, offsets and payloads
+/** 
+ * Iterates through the documents and term freqs.
+ * NOTE: you must first call {@link #nextDoc} before using
+ * any of the per-doc methods. 
+ * @deprecated Use {@link PostingsEnum} instead.
  */
+@Deprecated
 public abstract class DocsEnum extends PostingsEnum {
+  
+  /**
+   * Flag to pass to {@link TermsEnum#docs(Bits,DocsEnum,int)} if you don't
+   * require term frequencies in the returned enum. When passed to
+   * {@link TermsEnum#docsAndPositions(Bits,DocsAndPositionsEnum,int)} means
+   * that no offsets and payloads will be returned.
+   */
+  public static final int FLAG_NONE = 0x0;
 
-  /** Sole constructor. (For invocation by subclass
+  /** Flag to pass to {@link TermsEnum#docs(Bits,DocsEnum,int)}
+   *  if you require term frequencies in the returned enum. */
+  public static final int FLAG_FREQS = 0x1;
+
+  /** Sole constructor. (For invocation by subclass 
    *  constructors, typically implicit.) */
   protected DocsEnum() {
-    super();
   }
 
-  /**
-   * @return -1, indicating no positions are available
-   * @throws IOException if a low-level IO exception occurred
-   */
   @Override
   public int nextPosition() throws IOException {
     return -1;
   }
 
-  /**
-   * @return -1, indicating no offsets are available
-   * @throws IOException if a low-level IO exception occurred
-   */
   @Override
   public int startOffset() throws IOException {
     return -1;
   }
 
-  /**
-   * @return -1, indicating no offsets are available
-   * @throws IOException if a low-level IO exception occurred
-   */
   @Override
   public int endOffset() throws IOException {
     return -1;
   }
 
-  /**
-   * @return null, indicating no payloads are available
-   * @throws IOException if a low-level IO exception occurred
-   */
   @Override
   public BytesRef getPayload() throws IOException {
     return null;

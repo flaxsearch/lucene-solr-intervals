@@ -1,4 +1,4 @@
-package org.apache.solr.util;
+package org.apache.lucene.search;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -17,32 +17,20 @@ package org.apache.solr.util;
  * limitations under the License.
  */
 
-import org.apache.solr.core.ConfigSolr;
-import org.apache.solr.core.CoresLocator;
-import org.apache.solr.core.PluginInfo;
-
 /**
+ * A cache for queries.
  *
+ * @see LRUQueryCache
+ * @lucene.experimental
  */
-public class MockConfigSolr extends ConfigSolr {
+public interface QueryCache {
 
-  public MockConfigSolr() {
-    super(null, null);
-  }
-
-  @Override
-  public CoresLocator getCoresLocator() {
-    return null;
-  }
-
-  @Override
-  public PluginInfo getShardHandlerFactoryPluginInfo() {
-    return null;
-  }
-
-  @Override
-  protected String getProperty(CfgProp key) {
-    return null;
-  }
+  /**
+   * Return a wrapper around the provided <code>weight</code> that will cache
+   * matching docs per-segment accordingly to the given <code>policy</code>.
+   * NOTE: The returned weight will only be equivalent if scores are not needed.
+   * @see Collector#needsScores()
+   */
+  Weight doCache(Weight weight, QueryCachingPolicy policy);
 
 }

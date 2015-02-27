@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.io.PrintStream;
 
 import org.apache.lucene.codecs.BlockTermState;
-import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.TermState;
@@ -987,7 +986,7 @@ final class Lucene40SegmentTermsEnum extends TermsEnum {
   @Override
   public PostingsEnum postings(Bits skipDocs, PostingsEnum reuse, int flags) throws IOException {
 
-    if (PostingsEnum.requiresPositions(flags) && fr.fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
+    if (PostingsEnum.featureRequested(flags, PostingsEnum.POSITIONS) && fr.fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
       // Positions were not indexed:
       return null;
     }

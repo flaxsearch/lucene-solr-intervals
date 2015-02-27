@@ -21,7 +21,6 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.TestUtil;
 
 import java.io.IOException;
 import java.util.List;
@@ -95,13 +94,6 @@ public class AssertingIndexSearcher extends IndexSearcher {
     Query rewritten = super.rewrite(original);
     QueryUtils.check(rewritten);
     return rewritten;
-  }
-
-  @Override
-  protected Query wrapFilter(Query query, Filter filter) {
-    if (random.nextBoolean())
-      return super.wrapFilter(query, filter);
-    return (filter == null) ? query : new FilteredQuery(query, filter, TestUtil.randomFilterStrategy(random));
   }
 
   @Override

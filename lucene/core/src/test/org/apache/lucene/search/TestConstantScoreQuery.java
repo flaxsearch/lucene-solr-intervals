@@ -17,16 +17,20 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.LuceneTestCase;
+
+import java.io.IOException;
 
 /** This class only tests some basic functionality in CSQ, the main parts are mostly
  * tested by MultiTermQuery tests, explanations seems to be tested in TestExplanations! */
@@ -35,7 +39,7 @@ public class TestConstantScoreQuery extends LuceneTestCase {
   public void testCSQ() throws Exception {
     final Query q1 = new ConstantScoreQuery(new TermQuery(new Term("a", "b")));
     final Query q2 = new ConstantScoreQuery(new TermQuery(new Term("a", "c")));
-    final Query q3 = new ConstantScoreQuery(TermRangeFilter.newStringRange("a", "b", "c", true, true));
+    final Query q3 = new ConstantScoreQuery(TermRangeQuery.newStringRange("a", "b", "c", true, true));
     QueryUtils.check(q1);
     QueryUtils.check(q2);
     QueryUtils.checkEqual(q1,q1);
@@ -92,6 +96,7 @@ public class TestConstantScoreQuery extends LuceneTestCase {
       writer.close();
       // we don't wrap with AssertingIndexSearcher in order to have the original scorer in setScorer.
       searcher = newSearcher(reader, true, false);
+      searcher.setQueryCache(null); // to assert on scorer impl
       
       // set a similarity that does not normalize our boost away
       searcher.setSimilarity(new DefaultSimilarity() {
@@ -113,8 +118,8 @@ public class TestConstantScoreQuery extends LuceneTestCase {
       final Query csqbq = new ConstantScoreQuery(bq);
       csqbq.setBoost(17.0f);
       
-      checkHits(searcher, csq1, csq1.getBoost(), ConstantScoreQuery.ConstantScoreScorer.class.getName(), null);
-      checkHits(searcher, csq2, csq2.getBoost(), ConstantScoreQuery.ConstantScoreScorer.class.getName(), ConstantScoreQuery.ConstantScoreScorer.class.getName());
+      checkHits(searcher, csq1, csq1.getBoost(), ConstantScoreQuery.ConstantScoreScorer.class.getName(), TermScorer.class.getName());
+      checkHits(searcher, csq2, csq2.getBoost(), ConstantScoreQuery.ConstantScoreScorer.class.getName(), TermScorer.class.getName());
       
       // for the combined BQ, the scorer should always be BooleanScorer's BucketScorer, because our scorer supports out-of order collection!
       final String bucketScorerClass = FakeScorer.class.getName();
@@ -124,6 +129,27 @@ public class TestConstantScoreQuery extends LuceneTestCase {
       if (reader != null) reader.close();
       if (directory != null) directory.close();
     }
+  }
+
+  // a filter for which other queries don't have special rewrite rules
+  private static class FilterWrapper extends Filter {
+
+    private final Filter in;
+    
+    FilterWrapper(Filter in) {
+      this.in = in;
+    }
+    
+    @Override
+    public DocIdSet getDocIdSet(LeafReaderContext context, Bits acceptDocs) throws IOException {
+      return in.getDocIdSet(context, acceptDocs);
+    }
+
+    @Override
+    public String toString(String field) {
+      return in.toString(field);
+    }
+    
   }
 
   public void testConstantScoreQueryAndFilter() throws Exception {
@@ -138,16 +164,16 @@ public class TestConstantScoreQuery extends LuceneTestCase {
     IndexReader r = w.getReader();
     w.close();
 
-    Filter filterB = new CachingWrapperFilter(new QueryWrapperFilter(new TermQuery(new Term("field", "b"))));
+    Filter filterB = new FilterWrapper(new QueryWrapperFilter(new TermQuery(new Term("field", "b"))));
     Query query = new ConstantScoreQuery(filterB);
 
     IndexSearcher s = newSearcher(r);
-    assertEquals(1, s.search(query, filterB, 1).totalHits); // Query for field:b, Filter field:b
+    assertEquals(1, s.search(new FilteredQuery(query, filterB), 1).totalHits); // Query for field:b, Filter field:b
 
-    Filter filterA = new CachingWrapperFilter(new QueryWrapperFilter(new TermQuery(new Term("field", "a"))));
+    Filter filterA = new FilterWrapper(new QueryWrapperFilter(new TermQuery(new Term("field", "a"))));
     query = new ConstantScoreQuery(filterA);
 
-    assertEquals(0, s.search(query, filterB, 1).totalHits); // Query field:b, Filter field:a
+    assertEquals(0, s.search(new FilteredQuery(query, filterB), 1).totalHits); // Query field:b, Filter field:a
 
     r.close();
     d.close();
@@ -179,4 +205,30 @@ public class TestConstantScoreQuery extends LuceneTestCase {
     d.close();
   }
 
+  public void testPropagatesApproximations() throws IOException {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    Field f = newTextField("field", "a b", Field.Store.NO);
+    doc.add(f);
+    w.addDocument(doc);
+    w.commit();
+
+    DirectoryReader reader = w.getReader();
+    final IndexSearcher searcher = new IndexSearcher(reader);
+
+    PhraseQuery pq = new PhraseQuery();
+    pq.add(new Term("field", "a"));
+    pq.add(new Term("field", "b"));
+
+    ConstantScoreQuery q = new ConstantScoreQuery(pq);
+
+    final Weight weight = searcher.createNormalizedWeight(q, true, PostingsEnum.FREQS);
+    final Scorer scorer = weight.scorer(reader.leaves().get(0), null);
+    assertNotNull(scorer.asTwoPhaseIterator());
+
+    reader.close();
+    w.close();
+    dir.close();
+  }
 }

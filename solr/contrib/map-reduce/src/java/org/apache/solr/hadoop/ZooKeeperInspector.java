@@ -17,14 +17,7 @@
 
 package org.apache.solr.hadoop;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-
+import com.google.common.io.Files;
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
@@ -43,7 +36,13 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.io.Files;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * Extracts SolrCloud information from ZooKeeper.
@@ -195,7 +194,7 @@ final class ZooKeeperInspector {
       Files.move(dir, confDir);
       dir = confDir.getParentFile();
     }
-    FileUtils.writeStringToFile(new File(dir, "solr.xml"), "<solr><cores><core name=\"collection1\" instanceDir=\".\" /></cores></solr>", "UTF-8");
+    FileUtils.writeStringToFile(new File(dir, "solr.xml"), "<solr></solr>", "UTF-8");
     verifyConfigDir(confDir);
     return dir;
   }

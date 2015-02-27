@@ -235,7 +235,7 @@ class FreqProxFields extends Fields {
         throw new IllegalArgumentException("liveDocs must be null");
       }
 
-      if ((flags & PostingsEnum.FLAG_POSITIONS) >= PostingsEnum.FLAG_POSITIONS) {
+      if (PostingsEnum.featureRequested(flags, PostingsEnum.POSITIONS)) {
         FreqProxPostingsEnum posEnum;
 
         if (!terms.hasProx) {
@@ -244,7 +244,7 @@ class FreqProxFields extends Fields {
           throw new IllegalArgumentException("did not index positions");
         }
 
-        if (!terms.hasOffsets && (flags & PostingsEnum.FLAG_OFFSETS) == PostingsEnum.FLAG_OFFSETS) {
+        if (!terms.hasOffsets && PostingsEnum.featureRequested(flags, PostingsEnum.OFFSETS)) {
           // Caller wants offsets but we didn't index them;
           // don't lie:
           throw new IllegalArgumentException("did not index offsets");
@@ -264,7 +264,7 @@ class FreqProxFields extends Fields {
 
       FreqProxDocsEnum docsEnum;
 
-      if (!terms.hasFreq && (flags & PostingsEnum.FLAG_FREQS) != 0) {
+      if (!terms.hasFreq && PostingsEnum.featureRequested(flags, PostingsEnum.FREQS)) {
         // Caller wants freqs but we didn't index them;
         // don't lie:
         throw new IllegalArgumentException("did not index freq");
@@ -303,7 +303,7 @@ class FreqProxFields extends Fields {
     }
   }
 
-  private static class FreqProxDocsEnum extends DocsEnum {
+  private static class FreqProxDocsEnum extends PostingsEnum {
 
     final FreqProxTermsWriterPerField terms;
     final FreqProxPostingsArray postingsArray;
@@ -345,8 +345,22 @@ class FreqProxFields extends Fields {
 
     @Override
     public int nextPosition() throws IOException {
-      assert false : "Shouldn't be calling nextPositions on DocsEnum";
       return -1;
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return null;
     }
 
     @Override

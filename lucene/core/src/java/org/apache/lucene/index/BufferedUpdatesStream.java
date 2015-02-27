@@ -340,7 +340,7 @@ class BufferedUpdatesStream implements Accountable {
       } else {
         dir = null;
       }
-      infoStream.message("BD", "prune sis=" + segmentInfos.toString(dir) + " minGen=" + minGen + " packetCount=" + updates.size());
+      infoStream.message("BD", "prune sis=" + segmentInfos + " minGen=" + minGen + " packetCount=" + updates.size());
     }
     final int limit = updates.size();
     for(int delIDX=0;delIDX<limit;delIDX++) {
@@ -568,7 +568,7 @@ class BufferedUpdatesStream implements Accountable {
         if (state.delGen < delGen) {
 
           // we don't need term frequencies for this
-          state.postingsEnum = state.termsEnum.postings(state.rld.getLiveDocs(), state.postingsEnum, PostingsEnum.FLAG_NONE);
+          state.postingsEnum = state.termsEnum.postings(state.rld.getLiveDocs(), state.postingsEnum, PostingsEnum.NONE);
 
           assert state.postingsEnum != null;
 
@@ -664,7 +664,7 @@ class BufferedUpdatesStream implements Accountable {
 
       if (termsEnum.seekExact(term.bytes())) {
         // we don't need term frequencies for this
-        postingsEnum = termsEnum.postings(segState.rld.getLiveDocs(), postingsEnum, PostingsEnum.FLAG_NONE);
+        postingsEnum = termsEnum.postings(segState.rld.getLiveDocs(), postingsEnum, PostingsEnum.NONE);
 
         DocValuesFieldUpdates dvUpdates = dvUpdatesContainer.getUpdates(update.field, update.type);
         if (dvUpdates == null) {

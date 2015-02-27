@@ -79,8 +79,9 @@ public class ExportQParserPlugin extends QParserPlugin {
       return null;
     }
 
-    public Weight createWeight(IndexSearcher searcher) throws IOException {
-      return mainQuery.createWeight(searcher, true, PostingsEnum.FLAG_FREQS);
+    @Override
+    public Weight createWeight(IndexSearcher searcher, boolean needsScores, int flags) throws IOException {
+      return mainQuery.createWeight(searcher, needsScores, flags);
     }
 
     public Query rewrite(IndexReader reader) throws IOException {

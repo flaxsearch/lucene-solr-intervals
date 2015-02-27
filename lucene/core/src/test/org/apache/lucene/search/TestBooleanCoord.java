@@ -707,7 +707,7 @@ public class TestBooleanCoord extends LuceneTestCase {
   /** asserts score for our single matching good doc */
   private void assertScore(final float expected, Query query) throws Exception {
     // test in-order
-    Weight weight = searcher.createNormalizedWeight(query, true, PostingsEnum.FLAG_FREQS);
+    Weight weight = searcher.createNormalizedWeight(query, true, PostingsEnum.FREQS);
     Scorer scorer = weight.scorer(reader.leaves().get(0), null);
     assertTrue(scorer.docID() == -1 || scorer.docID() == DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(0, scorer.nextDoc());

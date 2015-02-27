@@ -57,15 +57,15 @@ public class TestDateFilter extends LuceneTestCase {
     
     // filter that should preserve matches
     // DateFilter df1 = DateFilter.Before("datefield", now);
-    TermRangeFilter df1 = TermRangeFilter.newStringRange("datefield", DateTools
+    Filter df1 = new QueryWrapperFilter(TermRangeQuery.newStringRange("datefield", DateTools
         .timeToString(now - 2000, DateTools.Resolution.MILLISECOND), DateTools
-        .timeToString(now, DateTools.Resolution.MILLISECOND), false, true);
+        .timeToString(now, DateTools.Resolution.MILLISECOND), false, true));
     // filter that should discard matches
     // DateFilter df2 = DateFilter.Before("datefield", now - 999999);
-    TermRangeFilter df2 = TermRangeFilter.newStringRange("datefield", DateTools
+    Filter df2 = new QueryWrapperFilter(TermRangeQuery.newStringRange("datefield", DateTools
         .timeToString(0, DateTools.Resolution.MILLISECOND), DateTools
         .timeToString(now - 2000, DateTools.Resolution.MILLISECOND), true,
-        false);
+        false));
     
     // search something that doesn't exist with DateFilter
     Query query1 = new TermQuery(new Term("body", "NoMatchForThis"));
@@ -76,23 +76,23 @@ public class TestDateFilter extends LuceneTestCase {
     ScoreDoc[] result;
     
     // ensure that queries return expected results without DateFilter first
-    result = searcher.search(query1, null, 1000).scoreDocs;
+    result = searcher.search(query1, 1000).scoreDocs;
     assertEquals(0, result.length);
     
-    result = searcher.search(query2, null, 1000).scoreDocs;
+    result = searcher.search(query2, 1000).scoreDocs;
     assertEquals(1, result.length);
     
     // run queries with DateFilter
-    result = searcher.search(query1, df1, 1000).scoreDocs;
+    result = searcher.search(new FilteredQuery(query1, df1), 1000).scoreDocs;
     assertEquals(0, result.length);
     
-    result = searcher.search(query1, df2, 1000).scoreDocs;
+    result = searcher.search(new FilteredQuery(query1, df2), 1000).scoreDocs;
     assertEquals(0, result.length);
     
-    result = searcher.search(query2, df1, 1000).scoreDocs;
+    result = searcher.search(new FilteredQuery(query2, df1), 1000).scoreDocs;
     assertEquals(1, result.length);
     
-    result = searcher.search(query2, df2, 1000).scoreDocs;
+    result = searcher.search(new FilteredQuery(query2, df2), 1000).scoreDocs;
     assertEquals(0, result.length);
     reader.close();
     indexStore.close();
@@ -120,16 +120,16 @@ public class TestDateFilter extends LuceneTestCase {
     
     // filter that should preserve matches
     // DateFilter df1 = DateFilter.After("datefield", now);
-    TermRangeFilter df1 = TermRangeFilter.newStringRange("datefield", DateTools
+    Filter df1 = new QueryWrapperFilter(TermRangeQuery.newStringRange("datefield", DateTools
         .timeToString(now, DateTools.Resolution.MILLISECOND), DateTools
         .timeToString(now + 999999, DateTools.Resolution.MILLISECOND), true,
-        false);
+        false));
     // filter that should discard matches
     // DateFilter df2 = DateFilter.After("datefield", now + 999999);
-    TermRangeFilter df2 = TermRangeFilter.newStringRange("datefield", DateTools
+    Filter df2 = new QueryWrapperFilter(TermRangeQuery.newStringRange("datefield", DateTools
         .timeToString(now + 999999, DateTools.Resolution.MILLISECOND),
         DateTools.timeToString(now + 999999999,
-            DateTools.Resolution.MILLISECOND), false, true);
+            DateTools.Resolution.MILLISECOND), false, true));
     
     // search something that doesn't exist with DateFilter
     Query query1 = new TermQuery(new Term("body", "NoMatchForThis"));
@@ -140,23 +140,23 @@ public class TestDateFilter extends LuceneTestCase {
     ScoreDoc[] result;
     
     // ensure that queries return expected results without DateFilter first
-    result = searcher.search(query1, null, 1000).scoreDocs;
+    result = searcher.search(query1, 1000).scoreDocs;
     assertEquals(0, result.length);
     
-    result = searcher.search(query2, null, 1000).scoreDocs;
+    result = searcher.search(query2, 1000).scoreDocs;
     assertEquals(1, result.length);
     
     // run queries with DateFilter
-    result = searcher.search(query1, df1, 1000).scoreDocs;
+    result = searcher.search(new FilteredQuery(query1, df1), 1000).scoreDocs;
     assertEquals(0, result.length);
     
-    result = searcher.search(query1, df2, 1000).scoreDocs;
+    result = searcher.search(new FilteredQuery(query1, df2), 1000).scoreDocs;
     assertEquals(0, result.length);
     
-    result = searcher.search(query2, df1, 1000).scoreDocs;
+    result = searcher.search(new FilteredQuery(query2, df1), 1000).scoreDocs;
     assertEquals(1, result.length);
     
-    result = searcher.search(query2, df2, 1000).scoreDocs;
+    result = searcher.search(new FilteredQuery(query2, df2), 1000).scoreDocs;
     assertEquals(0, result.length);
     reader.close();
     indexStore.close();

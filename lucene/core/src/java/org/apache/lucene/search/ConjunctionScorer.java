@@ -19,15 +19,11 @@ package org.apache.lucene.search;
 
 import org.apache.lucene.search.intervals.CombinedIntervalIterator;
 import org.apache.lucene.search.intervals.IntervalIterator;
-import org.apache.lucene.util.ArrayUtil;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.List;
-
-import org.apache.lucene.util.BytesRef;
 
 /** Scorer for conjunctions, sets of queries, all of which are required. */
 class ConjunctionScorer extends Scorer {
@@ -51,7 +47,7 @@ class ConjunctionScorer extends Scorer {
   }
 
   @Override
-  public TwoPhaseDocIdSetIterator asTwoPhaseIterator() {
+  public TwoPhaseIterator asTwoPhaseIterator() {
     return disi.asTwoPhaseIterator();
   }
 
@@ -84,33 +80,12 @@ class ConjunctionScorer extends Scorer {
   public int freq() {
     return scorers.length;
   }
-
-  @Override
-  public int nextPosition() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public int startOffset() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public int endOffset() throws IOException {
-    return -1;
-  }
-
-  @Override
-  public BytesRef getPayload() throws IOException {
-    return null;
-  }
   
   @Override
   public IntervalIterator intervals(boolean collectIntervals) throws IOException {
       // only created if needed for this scorer - no penalty for non-positional queries
     return new CombinedIntervalIterator(this, collectIntervals, pullIterators(collectIntervals, scorers));
   }
-
 
   @Override
   public long cost() {

@@ -33,37 +33,35 @@ public abstract class PostingsEnum extends DocIdSetIterator {
    * Flag to pass to {@link TermsEnum#postings(Bits, PostingsEnum, int)} if you don't
    * require per-document postings in the returned enum.
    */
-  public static final int FLAG_NONE = 0x0;
+  public static final short NONE = 0;
 
   /** Flag to pass to {@link TermsEnum#postings(Bits, PostingsEnum, int)}
    *  if you require term frequencies in the returned enum. */
-  public static final int FLAG_FREQS = 0x1;
+  public static final short FREQS = 1 << 3;
 
   /** Flag to pass to {@link TermsEnum#postings(Bits, PostingsEnum, int)}
    * if you require term positions in the returned enum. */
-  public static final int FLAG_POSITIONS = 0x3;
+  public static final short POSITIONS = FREQS | 1 << 4;
   
   /** Flag to pass to {@link TermsEnum#postings(Bits, PostingsEnum, int)}
    *  if you require offsets in the returned enum. */
-  public static final int FLAG_OFFSETS = 0x7;
+  public static final short OFFSETS = POSITIONS | 1 << 5;
 
   /** Flag to pass to  {@link TermsEnum#postings(Bits, PostingsEnum, int)}
    *  if you require payloads in the returned enum. */
-  public static final int FLAG_PAYLOADS = 0xB;
+  public static final short PAYLOADS = POSITIONS | 1 << 6;
 
   /**
    * Flag to pass to {@link TermsEnum#postings(Bits, PostingsEnum, int)}
    * to get positions, payloads and offsets in the returned enum
    */
-  public static final int FLAG_ALL = FLAG_POSITIONS | FLAG_PAYLOADS;
+  public static final short ALL = OFFSETS | PAYLOADS;
 
   /**
-   * Returns true if the passed in flags require positions to be indexed
-   * @param flags the postings flags
-   * @return true if the passed in flags require positions to be indexed
+   * Returns true if the given feature is requested in the flags, false otherwise.
    */
-  public static boolean requiresPositions(int flags) {
-    return ((flags & FLAG_POSITIONS) >= FLAG_POSITIONS);
+  public static boolean featureRequested(int flags, short feature) {
+    return (flags & feature) == feature;
   }
 
   private AttributeSource atts = null;
@@ -80,7 +78,7 @@ public abstract class PostingsEnum extends DocIdSetIterator {
    * {@link DocIdSetIterator#NO_MORE_DOCS}.
    * 
    * <p>
-   * <b>NOTE:</b> if the {@link PostingsEnum} was obtain with {@link #FLAG_NONE},
+   * <b>NOTE:</b> if the {@link PostingsEnum} was obtain with {@link #NONE},
    * the result of this method is undefined.
    */
   public abstract int freq() throws IOException;
@@ -92,9 +90,9 @@ public abstract class PostingsEnum extends DocIdSetIterator {
   }
 
   /**
-   * Returns the next position.  If there are no more
-   * positions, or the iterator does not support positions,
-   * this will return DocsEnum.NO_MORE_POSITIONS */
+   * Returns the next position, or -1 if positions were not indexed.
+   * Calling this more than {@link #freq()} times is undefined.
+   */
   public abstract int nextPosition() throws IOException;
 
   /** Returns start offset for the current position, or -1

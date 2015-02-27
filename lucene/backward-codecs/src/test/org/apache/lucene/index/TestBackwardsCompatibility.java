@@ -83,7 +83,7 @@ import org.junit.BeforeClass;
 public class TestBackwardsCompatibility extends LuceneTestCase {
 
   // To generate backcompat indexes with the current default codec, run the following ant command:
-  //  ant test -Dtestcase=TestBackwardsCompatibility -Dbwc.indexdir=/path/to/store/indexes
+  //  ant test -Dtestcase=TestBackwardsCompatibility -Dtests.bwcdir=/path/to/store/indexes
   //           -Dtests.codec=default -Dtests.useSecurityManager=false
   // Also add testmethod with one of the index creation methods below, for example:
   //    -Dtestmethod=testCreateCFS
@@ -255,6 +255,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       "4.10.2-nocfs",
       "4.10.3-cfs",
       "4.10.3-nocfs",
+      "5.0.0-cfs",
+      "5.0.0-nocfs"
   };
   
   final String[] unsupportedNames = {
@@ -311,6 +313,8 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   
   final static String[] oldSingleSegmentNames = {"4.0.0-optimized-cfs",
                                                  "4.0.0-optimized-nocfs",
+    "5.0.0.singlesegment-cfs",
+    "5.0.0.singlesegment-nocfs"
   };
   
   static Map<String,Directory> oldIndexDirs;
@@ -709,7 +713,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       }
     }
     
-    ScoreDoc[] hits = searcher.search(new TermQuery(new Term(new String("content"), "aaa")), null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(new TermQuery(new Term(new String("content"), "aaa")), 1000).scoreDocs;
 
     // First document should be #0
     Document d = searcher.getIndexReader().document(hits[0].doc);
@@ -718,20 +722,20 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     doTestHits(hits, 34, searcher.getIndexReader());
     
     if (is40Index) {
-      hits = searcher.search(new TermQuery(new Term(new String("content5"), "aaa")), null, 1000).scoreDocs;
+      hits = searcher.search(new TermQuery(new Term(new String("content5"), "aaa")), 1000).scoreDocs;
 
       doTestHits(hits, 34, searcher.getIndexReader());
     
-      hits = searcher.search(new TermQuery(new Term(new String("content6"), "aaa")), null, 1000).scoreDocs;
+      hits = searcher.search(new TermQuery(new Term(new String("content6"), "aaa")), 1000).scoreDocs;
 
       doTestHits(hits, 34, searcher.getIndexReader());
     }
 
-    hits = searcher.search(new TermQuery(new Term("utf8", "\u0000")), null, 1000).scoreDocs;
+    hits = searcher.search(new TermQuery(new Term("utf8", "\u0000")), 1000).scoreDocs;
     assertEquals(34, hits.length);
-    hits = searcher.search(new TermQuery(new Term(new String("utf8"), "lu\uD834\uDD1Ece\uD834\uDD60ne")), null, 1000).scoreDocs;
+    hits = searcher.search(new TermQuery(new Term(new String("utf8"), "lu\uD834\uDD1Ece\uD834\uDD60ne")), 1000).scoreDocs;
     assertEquals(34, hits.length);
-    hits = searcher.search(new TermQuery(new Term("utf8", "ab\ud917\udc17cd")), null, 1000).scoreDocs;
+    hits = searcher.search(new TermQuery(new Term("utf8", "ab\ud917\udc17cd")), 1000).scoreDocs;
     assertEquals(34, hits.length);
 
     reader.close();
@@ -755,7 +759,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     // make sure searching sees right # hits
     IndexReader reader = DirectoryReader.open(dir);
     IndexSearcher searcher = newSearcher(reader);
-    ScoreDoc[] hits = searcher.search(new TermQuery(new Term("content", "aaa")), null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(new TermQuery(new Term("content", "aaa")), 1000).scoreDocs;
     Document d = searcher.getIndexReader().document(hits[0].doc);
     assertEquals("wrong first document", "0", d.get("id"));
     doTestHits(hits, 44, searcher.getIndexReader());
@@ -770,7 +774,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
     reader = DirectoryReader.open(dir);
     searcher = newSearcher(reader);
-    hits = searcher.search(new TermQuery(new Term("content", "aaa")), null, 1000).scoreDocs;
+    hits = searcher.search(new TermQuery(new Term("content", "aaa")), 1000).scoreDocs;
     assertEquals("wrong number of hits", 44, hits.length);
     d = searcher.doc(hits[0].doc);
     doTestHits(hits, 44, searcher.getIndexReader());
@@ -782,7 +786,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     // make sure searching sees right # hits
     DirectoryReader reader = DirectoryReader.open(dir);
     IndexSearcher searcher = newSearcher(reader);
-    ScoreDoc[] hits = searcher.search(new TermQuery(new Term("content", "aaa")), null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(new TermQuery(new Term("content", "aaa")), 1000).scoreDocs;
     assertEquals("wrong number of hits", 34, hits.length);
     Document d = searcher.doc(hits[0].doc);
     assertEquals("wrong first document", "0", d.get("id"));
@@ -796,7 +800,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
 
     reader = DirectoryReader.open(dir);
     searcher = newSearcher(reader);
-    hits = searcher.search(new TermQuery(new Term("content", "aaa")), null, 1000).scoreDocs;
+    hits = searcher.search(new TermQuery(new Term("content", "aaa")), 1000).scoreDocs;
     assertEquals("wrong number of hits", 34, hits.length);
     doTestHits(hits, 34, searcher.getIndexReader());
     reader.close();
@@ -941,7 +945,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       // should be found exactly
       assertEquals(TermsEnum.SeekStatus.FOUND,
                    terms.seekCeil(aaaTerm));
-      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.FLAG_NONE)));
+      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.NONE)));
       assertNull(terms.next());
 
       // should hit end of field
@@ -953,12 +957,12 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       assertEquals(TermsEnum.SeekStatus.NOT_FOUND,
                    terms.seekCeil(new BytesRef("a")));
       assertTrue(terms.term().bytesEquals(aaaTerm));
-      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.FLAG_NONE)));
+      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.NONE)));
       assertNull(terms.next());
 
       assertEquals(TermsEnum.SeekStatus.FOUND,
                    terms.seekCeil(aaaTerm));
-      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.FLAG_NONE)));
+      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.NONE)));
       assertNull(terms.next());
 
       r.close();

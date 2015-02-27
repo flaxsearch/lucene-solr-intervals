@@ -82,6 +82,7 @@ import com.carrotsearch.randomizedtesting.rules.NoClassHooksShadowingRule;
 import com.carrotsearch.randomizedtesting.rules.NoInstanceHooksOverridesRule;
 import com.carrotsearch.randomizedtesting.rules.StaticFieldsInvariantRule;
 import com.carrotsearch.randomizedtesting.rules.SystemPropertiesInvariantRule;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -94,10 +95,9 @@ import org.apache.lucene.index.*;
 import org.apache.lucene.index.IndexReader.ReaderClosedListener;
 import org.apache.lucene.index.TermsEnum.SeekStatus;
 import org.apache.lucene.search.AssertingIndexSearcher;
-import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.FilterCachingPolicy;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.QueryCachingPolicy;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.QueryUtils.FCInvisibleMultiReader;
 import org.apache.lucene.store.BaseDirectoryWrapper;
@@ -111,6 +111,7 @@ import org.apache.lucene.store.MergeInfo;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.MockDirectoryWrapper.Throttling;
 import org.apache.lucene.store.NRTCachingDirectory;
+import org.apache.lucene.store.RawDirectoryWrapper;
 import org.apache.lucene.util.automaton.AutomatonTestUtil;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.automaton.RegExp;
@@ -297,6 +298,21 @@ public abstract class LuceneTestCase extends Assert {
   }
   
   /**
+   * Annotation for test classes that should avoid mock filesystem types
+   * (because they test a bug that only happens on linux, for example).
+   * <p>
+   * You can avoid specific names {@link Class#getSimpleName()} or use
+   * the special value {@code *} to disable all mock filesystems.
+   */
+  @Documented
+  @Inherited
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.TYPE)
+  public @interface SuppressFileSystems {
+    String[] value();
+  }
+  
+  /**
    * Marks any suites which are known not to close all the temporary
    * files. This may prevent temp. files and folders from being cleaned
    * up after the suite is completed.
@@ -426,14 +442,14 @@ public abstract class LuceneTestCase extends Assert {
     CORE_DIRECTORIES.add("RAMDirectory");
   }
 
-  /** A {@link org.apache.lucene.search.FilterCachingPolicy} that randomly caches. */
-  public static final FilterCachingPolicy MAYBE_CACHE_POLICY = new FilterCachingPolicy() {
+  /** A {@link org.apache.lucene.search.QueryCachingPolicy} that randomly caches. */
+  public static final QueryCachingPolicy MAYBE_CACHE_POLICY = new QueryCachingPolicy() {
 
     @Override
-    public void onUse(Filter filter) {}
+    public void onUse(Query query) {}
 
     @Override
-    public boolean shouldCache(Filter filter, LeafReaderContext context, DocIdSet set) throws IOException {
+    public boolean shouldCache(Query query, LeafReaderContext context) throws IOException {
       return random().nextBoolean();
     }
 
@@ -1290,7 +1306,9 @@ public abstract class LuceneTestCase extends Assert {
   public static BaseDirectoryWrapper newDirectory(Random r, Directory d) throws IOException {
     Directory impl = newDirectoryImpl(r, TEST_DIRECTORY);
     for (String file : d.listAll()) {
-     impl.copyFrom(d, file, file, newIOContext(r));
+      if (file.startsWith(IndexFileNames.SEGMENTS) || IndexFileNames.CODEC_FILE_PATTERN.matcher(file).matches()) {
+        impl.copyFrom(d, file, file, newIOContext(r));
+      }
     }
     return wrapDirectory(r, impl, rarely(r));
   }
@@ -1301,7 +1319,7 @@ public abstract class LuceneTestCase extends Assert {
     }
 
     if (bare) {
-      BaseDirectoryWrapper base = new BaseDirectoryWrapper(directory);
+      BaseDirectoryWrapper base = new RawDirectoryWrapper(directory);
       closeAfterSuite(new CloseableDirectory(base, suiteFailureMarker));
       return base;
     } else {
@@ -1683,6 +1701,7 @@ public abstract class LuceneTestCase extends Assert {
         ret = random.nextBoolean() ? new IndexSearcher(r) : new IndexSearcher(r.getContext());
       }
       ret.setSimilarity(classEnvRule.similarity);
+      ret.setQueryCachingPolicy(MAYBE_CACHE_POLICY);
       return ret;
     } else {
       int threads = 0;
@@ -1719,6 +1738,7 @@ public abstract class LuceneTestCase extends Assert {
             : new IndexSearcher(r.getContext(), ex);
       }
       ret.setSimilarity(classEnvRule.similarity);
+      ret.setQueryCachingPolicy(MAYBE_CACHE_POLICY);
       return ret;
     }
   }
@@ -1894,17 +1914,17 @@ public abstract class LuceneTestCase extends Assert {
       assertEquals(info, term, rightTermsEnum.next());
       assertTermStatsEquals(info, leftTermsEnum, rightTermsEnum);
       if (deep) {
-        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.postings(null, leftPositions, PostingsEnum.FLAG_ALL),
-                                   rightPositions = rightTermsEnum.postings(null, rightPositions, PostingsEnum.FLAG_ALL));
-        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.postings(randomBits, leftPositions, PostingsEnum.FLAG_ALL),
-                                   rightPositions = rightTermsEnum.postings(randomBits, rightPositions, PostingsEnum.FLAG_ALL));
+        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.postings(null, leftPositions, PostingsEnum.ALL),
+                                   rightPositions = rightTermsEnum.postings(null, rightPositions, PostingsEnum.ALL));
+        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.postings(randomBits, leftPositions, PostingsEnum.ALL),
+                                   rightPositions = rightTermsEnum.postings(randomBits, rightPositions, PostingsEnum.ALL));
 
         assertPositionsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-                                leftPositions = leftTermsEnum.postings(null, leftPositions, PostingsEnum.FLAG_ALL),
-                                rightPositions = rightTermsEnum.postings(null, rightPositions, PostingsEnum.FLAG_ALL));
+                                leftPositions = leftTermsEnum.postings(null, leftPositions, PostingsEnum.ALL),
+                                rightPositions = rightTermsEnum.postings(null, rightPositions, PostingsEnum.ALL));
         assertPositionsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-                                leftPositions = leftTermsEnum.postings(randomBits, leftPositions, PostingsEnum.FLAG_ALL),
-            rightPositions = rightTermsEnum.postings(randomBits, rightPositions, PostingsEnum.FLAG_ALL));
+                                leftPositions = leftTermsEnum.postings(randomBits, leftPositions, PostingsEnum.ALL),
+            rightPositions = rightTermsEnum.postings(randomBits, rightPositions, PostingsEnum.ALL));
 
         // with freqs:
         assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(null, leftDocs),
@@ -1915,11 +1935,11 @@ public abstract class LuceneTestCase extends Assert {
             true);
 
         // w/o freqs:
-        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(null, leftDocs, PostingsEnum.FLAG_NONE),
-            rightDocs = rightTermsEnum.postings(null, rightDocs, PostingsEnum.FLAG_NONE),
+        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(null, leftDocs, PostingsEnum.NONE),
+            rightDocs = rightTermsEnum.postings(null, rightDocs, PostingsEnum.NONE),
             false);
-        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(randomBits, leftDocs, PostingsEnum.FLAG_NONE),
-            rightDocs = rightTermsEnum.postings(randomBits, rightDocs, PostingsEnum.FLAG_NONE),
+        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(randomBits, leftDocs, PostingsEnum.NONE),
+            rightDocs = rightTermsEnum.postings(randomBits, rightDocs, PostingsEnum.NONE),
             false);
         
         // with freqs:
@@ -1934,12 +1954,12 @@ public abstract class LuceneTestCase extends Assert {
 
         // w/o freqs:
         assertDocsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-            leftDocs = leftTermsEnum.postings(null, leftDocs, PostingsEnum.FLAG_NONE),
-            rightDocs = rightTermsEnum.postings(null, rightDocs, PostingsEnum.FLAG_NONE),
+            leftDocs = leftTermsEnum.postings(null, leftDocs, PostingsEnum.NONE),
+            rightDocs = rightTermsEnum.postings(null, rightDocs, PostingsEnum.NONE),
             false);
         assertDocsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-            leftDocs = leftTermsEnum.postings(randomBits, leftDocs, PostingsEnum.FLAG_NONE),
-            rightDocs = rightTermsEnum.postings(randomBits, rightDocs, PostingsEnum.FLAG_NONE),
+            leftDocs = leftTermsEnum.postings(randomBits, leftDocs, PostingsEnum.NONE),
+            rightDocs = rightTermsEnum.postings(randomBits, rightDocs, PostingsEnum.NONE),
             false);
       }
     }

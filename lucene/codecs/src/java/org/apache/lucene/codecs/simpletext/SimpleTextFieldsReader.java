@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import org.apache.lucene.codecs.FieldsProducer;
-import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexOptions;
@@ -210,7 +209,7 @@ class SimpleTextFieldsReader extends FieldsProducer {
     @Override
     public PostingsEnum postings(Bits liveDocs, PostingsEnum reuse, int flags) throws IOException {
 
-      if (PostingsEnum.requiresPositions(flags)) {
+      if (PostingsEnum.featureRequested(flags, PostingsEnum.POSITIONS)) {
         if (indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
           // Positions were not indexed
           return null;
@@ -237,7 +236,7 @@ class SimpleTextFieldsReader extends FieldsProducer {
 
   }
 
-  private class SimpleTextDocsEnum extends DocsEnum {
+  private class SimpleTextDocsEnum extends PostingsEnum {
     private final IndexInput inStart;
     private final IndexInput in;
     private boolean omitTF;
@@ -279,8 +278,22 @@ class SimpleTextFieldsReader extends FieldsProducer {
 
     @Override
     public int nextPosition() throws IOException {
-      assert false : "Shouldn't be calling nextPosition() if you haven't asked for positions";
       return -1;
+    }
+
+    @Override
+    public int startOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public int endOffset() throws IOException {
+      return -1;
+    }
+
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return null;
     }
 
     @Override

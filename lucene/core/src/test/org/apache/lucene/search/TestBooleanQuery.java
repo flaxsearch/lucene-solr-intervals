@@ -34,6 +34,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.intervals.IntervalFilterQuery;
 import org.apache.lucene.search.intervals.WithinIntervalFilter;
+import org.apache.lucene.search.BooleanTopLevelScorers.BoostedScorer;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
@@ -168,7 +169,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     BooleanQuery query = new BooleanQuery(); // Query: +foo -ba*
     query.add(new TermQuery(new Term("field", "foo")), BooleanClause.Occur.MUST);
     WildcardQuery wildcardQuery = new WildcardQuery(new Term("field", "ba*"));
-    wildcardQuery.setRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_QUERY_REWRITE);
+    wildcardQuery.setRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_REWRITE);
     query.add(wildcardQuery, BooleanClause.Occur.MUST_NOT);
 
     MultiReader multireader = new MultiReader(reader1, reader2);
@@ -239,7 +240,7 @@ public class TestBooleanQuery extends LuceneTestCase {
         q.add(new BooleanClause(new TermQuery(new Term("field", term)), BooleanClause.Occur.SHOULD));
       }
 
-      Weight weight = s.createNormalizedWeight(q, true, PostingsEnum.FLAG_FREQS);
+      Weight weight = s.createNormalizedWeight(q, true, PostingsEnum.FREQS);
 
       Scorer scorer = weight.scorer(s.leafContexts.get(0), null);
 
@@ -257,7 +258,7 @@ public class TestBooleanQuery extends LuceneTestCase {
       // verify exact match:
       for(int iter2=0;iter2<10;iter2++) {
 
-        weight = s.createNormalizedWeight(q, true, PostingsEnum.FLAG_FREQS);
+        weight = s.createNormalizedWeight(q, true, PostingsEnum.FREQS);
         scorer = weight.scorer(s.leafContexts.get(0), null);
 
         if (VERBOSE) {
@@ -628,7 +629,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     BooleanQuery query2 = new BooleanQuery();
     query2.add(new TermQuery(new Term("field", "a")), Occur.FILTER);
     query2.add(new TermQuery(new Term("field", "b")), Occur.SHOULD);
-    final Weight weight = searcher.createNormalizedWeight(query2, true, PostingsEnum.FLAG_FREQS);
+    final Weight weight = searcher.createNormalizedWeight(query2, true, PostingsEnum.FREQS);
     final Scorer scorer = weight.scorer(reader.leaves().get(0), null);
     assertTrue(scorer.getClass().getName(), scorer instanceof BooleanTopLevelScorers.BoostedScorer);
     assertEquals(0, ((BooleanTopLevelScorers.BoostedScorer) scorer).boost, 0f);
@@ -658,8 +659,9 @@ public class TestBooleanQuery extends LuceneTestCase {
     q.add(pq, Occur.MUST);
     q.add(new TermQuery(new Term("field", "c")), Occur.FILTER);
 
-    final Weight weight = searcher.createNormalizedWeight(q, random().nextBoolean(), PostingsEnum.FLAG_FREQS);
+    final Weight weight = searcher.createNormalizedWeight(q, random().nextBoolean(), PostingsEnum.FREQS);
     final Scorer scorer = weight.scorer(reader.leaves().get(0), null);
+    assertTrue(scorer instanceof ConjunctionScorer);
     assertNotNull(scorer.asTwoPhaseIterator());
 
     reader.close();
@@ -687,8 +689,99 @@ public class TestBooleanQuery extends LuceneTestCase {
     q.add(pq, Occur.SHOULD);
     q.add(new TermQuery(new Term("field", "c")), Occur.SHOULD);
 
-    final Weight weight = searcher.createNormalizedWeight(q, random().nextBoolean(), PostingsEnum.FLAG_FREQS);
+    final Weight weight = searcher.createNormalizedWeight(q, random().nextBoolean(), PostingsEnum.FREQS);
     final Scorer scorer = weight.scorer(reader.leaves().get(0), null);
+    assertTrue(scorer instanceof DisjunctionScorer);
+    assertNotNull(scorer.asTwoPhaseIterator());
+
+    reader.close();
+    w.close();
+    dir.close();
+  }
+
+  public void testBoostedScorerPropagatesApproximations() throws IOException {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    Field f = newTextField("field", "a b c", Field.Store.NO);
+    doc.add(f);
+    w.addDocument(doc);
+    w.commit();
+
+    DirectoryReader reader = w.getReader();
+    final IndexSearcher searcher = new IndexSearcher(reader);
+
+    PhraseQuery pq = new PhraseQuery();
+    pq.add(new Term("field", "a"));
+    pq.add(new Term("field", "b"));
+
+    BooleanQuery q = new BooleanQuery();
+    q.add(pq, Occur.SHOULD);
+    q.add(new TermQuery(new Term("field", "d")), Occur.SHOULD);
+
+    final Weight weight = searcher.createNormalizedWeight(q, random().nextBoolean(), PostingsEnum.NONE);
+    final Scorer scorer = weight.scorer(reader.leaves().get(0), null);
+    assertTrue(scorer instanceof BoostedScorer);
+    assertNotNull(scorer.asTwoPhaseIterator());
+
+    reader.close();
+    w.close();
+    dir.close();
+  }
+
+  public void testExclusionPropagatesApproximations() throws IOException {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    Field f = newTextField("field", "a b c", Field.Store.NO);
+    doc.add(f);
+    w.addDocument(doc);
+    w.commit();
+
+    DirectoryReader reader = w.getReader();
+    final IndexSearcher searcher = new IndexSearcher(reader);
+
+    PhraseQuery pq = new PhraseQuery();
+    pq.add(new Term("field", "a"));
+    pq.add(new Term("field", "b"));
+
+    BooleanQuery q = new BooleanQuery();
+    q.add(pq, Occur.SHOULD);
+    q.add(new TermQuery(new Term("field", "c")), Occur.MUST_NOT);
+
+    final Weight weight = searcher.createNormalizedWeight(q, random().nextBoolean(), PostingsEnum.NONE);
+    final Scorer scorer = weight.scorer(reader.leaves().get(0), null);
+    assertTrue(scorer instanceof ReqExclScorer);
+    assertNotNull(scorer.asTwoPhaseIterator());
+
+    reader.close();
+    w.close();
+    dir.close();
+  }
+
+  public void testReqOptPropagatesApproximations() throws IOException {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    Field f = newTextField("field", "a b c", Field.Store.NO);
+    doc.add(f);
+    w.addDocument(doc);
+    w.commit();
+
+    DirectoryReader reader = w.getReader();
+    final IndexSearcher searcher = new IndexSearcher(reader);
+
+    PhraseQuery pq = new PhraseQuery();
+    pq.add(new Term("field", "a"));
+    pq.add(new Term("field", "b"));
+
+    BooleanQuery q = new BooleanQuery();
+    q.add(pq, Occur.MUST);
+    q.add(new TermQuery(new Term("field", "c")), Occur.SHOULD);
+
+    final Weight weight = searcher.createNormalizedWeight(q, true, PostingsEnum.NONE);
+    final Scorer scorer = weight.scorer(reader.leaves().get(0), null);
+    assertTrue(scorer instanceof ReqOptSumScorer);
     assertNotNull(scorer.asTwoPhaseIterator());
 
     reader.close();

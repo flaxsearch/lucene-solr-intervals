@@ -76,7 +76,7 @@ public class TestTermScorer extends LuceneTestCase {
     Term allTerm = new Term(FIELD, "all");
     TermQuery termQuery = new TermQuery(allTerm);
     
-    Weight weight = indexSearcher.createNormalizedWeight(termQuery, true, PostingsEnum.FLAG_FREQS);
+    Weight weight = indexSearcher.createNormalizedWeight(termQuery, true, PostingsEnum.FREQS);
     assertTrue(indexSearcher.getTopReaderContext() instanceof LeafReaderContext);
     LeafReaderContext context = (LeafReaderContext)indexSearcher.getTopReaderContext();
     BulkScorer ts = weight.bulkScorer(context, context.reader().getLiveDocs());
@@ -138,7 +138,7 @@ public class TestTermScorer extends LuceneTestCase {
     Term allTerm = new Term(FIELD, "all");
     TermQuery termQuery = new TermQuery(allTerm);
     
-    Weight weight = indexSearcher.createNormalizedWeight(termQuery, true, PostingsEnum.FLAG_FREQS);
+    Weight weight = indexSearcher.createNormalizedWeight(termQuery, true, PostingsEnum.FREQS);
     assertTrue(indexSearcher.getTopReaderContext() instanceof LeafReaderContext);
     LeafReaderContext context = (LeafReaderContext) indexSearcher.getTopReaderContext();
     Scorer ts = weight.scorer(context, context.reader().getLiveDocs());
@@ -157,7 +157,7 @@ public class TestTermScorer extends LuceneTestCase {
     Term allTerm = new Term(FIELD, "all");
     TermQuery termQuery = new TermQuery(allTerm);
     
-    Weight weight = indexSearcher.createNormalizedWeight(termQuery, true, PostingsEnum.FLAG_FREQS);
+    Weight weight = indexSearcher.createNormalizedWeight(termQuery, true, PostingsEnum.FREQS);
     assertTrue(indexSearcher.getTopReaderContext() instanceof LeafReaderContext);
     LeafReaderContext context = (LeafReaderContext) indexSearcher.getTopReaderContext();
     Scorer ts = weight.scorer(context, context.reader().getLiveDocs());

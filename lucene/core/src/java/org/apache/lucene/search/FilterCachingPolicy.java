@@ -32,8 +32,9 @@ import org.apache.lucene.index.TieredMergePolicy;
  * @see UsageTrackingFilterCachingPolicy
  * @see LRUFilterCache
  * @lucene.experimental
+ * @deprecated Use {@link QueryCachingPolicy} instead
  */
-// TODO: add APIs for integration with IndexWriter.IndexReaderWarmer
+@Deprecated
 public interface FilterCachingPolicy {
 
   /** A simple policy that caches all the provided filters on all segments. */

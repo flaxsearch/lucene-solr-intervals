@@ -252,7 +252,7 @@ public class TestTopDocsMerge extends LuceneTestCase {
       }
 
       // ... then all shards:
-      final Weight w = searcher.createNormalizedWeight(query, true, PostingsEnum.FLAG_FREQS);
+      final Weight w = searcher.createNormalizedWeight(query, true, PostingsEnum.FREQS);
 
       final TopDocs[] shardHits;
       if (sort == null) {
