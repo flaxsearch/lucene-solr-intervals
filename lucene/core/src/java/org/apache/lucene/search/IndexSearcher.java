@@ -762,7 +762,7 @@ public class IndexSearcher {
   public Weight createWeight(Query query, boolean needsScores, int flags) throws IOException {
     final QueryCache queryCache = this.queryCache;
     Weight weight = query.createWeight(this, needsScores, flags);
-    if (needsScores == false && queryCache != null) {
+    if (needsScores == false && queryCache != null && !PostingsEnum.featureRequested(flags, PostingsEnum.POSITIONS)) {
       weight = queryCache.doCache(weight, queryCachingPolicy);
     }
     return weight;
