@@ -17,9 +17,6 @@ package org.apache.lucene.analysis.miscellaneous;
  * limitations under the License.
  */
 
-import java.io.IOException;
-import java.util.ArrayList;
-
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -35,6 +32,9 @@ import org.apache.lucene.util.fst.ByteSequenceOutputs;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.FST.Arc;
 import org.apache.lucene.util.fst.FST.BytesReader;
+
+import java.io.IOException;
+import java.util.ArrayList;
 
 /**
  * Provides the ability to override any {@link KeywordAttribute} aware stemmer
@@ -126,7 +126,7 @@ public final class StemmerOverrideFilter extends TokenFilter {
      * @param scratchArc a scratch Arc
      * @param fstReader an fstReader
      * @return a {@link BytesRef} pointing to the value or null
-     * @throws IOException
+     * @throws IOException on IO errors
      */
     public BytesRef get(char[] buffer, int bufferLen, Arc<BytesRef> scratchArc, BytesReader fstReader) throws IOException {
       BytesRef pendingOutput = fst.outputs.getNoOutput();
