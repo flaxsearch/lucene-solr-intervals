@@ -74,4 +74,19 @@ public class TestFieldCacheTermsFilter extends LuceneTestCase {
     reader.close();
     rd.close();
   }
+
+  public void testEquality() {
+
+    Filter f1 = new DocValuesTermsFilter("field", "term1", "term2");
+    Filter f2 = new DocValuesTermsFilter("field", "term1", "term2");
+    Filter f3 = new DocValuesTermsFilter("field", "term1", "term3");
+    Filter f4 = new DocValuesTermsFilter("field2", "term1", "term2");
+
+    assertEquals(f1, f2);
+    assertFalse(f1.equals(f3));
+    assertFalse(f1.equals(f4));
+
+    assertEquals(f1.hashCode(), f2.hashCode());
+
+  }
 }
