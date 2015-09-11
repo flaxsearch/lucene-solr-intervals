@@ -12,6 +12,7 @@ import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.util.RefCounted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,25 +93,28 @@ public class SegmentsInfoRequestHandler extends RequestHandlerBase {
 
   private List<String> getMergeCandidatesNames(SolrQueryRequest req, SegmentInfos infos) throws IOException {
     List<String> result = new ArrayList<String>();
-    IndexWriter indexWriter = getIndexWriter(req);
-    //get chosen merge policy
-    MergePolicy mp = indexWriter.getConfig().getMergePolicy();
-    //Find merges
-    MergeSpecification findMerges = mp.findMerges(MergeTrigger.EXPLICIT, infos, indexWriter);
-    if (findMerges != null && findMerges.merges != null && findMerges.merges.size() > 0) {
-      for (OneMerge merge : findMerges.merges) {
-        //TODO: add merge grouping
-        for (SegmentCommitInfo mergeSegmentInfo : merge.segments) {
-          result.add(mergeSegmentInfo.info.name);
+    RefCounted<IndexWriter> iwRef = req.getCore().getSolrCoreState().getIndexWriter(req.getCore());
+    try {
+      //get chosen merge policy
+      IndexWriter indexWriter = iwRef.get();
+      MergePolicy mp = indexWriter.getConfig().getMergePolicy();
+      //Find merges
+      MergeSpecification findMerges = mp.findMerges(MergeTrigger.EXPLICIT, infos, indexWriter);
+      if (findMerges != null && findMerges.merges != null && findMerges.merges.size() > 0) {
+        for (OneMerge merge : findMerges.merges) {
+          //TODO: add merge grouping
+          for (SegmentCommitInfo mergeSegmentInfo : merge.segments) {
+            result.add(mergeSegmentInfo.info.name);
+          }
         }
       }
     }
+    finally {
+      if (iwRef != null)
+        iwRef.decref();
+    }
 
     return result;
-  }
-
-  private IndexWriter getIndexWriter(SolrQueryRequest req) throws IOException {
-    return req.getCore().getSolrCoreState().getIndexWriter(req.getCore()).get();
   }
 
   @Override
