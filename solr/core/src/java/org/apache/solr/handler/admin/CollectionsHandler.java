@@ -108,6 +108,7 @@ import static org.apache.solr.common.params.CollectionParams.CollectionAction.RE
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.RELOAD;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.REMOVEROLE;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.SPLITSHARD;
+import static org.apache.solr.common.params.ShardParams._ROUTE_;
 
 public class CollectionsHandler extends RequestHandlerBase {
   protected static Logger log = LoggerFactory.getLogger(CollectionsHandler.class);
@@ -890,10 +891,11 @@ public class CollectionsHandler extends RequestHandlerBase {
    * @param rsp solr response
    */
   private void handleClusterStatus(SolrQueryRequest req, SolrQueryResponse rsp) throws KeeperException, InterruptedException {
-    Map<String,Object> props = new HashMap<>();
-    props.put(Overseer.QUEUE_OPERATION, CollectionAction.CLUSTERSTATUS.toLower());
-    copyIfNotNull(req.getParams(), props, COLLECTION_PROP, SHARD_ID_PROP, ShardParams._ROUTE_);
-    handleResponse(CollectionAction.CLUSTERSTATUS.toString(), new ZkNodeProps(props), rsp);
+    Map<String, Object> all = req.getParams().getAll(null,
+        COLLECTION_PROP,
+        SHARD_ID_PROP,
+        _ROUTE_);
+    new ClusterStatus(coreContainer.getZkController().getZkStateReader(), new ZkNodeProps(all)).getClusterStatus(rsp.getValues());
   }
 
   /**
