@@ -17,9 +17,6 @@
 
 package org.apache.solr.handler.admin;
 
-import java.net.URL;
-import java.util.Map;
-
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
@@ -27,6 +24,9 @@ import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.util.plugin.SolrCoreAware;
+
+import java.net.URL;
+import java.util.Map;
 
 /**
  * A special Handler that registers all standard admin handlers
@@ -88,7 +88,8 @@ public class AdminHandlers implements SolrCoreAware, SolrRequestHandler
       new StandardHandler( "threads", new ThreadDumpHandler() ),
       new StandardHandler( "properties", new PropertiesRequestHandler() ),
       new StandardHandler( "logging", new LoggingHandler() ),
-      new StandardHandler( "file", new ShowFileRequestHandler() )
+      new StandardHandler( "file", new ShowFileRequestHandler() ),
+        new StandardHandler("segments", new SegmentsInfoRequestHandler())
     };
     
     for( StandardHandler handler : list ) {
